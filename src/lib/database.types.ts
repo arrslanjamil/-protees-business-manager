@@ -15,6 +15,7 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['units']['Insert']>
+        Relationships: []
       }
       employees: {
         Row: {
@@ -40,6 +41,14 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['employees']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'employees_unit_id_fkey'
+            columns: ['unit_id']
+            referencedRelation: 'units'
+            referencedColumns: ['id']
+          },
+        ]
       }
       advances: {
         Row: {
@@ -59,6 +68,14 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['advances']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'advances_employee_id_fkey'
+            columns: ['employee_id']
+            referencedRelation: 'employees'
+            referencedColumns: ['id']
+          },
+        ]
       }
       salary_payments: {
         Row: {
@@ -86,6 +103,14 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['salary_payments']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'salary_payments_employee_id_fkey'
+            columns: ['employee_id']
+            referencedRelation: 'employees'
+            referencedColumns: ['id']
+          },
+        ]
       }
       advance_deductions: {
         Row: {
@@ -107,6 +132,26 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['advance_deductions']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'advance_deductions_advance_id_fkey'
+            columns: ['advance_id']
+            referencedRelation: 'advances'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'advance_deductions_employee_id_fkey'
+            columns: ['employee_id']
+            referencedRelation: 'employees'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'advance_deductions_salary_payment_id_fkey'
+            columns: ['salary_payment_id']
+            referencedRelation: 'salary_payments'
+            referencedColumns: ['id']
+          },
+        ]
       }
       expenses: {
         Row: {
@@ -128,6 +173,14 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['expenses']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'expenses_unit_id_fkey'
+            columns: ['unit_id']
+            referencedRelation: 'units'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
     Views: {
@@ -138,7 +191,11 @@ export interface Database {
           total_deducted: number
           balance: number
         }
+        Relationships: []
       }
     }
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
   }
 }
