@@ -1,38 +1,37 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Phone, Plus, Search, Trash2, Users } from 'lucide-react'
+import { CalendarDays, ChevronDown, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
-import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
+import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
 import type { Employee } from '@/lib/types'
-import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const emptyForm = {
   name: '',
-  phone: '',
-  role: '',
-  unit_id: '',
-  monthly_salary: '',
-  joined_date: todayISO(),
-  status: 'active' as 'active' | 'inactive',
+  salary: '',
+  joinDate: todayISO(),
 }
 
 export function EmployeesPage() {
-  const { employeesWithBalance, units, addEmployee, updateEmployee, deleteEmployee } = useData()
+  const { employeesWithBalance, addEmployee, updateEmployee, deleteEmployee } = useData()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  function toggleExpanded(id: number) {
+    setExpandedId((prev) => (prev === id ? null : id))
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return employeesWithBalance
-    return employeesWithBalance.filter(
-      (e) => e.name.toLowerCase().includes(q) || (e.role ?? '').toLowerCase().includes(q)
-    )
+    return employeesWithBalance.filter((e) => e.name.toLowerCase().includes(q))
   }, [employeesWithBalance, search])
 
   function openCreate() {
@@ -46,12 +45,8 @@ export function EmployeesPage() {
     setEditing(emp)
     setForm({
       name: emp.name,
-      phone: emp.phone ?? '',
-      role: emp.role ?? '',
-      unit_id: emp.unit_id ?? '',
-      monthly_salary: String(emp.monthly_salary ?? ''),
-      joined_date: emp.joined_date ?? todayISO(),
-      status: emp.status,
+      salary: String(emp.salary ?? ''),
+      joinDate: emp.join_date ?? todayISO(),
     })
     setError(null)
     setModalOpen(true)
@@ -62,7 +57,7 @@ export function EmployeesPage() {
       setError('Name is required.')
       return
     }
-    const salary = Number(form.monthly_salary)
+    const salary = Number(form.salary)
     if (Number.isNaN(salary) || salary < 0) {
       setError('Enter a valid monthly salary.')
       return
@@ -70,15 +65,7 @@ export function EmployeesPage() {
     setSaving(true)
     setError(null)
     try {
-      const payload = {
-        name: form.name.trim(),
-        phone: form.phone.trim() || null,
-        role: form.role.trim() || null,
-        unit_id: form.unit_id || null,
-        monthly_salary: salary,
-        joined_date: form.joined_date || null,
-        status: form.status,
-      }
+      const payload = { name: form.name.trim(), salary, joinDate: form.joinDate || null }
       if (editing) {
         await updateEmployee(editing.id, payload)
       } else {
@@ -93,7 +80,7 @@ export function EmployeesPage() {
   }
 
   async function handleDelete(emp: Employee) {
-    if (!confirm(`Delete ${emp.name}? This also removes their salary and advance history.`)) return
+    if (!confirm(`Delete ${emp.name}? This does not remove their salary and advance history (linked by name).`)) return
     await deleteEmployee(emp.id)
   }
 
@@ -113,7 +100,7 @@ export function EmployeesPage() {
         <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
         <input
           className="input-field pl-10"
-          placeholder="Search by name or role…"
+          placeholder="Search by name…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -123,60 +110,90 @@ export function EmployeesPage() {
         <EmptyState icon={Users} title="No employees found" description="Add your first employee to get started." />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((emp) => (
-            <div key={emp.id} className="card group flex flex-col">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20 font-display text-sm font-bold text-white">
-                    {emp.name
-                      .split(' ')
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join('')
-                      .toUpperCase()}
+          {filtered.map((emp) => {
+            const isExpanded = expandedId === emp.id
+            return (
+              <div
+                key={emp.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleExpanded(emp.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    toggleExpanded(emp.id)
+                  }
+                }}
+                className={classNames(
+                  'card group flex cursor-pointer flex-col transition-colors',
+                  isExpanded && 'md:col-span-2 xl:col-span-3 border-neon-cyan/30'
+                )}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20 font-display text-sm font-bold text-white">
+                      {emp.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white">{emp.name}</p>
+                      {emp.join_date && (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
+                          <CalendarDays size={11} /> Joined {formatDate(emp.join_date)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-white">{emp.name}</p>
-                    <p className="text-xs text-slate-500">{emp.role || 'No role set'}</p>
+                  <div className="flex items-center gap-1">
+                    <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
+                      <button
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEdit(emp)
+                        }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-neon-red/10 hover:text-neon-red"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(emp)
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    <ChevronDown
+                      size={16}
+                      className={classNames('text-slate-500 transition-transform', isExpanded && 'rotate-180 text-neon-cyan')}
+                    />
                   </div>
                 </div>
-                <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                  <button className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white" onClick={() => openEdit(emp)}>
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-neon-red/10 hover:text-neon-red"
-                    onClick={() => handleDelete(emp)}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Badge color={emp.status === 'active' ? 'green' : 'slate'}>{emp.status}</Badge>
-                {emp.unit && <Badge color="purple">{emp.unit.name}</Badge>}
-                {emp.phone && (
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
-                    <Phone size={11} /> {emp.phone}
-                  </span>
+                <div className="mt-4 flex items-center justify-between rounded-xl bg-white/[0.02] px-3.5 py-2.5">
+                  <span className="text-xs text-slate-400">Monthly Salary</span>
+                  <span className="font-display text-sm font-semibold text-white">{formatCurrency(emp.salary)}</span>
+                </div>
+
+                <div className="mt-3">
+                  <AdvanceProgressBar balance={emp.advanceBalance} monthlySalary={emp.salary} />
+                </div>
+
+                {isExpanded && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <h4 className="mt-5 text-xs font-semibold uppercase tracking-wider text-slate-400">Transaction History</h4>
+                    <EmployeeTransactionHistory employeeName={emp.name} />
+                  </div>
                 )}
               </div>
-
-              <div className="mt-4 flex items-center justify-between rounded-xl bg-white/[0.02] px-3.5 py-2.5">
-                <span className="text-xs text-slate-400">Monthly Salary</span>
-                <span className="font-display text-sm font-semibold text-white">{formatCurrency(emp.monthly_salary)}</span>
-              </div>
-
-              <div className="mt-3">
-                <AdvanceProgressBar balance={emp.advanceBalance} monthlySalary={emp.monthly_salary} />
-              </div>
-
-              {emp.joined_date && (
-                <p className="mt-3 text-[11px] text-slate-600">Joined {formatDate(emp.joined_date)}</p>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -188,56 +205,22 @@ export function EmployeesPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-field">Phone</label>
-              <input className="input-field" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="03xx-xxxxxxx" />
-            </div>
-            <div>
-              <label className="label-field">Role</label>
-              <input className="input-field" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g. Tailor" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label-field">Unit</label>
-              <select className="input-field" value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })}>
-                <option value="">Unassigned</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label-field">Status</label>
-              <select
-                className="input-field"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
               <label className="label-field">Monthly salary</label>
               <input
                 type="number"
                 className="input-field"
-                value={form.monthly_salary}
-                onChange={(e) => setForm({ ...form, monthly_salary: e.target.value })}
+                value={form.salary}
+                onChange={(e) => setForm({ ...form, salary: e.target.value })}
                 placeholder="0"
               />
             </div>
             <div>
-              <label className="label-field">Joined date</label>
+              <label className="label-field">Join date</label>
               <input
                 type="date"
                 className="input-field"
-                value={form.joined_date}
-                onChange={(e) => setForm({ ...form, joined_date: e.target.value })}
+                value={form.joinDate}
+                onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
               />
             </div>
           </div>

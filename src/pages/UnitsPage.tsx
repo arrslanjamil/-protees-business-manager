@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Boxes, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import { Boxes, MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Unit } from '@/lib/types'
 
 export function UnitsPage() {
-  const { units, employees, addUnit, updateUnit, deleteUnit } = useData()
+  const { units, addUnit, updateUnit, deleteUnit } = useData()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Unit | null>(null)
   const [name, setName] = useState('')
@@ -52,7 +52,7 @@ export function UnitsPage() {
   }
 
   async function handleDelete(unit: Unit) {
-    if (!confirm(`Delete unit "${unit.name}"? Employees assigned to it will become unassigned.`)) return
+    if (!confirm(`Delete unit "${unit.name}"?`)) return
     await deleteUnit(unit.id)
   }
 
@@ -72,7 +72,7 @@ export function UnitsPage() {
         <EmptyState
           icon={Boxes}
           title="No units yet"
-          description="Create your first unit to start organizing employees and expenses."
+          description="Create your first unit to start organizing your business."
           action={
             <button className="btn-primary" onClick={openCreate}>
               <Plus size={16} /> Add Unit
@@ -81,41 +81,35 @@ export function UnitsPage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {units.map((unit) => {
-            const staffCount = employees.filter((e) => e.unit_id === unit.id).length
-            return (
-              <div key={unit.id} className="card group">
-                <div className="flex items-start justify-between">
-                  <div className="rounded-xl bg-neon-purple/10 p-2.5 text-neon-purple">
-                    <Boxes size={20} />
-                  </div>
-                  <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                    <button
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white"
-                      onClick={() => openEdit(unit)}
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-neon-red/10 hover:text-neon-red"
-                      onClick={() => handleDelete(unit)}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+          {units.map((unit) => (
+            <div key={unit.id} className="card group">
+              <div className="flex items-start justify-between">
+                <div className="rounded-xl bg-neon-purple/10 p-2.5 text-neon-purple">
+                  <Boxes size={20} />
                 </div>
-                <h3 className="mt-3 font-display text-lg font-semibold text-white">{unit.name}</h3>
-                {unit.location && (
-                  <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                    <MapPin size={12} /> {unit.location}
-                  </p>
-                )}
-                <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
-                  <Users size={12} /> {staffCount} employee{staffCount === 1 ? '' : 's'}
-                </p>
+                <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
+                  <button
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white"
+                    onClick={() => openEdit(unit)}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-neon-red/10 hover:text-neon-red"
+                    onClick={() => handleDelete(unit)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
-            )
-          })}
+              <h3 className="mt-3 font-display text-lg font-semibold text-white">{unit.name}</h3>
+              {unit.location && (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                  <MapPin size={12} /> {unit.location}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

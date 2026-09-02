@@ -1,16 +1,19 @@
-import type { Employee } from './types'
-import { EXPENSE_CATEGORIES } from './types'
+import type { Department } from './types'
 import { fuzzyScore } from './utils'
 
-export type VoiceIntent = 'salary' | 'advance' | 'expense' | 'unknown'
+export type VoiceIntent = 'salary' | 'advance' | 'expense' | 'unit_payment' | 'unknown'
+
+export interface NamedPerson {
+  name: string
+  department: Department
+}
 
 export interface VoiceParseResult {
   intent: VoiceIntent
   amount: number | null
-  employee: Employee | null
-  employeeNameGuess: string | null
-  category: string | null
-  reason: string | null
+  person: NamedPerson | null
+  nameGuess: string | null
+  title: string | null
   raw: string
 }
 
@@ -28,6 +31,7 @@ const NUMBER_WORDS: Record<string, number> = {
   ten: 10,
   hundred: 100,
   thousand: 1000,
+  hazar: 1000,
   lakh: 100000,
   lac: 100000,
   million: 1000000,
@@ -57,11 +61,11 @@ function wordsToNumber(text: string): number | null {
 }
 
 function extractAmount(text: string): number | null {
-  const digitMatch = text.match(/(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakh|lac|million)?/i)
+  const digitMatch = text.match(/(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|hazar|lakh|lac|million)?/i)
   if (digitMatch) {
     let value = parseFloat(digitMatch[1].replace(/,/g, ''))
     const suffix = digitMatch[2]?.toLowerCase()
-    if (suffix === 'k' || suffix === 'thousand') value *= 1000
+    if (suffix === 'k' || suffix === 'thousand' || suffix === 'hazar') value *= 1000
     if (suffix === 'lakh' || suffix === 'lac') value *= 100000
     if (suffix === 'million') value *= 1000000
     if (!Number.isNaN(value)) return value
@@ -69,73 +73,65 @@ function extractAmount(text: string): number | null {
   return wordsToNumber(text)
 }
 
+/** Roman-Urdu and English keywords for each intent. */
 function detectIntent(text: string): VoiceIntent {
   const t = text.toLowerCase()
-  if (/\b(advance|loan|qarza|qarz|borrow)\b/.test(t)) return 'advance'
-  if (/\b(expense|spent|spend|cost|bill|purchase|bought)\b/.test(t)) return 'expense'
-  if (/\b(salary|pay|paid|wage|payroll)\b/.test(t)) return 'salary'
+  if (/\b(advance|loan|qarza|qarz|borrow|diya|dena|de do|udhaar)\b/.test(t)) return 'advance'
+  if (/\b(unit payment|supervisor payment|protees unit)\b/.test(t)) return 'unit_payment'
+  if (/\b(expense|spent|spend|cost|bill|purchase|bought|kharcha|kharch)\b/.test(t)) return 'expense'
+  if (/\b(salary|pay|paid|wage|payroll|tankhwah|tankhwa)\b/.test(t)) return 'salary'
   return 'unknown'
 }
 
-/** Pulls the name that follows "to"/"for"/"of" in the transcript, if any. */
+/** Pulls the name that follows "to"/"for"/"of" (English), or precedes "ko" (Roman Urdu). */
 function extractNameGuess(text: string): string | null {
-  const match = text.match(/\b(?:to|for|of)\s+([a-z][a-z\s]{1,30}?)(?:\s+(?:for|because|as|on|amount|rupees|pkr|rs)\b|[,.]|$)/i)
-  if (match) return match[1].trim()
+  // Roman Urdu: "Ali ko 5000 advance diya" — name comes before "ko".
+  const urduMatch = text.match(/^\s*([a-z][a-z\s]{1,30}?)\s+ko\b/i)
+  if (urduMatch) return urduMatch[1].trim()
+
+  const englishMatch = text.match(/\b(?:to|for|of)\s+([a-z][a-z\s]{1,30}?)(?:\s+(?:for|because|as|on|amount|rupees|pkr|rs)\b|[,.]|$)/i)
+  if (englishMatch) return englishMatch[1].trim()
   return null
 }
 
-function bestEmployeeMatch(nameGuess: string | null, fullText: string, employees: Employee[]): Employee | null {
-  if (employees.length === 0) return null
+function bestPersonMatch(nameGuess: string | null, fullText: string, people: NamedPerson[]): NamedPerson | null {
+  if (people.length === 0) return null
   const candidates = nameGuess ? [nameGuess] : []
-  // Also try matching each employee name directly against the full transcript.
-  let best: { employee: Employee; score: number } | null = null
-  for (const emp of employees) {
+  let best: { person: NamedPerson; score: number } | null = null
+  for (const person of people) {
     for (const candidate of [...candidates, fullText]) {
-      const score = fuzzyScore(candidate, emp.name)
+      const score = fuzzyScore(candidate, person.name)
       if (score > 0 && (!best || score > best.score)) {
-        best = { employee: emp, score }
+        best = { person, score }
       }
     }
   }
-  if (best && best.score >= 55) return best.employee
+  if (best && best.score >= 55) return best.person
   return null
 }
 
-function extractCategory(text: string): string | null {
-  const t = text.toLowerCase()
-  for (const cat of EXPENSE_CATEGORIES) {
-    if (t.includes(cat.toLowerCase())) return cat
-  }
-  const match = text.match(/\bfor\s+([a-z][a-z\s]{2,30})$/i)
+/** For an expense command, pulls a freeform title from the trailing "for X" phrase. */
+function extractExpenseTitle(text: string): string | null {
+  const match = text.match(/\bfor\s+([a-z][a-z\s]{2,40})$/i)
   if (match) return match[1].trim()
   return null
 }
 
-export function parseVoiceCommand(rawText: string, employees: Employee[]): VoiceParseResult {
+export function parseVoiceCommand(rawText: string, people: NamedPerson[]): VoiceParseResult {
   const raw = rawText.trim()
   const intent = detectIntent(raw)
   const amount = extractAmount(raw)
   const nameGuess = extractNameGuess(raw)
-  const employee = bestEmployeeMatch(nameGuess, raw, employees)
+  const person = bestPersonMatch(nameGuess, raw, people)
 
-  let category: string | null = null
-  let reason: string | null = null
-
-  if (intent === 'expense') {
-    category = extractCategory(raw)
-    reason = category
-  } else if (intent === 'advance') {
-    const reasonMatch = raw.match(/\bfor\s+([a-z][a-z\s]{2,40})$/i)
-    reason = reasonMatch ? reasonMatch[1].trim() : null
-  }
+  const title = intent === 'expense' ? extractExpenseTitle(raw) : null
 
   return {
     intent,
     amount,
-    employee,
-    employeeNameGuess: nameGuess,
-    category,
-    reason,
+    person,
+    nameGuess,
+    title,
     raw,
   }
 }

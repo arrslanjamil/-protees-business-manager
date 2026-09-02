@@ -1,10 +1,12 @@
 import {
+  Banknote,
   Boxes,
+  FileBarChart,
+  HandCoins,
   LayoutDashboard,
   Receipt,
   Users,
   Wallet,
-  HandCoins,
   Zap,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
@@ -12,11 +14,13 @@ import { classNames } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/protees-unit', label: 'Protees Unit', icon: Boxes },
+  { to: '/unit-expenses', label: 'Unit Expenses', icon: Receipt },
   { to: '/employees', label: 'Employees', icon: Users },
   { to: '/salary', label: 'Salary', icon: Wallet },
-  { to: '/advances', label: 'Advances / Qarza', icon: HandCoins },
-  { to: '/units', label: 'Units', icon: Boxes },
-  { to: '/expenses', label: 'Expenses', icon: Receipt },
+  { to: '/advances', label: 'Advances', icon: HandCoins },
+  { to: '/khadim-hussain', label: 'Khadim Hussain', icon: Banknote },
+  { to: '/reports', label: 'Reports', icon: FileBarChart },
 ]
 
 export function Sidebar() {
@@ -61,7 +65,7 @@ export function Sidebar() {
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3.5">
           <p className="text-xs font-medium text-slate-400">Say a command</p>
           <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-            "Give advance 5000 to Ali" · "Pay salary to Sara" · "Add expense 2000 for rent"
+            "Ali ko 5000 advance diya" · "Pay salary to Sara" · "Add expense for thread"
           </p>
         </div>
       </div>

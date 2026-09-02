@@ -12,8 +12,9 @@ const now = new Date()
 export function SalaryPage() {
   const { employeesWithBalance, salaryPayments, recordSalaryPayment, deleteSalaryPayment, suggestedDeduction, balanceFor } = useData()
   const [modalOpen, setModalOpen] = useState(false)
-  const [employeeId, setEmployeeId] = useState('')
+  const [employeeName, setEmployeeName] = useState('')
   const [baseAmount, setBaseAmount] = useState('')
+  const [overtimeAmount, setOvertimeAmount] = useState('')
   const [deduction, setDeduction] = useState('')
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
@@ -27,13 +28,10 @@ export function SalaryPage() {
     [salaryPayments]
   )
 
-  function employeeName(id: string) {
-    return employeesWithBalance.find((e) => e.id === id)?.name ?? 'Unknown'
-  }
-
   function openCreate() {
-    setEmployeeId('')
+    setEmployeeName('')
     setBaseAmount('')
+    setOvertimeAmount('')
     setDeduction('')
     setMonth(now.getMonth() + 1)
     setYear(now.getFullYear())
@@ -43,22 +41,23 @@ export function SalaryPage() {
     setModalOpen(true)
   }
 
-  function handleEmployeeChange(id: string) {
-    setEmployeeId(id)
-    const emp = employeesWithBalance.find((e) => e.id === id)
+  function handleEmployeeChange(name: string) {
+    setEmployeeName(name)
+    const emp = employeesWithBalance.find((e) => e.name === name)
     if (emp) {
-      setBaseAmount(String(emp.monthly_salary))
-      setDeduction(String(suggestedDeduction(id, Number(emp.monthly_salary))))
+      setBaseAmount(String(emp.salary))
+      setDeduction(String(suggestedDeduction(name, 'cutting_department', Number(emp.salary))))
     }
   }
 
-  const currentBalance = employeeId ? balanceFor(employeeId) : 0
+  const currentBalance = employeeName ? balanceFor(employeeName, 'cutting_department') : 0
   const base = Number(baseAmount) || 0
+  const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
-  const net = Math.max(0, base - ded)
+  const net = Math.max(0, base + overtime - ded)
 
   async function handleSave() {
-    if (!employeeId) {
+    if (!employeeName) {
       setError('Select an employee.')
       return
     }
@@ -66,8 +65,12 @@ export function SalaryPage() {
       setError('Enter a valid base salary amount.')
       return
     }
-    if (ded < 0 || ded > base) {
-      setError('Deduction cannot be negative or exceed the base salary.')
+    if (overtime < 0) {
+      setError('Overtime cannot be negative.')
+      return
+    }
+    if (ded < 0 || ded > base + overtime) {
+      setError('Deduction cannot be negative or exceed base salary + overtime.')
       return
     }
     if (ded > currentBalance) {
@@ -78,8 +81,9 @@ export function SalaryPage() {
     setError(null)
     try {
       await recordSalaryPayment({
-        employeeId,
+        employeeName,
         baseAmount: base,
+        overtimeAmount: overtime,
         deductionAmount: ded,
         month,
         year,
@@ -94,7 +98,7 @@ export function SalaryPage() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: number) {
     if (!confirm('Delete this salary payment record? Linked advance deductions will also be removed.')) return
     await deleteSalaryPayment(id)
   }
@@ -104,7 +108,7 @@ export function SalaryPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Salary</h1>
-          <p className="mt-1 text-sm text-slate-400">Record payments — outstanding advances are auto-deducted.</p>
+          <p className="mt-1 text-sm text-slate-400">Monthly payroll. Overtime is added, outstanding advances are auto-deducted.</p>
         </div>
         <button className="btn-primary" onClick={openCreate}>
           <Plus size={16} /> Record Payment
@@ -121,6 +125,7 @@ export function SalaryPage() {
                 <th className="px-5 py-3.5">Employee</th>
                 <th className="px-5 py-3.5">Period</th>
                 <th className="px-5 py-3.5">Base</th>
+                <th className="px-5 py-3.5">Overtime</th>
                 <th className="px-5 py-3.5">Deduction</th>
                 <th className="px-5 py-3.5">Net Paid</th>
                 <th className="px-5 py-3.5">Date</th>
@@ -130,11 +135,18 @@ export function SalaryPage() {
             <tbody>
               {sortedPayments.map((p) => (
                 <tr key={p.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                  <td className="px-5 py-3.5 font-medium text-white">{employeeName(p.employee_id)}</td>
+                  <td className="px-5 py-3.5 font-medium text-white">{p.employee_name}</td>
                   <td className="px-5 py-3.5 text-slate-400">
                     {MONTH_NAMES[p.month - 1]} {p.year}
                   </td>
                   <td className="px-5 py-3.5 text-slate-300">{formatCurrency(p.base_amount)}</td>
+                  <td className="px-5 py-3.5">
+                    {p.overtime_amount > 0 ? (
+                      <span className="text-neon-cyan">+{formatCurrency(p.overtime_amount)}</span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5">
                     {p.deduction_amount > 0 ? (
                       <Badge color="red">-{formatCurrency(p.deduction_amount)}</Badge>
@@ -159,14 +171,14 @@ export function SalaryPage() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Record Salary Payment" subtitle="Outstanding advances are deducted automatically">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Record Salary Payment" subtitle="Overtime is added, outstanding advances are deducted automatically">
         <div className="space-y-4">
           <div>
             <label className="label-field">Employee</label>
-            <select className="input-field" value={employeeId} onChange={(e) => handleEmployeeChange(e.target.value)}>
+            <select className="input-field" value={employeeName} onChange={(e) => handleEmployeeChange(e.target.value)}>
               <option value="">Select employee…</option>
               {employeesWithBalance.map((emp) => (
-                <option key={emp.id} value={emp.id}>
+                <option key={emp.id} value={emp.name}>
                   {emp.name}
                 </option>
               ))}
@@ -190,20 +202,40 @@ export function SalaryPage() {
             </div>
           </div>
 
-          <div>
-            <label className="label-field">Base salary</label>
-            <input type="number" className="input-field" value={baseAmount} onChange={(e) => setBaseAmount(e.target.value)} placeholder="0" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-field">Base salary</label>
+              <input type="number" className="input-field" value={baseAmount} onChange={(e) => setBaseAmount(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="label-field">Overtime</label>
+              <input type="number" className="input-field" value={overtimeAmount} onChange={(e) => setOvertimeAmount(e.target.value)} placeholder="0" />
+            </div>
           </div>
 
-          {employeeId && (
+          {employeeName && (
             <div>
               <label className="label-field">
                 Auto deduction from advance <span className="text-slate-600">(outstanding: {formatCurrency(currentBalance)})</span>
               </label>
               <input type="number" className="input-field" value={deduction} onChange={(e) => setDeduction(e.target.value)} placeholder="0" />
-              <div className="mt-2 flex items-center justify-between rounded-xl bg-white/[0.02] px-3.5 py-2.5">
-                <span className="text-xs text-slate-400">Net pay</span>
-                <span className="font-display text-sm font-bold text-neon-green">{formatCurrency(net)}</span>
+              <div className="mt-2 space-y-1.5 rounded-xl bg-white/[0.02] px-3.5 py-2.5 text-xs text-slate-400">
+                <div className="flex items-center justify-between">
+                  <span>Salary Amount</span>
+                  <span className="text-slate-300">{formatCurrency(base)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Overtime Amount</span>
+                  <span className="text-neon-cyan">+{formatCurrency(overtime)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Advance Deduction</span>
+                  <span className="text-neon-red">-{formatCurrency(ded)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-white/5 pt-1.5 font-semibold">
+                  <span className="text-slate-300">Final Paid Amount</span>
+                  <span className="text-neon-green">{formatCurrency(net)}</span>
+                </div>
               </div>
             </div>
           )}

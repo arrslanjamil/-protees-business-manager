@@ -1,184 +1,277 @@
-import { useMemo } from 'react'
-import { HandCoins, Receipt, Users, Wallet } from 'lucide-react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Banknote, Boxes, FileBarChart, HandCoins, Receipt, Users, Wallet } from 'lucide-react'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { useData } from '@/context/DataContext'
-import { StatCard } from '@/components/ui/StatCard'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
-import { MONTH_NAMES } from '@/lib/types'
-import { formatCurrency } from '@/lib/utils'
+import { SortableSection } from '@/components/dashboard/SortableSection'
+import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
+import { FinancialSummarySection } from '@/components/dashboard/FinancialSummarySection'
+import { EmployeesSection } from '@/components/dashboard/EmployeesSection'
+import { ProteesUnitSection } from '@/components/dashboard/ProteesUnitSection'
+import { SalarySection } from '@/components/dashboard/SalarySection'
+import { AdvancesSection } from '@/components/dashboard/AdvancesSection'
+import { ExpensesSection } from '@/components/dashboard/ExpensesSection'
+import { ReportsSection } from '@/components/dashboard/ReportsSection'
+import { loadDashboardOrder, saveDashboardOrder, type DashboardSectionId } from '@/lib/dashboardLayout'
+import { colorForIndex, monthBucketsInRange } from '@/lib/dashboardAnalytics'
+import { type Department } from '@/lib/types'
+import { dashboardDateRange, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
 
-const PIE_COLORS = ['#22d3ee', '#a855f7', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#818cf8', '#38bdf8']
-
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-xl border border-white/10 bg-base-850/95 px-3.5 py-2.5 text-xs shadow-xl backdrop-blur">
-      {label && <p className="mb-1 font-medium text-slate-300">{label}</p>}
-      {payload.map((p: any) => (
-        <p key={p.name} style={{ color: p.color || p.fill }}>
-          {p.name}: {formatCurrency(p.value)}
-        </p>
-      ))}
-    </div>
-  )
+const SECTION_META: Record<DashboardSectionId, { title: string; icon: ReactNode }> = {
+  financial: { title: 'Grand Total', icon: <Wallet size={14} className="text-neon-green" /> },
+  employees: { title: 'Employees', icon: <Users size={14} className="text-neon-cyan" /> },
+  protees_unit: { title: 'Protees Unit', icon: <Boxes size={14} className="text-neon-purple" /> },
+  salary: { title: 'Salary', icon: <Banknote size={14} className="text-neon-amber" /> },
+  advances: { title: 'Advances', icon: <HandCoins size={14} className="text-neon-amber" /> },
+  expenses: { title: 'Expenses', icon: <Receipt size={14} className="text-neon-red" /> },
+  reports: { title: 'Reports', icon: <FileBarChart size={14} className="text-neon-cyan" /> },
 }
 
 export function DashboardPage() {
-  const { employeesWithBalance, expenses, salaryPayments, advances } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, expenses, salaryPayments, unitPayments, advances, advanceDeductions, khadimTotals } =
+    useData()
 
-  const activeEmployees = employeesWithBalance.filter((e) => e.status === 'active')
-  const totalPayroll = activeEmployees.reduce((sum, e) => sum + Number(e.monthly_salary), 0)
-  const totalOutstanding = employeesWithBalance.reduce((sum, e) => sum + Math.max(0, e.advanceBalance), 0)
+  const [order, setOrder] = useState<DashboardSectionId[]>(() => loadDashboardOrder())
+  const [preset, setPreset] = useState<DashboardDatePreset>('6m')
+  const [customStart, setCustomStart] = useState<string>(() => dashboardDateRange('30d').start)
+  const [customEnd, setCustomEnd] = useState<string>(() => dashboardDateRange('30d').end)
 
-  const now = new Date()
-  const expensesThisMonth = expenses
-    .filter((e) => {
-      const d = new Date(e.date)
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-    })
-    .reduce((sum, e) => sum + Number(e.amount), 0)
-
-  const advanceVsSalaryData = useMemo(
-    () =>
-      employeesWithBalance
-        .filter((e) => e.advanceBalance > 0 || e.monthly_salary > 0)
-        .sort((a, b) => b.advanceBalance - a.advanceBalance)
-        .slice(0, 8)
-        .map((e) => ({
-          name: e.name.length > 12 ? e.name.slice(0, 11) + '…' : e.name,
-          Salary: Number(e.monthly_salary),
-          Advance: Math.max(0, e.advanceBalance),
-        })),
-    [employeesWithBalance]
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  const expenseByCategory = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of expenses) {
-      map.set(e.category, (map.get(e.category) ?? 0) + Number(e.amount))
-    }
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }))
-  }, [expenses])
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setOrder((prev) => {
+      const oldIndex = prev.indexOf(active.id as DashboardSectionId)
+      const newIndex = prev.indexOf(over.id as DashboardSectionId)
+      const next = arrayMove(prev, oldIndex, newIndex)
+      saveDashboardOrder(next)
+      return next
+    })
+  }
 
-  const payrollTrend = useMemo(() => {
-    const months: { key: string; label: string; net: number }[] = []
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      months.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}`, label: MONTH_NAMES[d.getMonth()].slice(0, 3), net: 0 })
-    }
-    for (const p of salaryPayments) {
-      const key = `${p.year}-${p.month}`
-      const bucket = months.find((m) => m.key === key)
-      if (bucket) bucket.net += Number(p.net_amount)
-    }
-    return months
-  }, [salaryPayments, now])
+  const { start, end } = useMemo(() => dashboardDateRange(preset, customStart, customEnd), [preset, customStart, customEnd])
 
-  const riskiest = employeesWithBalance
-    .filter((e) => e.advanceBalance > 0)
-    .sort((a, b) => b.advanceBalance - a.advanceBalance)
-    .slice(0, 5)
+  const now = new Date()
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+
+  // --- Unfiltered "current" figures — identical to the original dashboard, kept as-is. ---
+  const totalOutstandingAdvances =
+    employeesWithBalance.reduce((sum, e) => sum + Math.max(0, e.advanceBalance), 0) +
+    supervisorsWithBalance.reduce((sum, s) => sum + Math.max(0, s.advanceBalance), 0)
+
+  const isCurrentMonth = (dateStr: string) => {
+    const d = new Date(dateStr)
+    return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear
+  }
+  const isCurrentYear = (dateStr: string) => new Date(dateStr).getFullYear() === currentYear
+
+  const currentMonthCost =
+    salaryPayments.filter((p) => p.month === currentMonth && p.year === currentYear).reduce((s, p) => s + Number(p.net_amount), 0) +
+    unitPayments.filter((p) => p.month === currentMonth && p.year === currentYear).reduce((s, p) => s + Number(p.net_amount), 0) +
+    expenses.filter((e) => isCurrentMonth(e.date)).reduce((s, e) => s + Number(e.amount), 0)
+
+  const currentYearCost =
+    salaryPayments.filter((p) => p.year === currentYear).reduce((s, p) => s + Number(p.net_amount), 0) +
+    unitPayments.filter((p) => p.year === currentYear).reduce((s, p) => s + Number(p.net_amount), 0) +
+    expenses.filter((e) => isCurrentYear(e.date)).reduce((s, e) => s + Number(e.amount), 0)
+
+  // --- Filtered-by-period figures, driven by the flexible date filter. ---
+  const periodExpensesList = useMemo(() => expenses.filter((e) => isWithinRange(e.date, start, end)), [expenses, start, end])
+  const periodSalaryList = useMemo(() => salaryPayments.filter((p) => isWithinRange(p.payment_date, start, end)), [salaryPayments, start, end])
+  const periodUnitList = useMemo(() => unitPayments.filter((p) => isWithinRange(p.payment_date, start, end)), [unitPayments, start, end])
+  const periodAdvancesList = useMemo(() => advances.filter((a) => isWithinRange(a.payment_date, start, end)), [advances, start, end])
+  const periodDeductionsList = useMemo(() => advanceDeductions.filter((d) => isWithinRange(d.date, start, end)), [advanceDeductions, start, end])
+
+  const periodExpenses = periodExpensesList.reduce((s, e) => s + Number(e.amount), 0)
+  const periodSalaryNet = periodSalaryList.reduce((s, p) => s + Number(p.net_amount), 0)
+  const periodSalaryBase = periodSalaryList.reduce((s, p) => s + Number(p.base_amount), 0)
+  const periodSalaryOvertime = periodSalaryList.reduce((s, p) => s + Number(p.overtime_amount), 0)
+  const periodSalaryDeduction = periodSalaryList.reduce((s, p) => s + Number(p.deduction_amount), 0)
+  const periodUnitNet = periodUnitList.reduce((s, p) => s + Number(p.net_amount), 0)
+  const periodUnitOvertime = periodUnitList.reduce((s, p) => s + Number(p.overtime_amount), 0)
+  const periodAdvancesCutting = periodAdvancesList.filter((a) => a.department === 'cutting_department').reduce((s, a) => s + Number(a.amount), 0)
+  const periodAdvancesUnit = periodAdvancesList.filter((a) => a.department === 'protees_unit').reduce((s, a) => s + Number(a.amount), 0)
+  const periodAdvancesTotal = periodAdvancesCutting + periodAdvancesUnit
+  const periodAdvancesRepaid = periodDeductionsList.reduce((s, d) => s + Number(d.amount), 0)
+
+  const outstandingCutting = employeesWithBalance.reduce((s, e) => s + Math.max(0, e.advanceBalance), 0)
+  const outstandingUnit = supervisorsWithBalance.reduce((s, s2) => s + Math.max(0, s2.advanceBalance), 0)
+
+  const activeEmployeeNames = useMemo(() => new Set(periodSalaryList.map((p) => p.employee_name)), [periodSalaryList])
+  const activeEmployees = employeesWithBalance.filter((e) => activeEmployeeNames.has(e.name)).length
+
+  const months = useMemo(() => monthBucketsInRange(start, end), [start, end])
+
+  const unitTrend = useMemo(
+    () =>
+      months.map((m) => ({
+        label: m.label,
+        net: unitPayments.filter((p) => p.month === m.month && p.year === m.year).reduce((s, p) => s + Number(p.net_amount), 0),
+      })),
+    [months, unitPayments]
+  )
+
+  const cuttingTrend = useMemo(
+    () =>
+      months.map((m) => ({
+        label: m.label,
+        net: salaryPayments.filter((p) => p.month === m.month && p.year === m.year).reduce((s, p) => s + Number(p.net_amount), 0),
+      })),
+    [months, salaryPayments]
+  )
+
+  const expenseMonthlyTrend = useMemo(
+    () =>
+      months.map((m) => ({
+        label: m.label,
+        total: expenses
+          .filter((e) => {
+            const d = new Date(e.date)
+            return d.getMonth() + 1 === m.month && d.getFullYear() === m.year
+          })
+          .reduce((s, e) => s + Number(e.amount), 0),
+      })),
+    [months, expenses]
+  )
+
+  const categoryBreakdown = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const e of periodExpensesList) {
+      totals.set(e.category, (totals.get(e.category) ?? 0) + Number(e.amount))
+    }
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value], i) => ({ name, value, fill: colorForIndex(i) }))
+  }, [periodExpensesList])
+
+  const riskiest = useMemo(() => {
+    const people = [
+      ...employeesWithBalance.map((e) => ({ name: e.name, department: 'cutting_department' as Department, payAmount: Number(e.salary), advanceBalance: e.advanceBalance })),
+      ...supervisorsWithBalance.map((s) => ({ name: s.name, department: 'protees_unit' as Department, payAmount: 0, advanceBalance: s.advanceBalance })),
+    ]
+    return people.filter((p) => p.advanceBalance > 0).sort((a, b) => b.advanceBalance - a.advanceBalance).slice(0, 5)
+  }, [employeesWithBalance, supervisorsWithBalance])
+
+  function renderSection(id: DashboardSectionId) {
+    switch (id) {
+      case 'financial':
+        return (
+          <FinancialSummarySection
+            currentMonthCost={currentMonthCost}
+            currentYearCost={currentYearCost}
+            totalOutstandingAdvances={totalOutstandingAdvances}
+            khadimBalance={khadimTotals.balance}
+            periodExpenses={periodExpenses}
+            periodPayroll={periodSalaryNet + periodUnitNet}
+            periodAdvancesGiven={periodAdvancesTotal}
+          />
+        )
+      case 'employees':
+        return (
+          <EmployeesSection
+            totalEmployees={employeesWithBalance.length}
+            activeEmployees={activeEmployees}
+            periodSalaryPaid={periodSalaryNet}
+            periodAdvancesGiven={periodAdvancesCutting}
+            outstandingAdvances={outstandingCutting}
+            trend={cuttingTrend}
+          />
+        )
+      case 'protees_unit':
+        return (
+          <ProteesUnitSection
+            periodUnitPayments={periodUnitNet}
+            periodUnitAdvances={periodAdvancesUnit}
+            outstandingUnitBalance={outstandingUnit}
+            periodOvertimePaid={periodUnitOvertime}
+            trend={unitTrend}
+          />
+        )
+      case 'salary':
+        return (
+          <SalarySection
+            periodNetPaid={periodSalaryNet}
+            periodOvertime={periodSalaryOvertime}
+            periodPaymentCount={periodSalaryList.length}
+            periodAveragePayment={periodSalaryList.length > 0 ? periodSalaryNet / periodSalaryList.length : 0}
+            composition={[
+              { label: 'Base', value: periodSalaryBase, fill: '#22d3ee' },
+              { label: 'Overtime', value: periodSalaryOvertime, fill: '#fbbf24' },
+              { label: 'Deducted', value: periodSalaryDeduction, fill: '#f87171' },
+            ]}
+          />
+        )
+      case 'advances':
+        return (
+          <AdvancesSection
+            periodAdvancesGiven={periodAdvancesTotal}
+            periodAdvancesRepaid={periodAdvancesRepaid}
+            outstandingAdvances={totalOutstandingAdvances}
+            riskiest={riskiest}
+          />
+        )
+      case 'expenses':
+        return (
+          <ExpensesSection
+            periodTotalExpenses={periodExpenses}
+            categoryCount={categoryBreakdown.length}
+            topCategory={categoryBreakdown[0] ?? null}
+            categoryBreakdown={categoryBreakdown}
+            monthlyTrend={expenseMonthlyTrend}
+          />
+        )
+      case 'reports':
+        return (
+          <ReportsSection
+            periodGrandTotal={periodUnitNet + periodSalaryNet + periodAdvancesTotal + periodExpenses}
+            periodTransactionCount={periodUnitList.length + periodSalaryList.length + periodAdvancesList.length + periodExpensesList.length}
+            unitPaymentCount={periodUnitList.length}
+            salaryPaymentCount={periodSalaryList.length}
+            advanceCount={periodAdvancesList.length}
+            expenseCount={periodExpensesList.length}
+          />
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-400">A live overview of your business.</p>
+        <p className="mt-1 text-sm text-slate-400">A live overview of both business units. Drag the handle on any section to reorder it.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active Employees" value={String(activeEmployees.length)} icon={Users} accent="cyan" hint={`${employeesWithBalance.length} total`} />
-        <StatCard label="Monthly Payroll" value={formatCurrency(totalPayroll)} icon={Wallet} accent="purple" />
-        <StatCard label="Outstanding Advances" value={formatCurrency(totalOutstanding)} icon={HandCoins} accent="amber" hint={`${advances.length} advances given`} />
-        <StatCard label="Expenses This Month" value={formatCurrency(expensesThisMonth)} icon={Receipt} accent="red" />
-      </div>
+      <DateRangeFilter
+        preset={preset}
+        onPresetChange={setPreset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onCustomStartChange={setCustomStart}
+        onCustomEndChange={setCustomEnd}
+        rangeStart={start}
+        rangeEnd={end}
+      />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="card">
-          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Advance vs Salary</h2>
-          {advanceVsSalaryData.length === 0 ? (
-            <EmptyState icon={HandCoins} title="No data yet" />
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={advanceVsSalaryData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} tickLine={false} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
-                <Bar dataKey="Salary" fill="#22d3ee" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="Advance" fill="#f87171" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        <div className="card">
-          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Expenses by Category</h2>
-          {expenseByCategory.length === 0 ? (
-            <EmptyState icon={Receipt} title="No expenses yet" />
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={expenseByCategory} dataKey="value" nameKey="name" innerRadius={60} outerRadius={95} paddingAngle={2}>
-                  {expenseByCategory.map((_, idx) => (
-                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} stroke="rgba(10,14,23,0.8)" strokeWidth={2} />
-                  ))}
-                </Pie>
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="card">
-          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Net Payroll — Last 6 Months</h2>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={payrollTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} tickLine={false} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-              <Bar dataKey="net" name="Net Paid" fill="#a855f7" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="card">
-          <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Highest Advance Risk</h2>
-          {riskiest.length === 0 ? (
-            <EmptyState icon={HandCoins} title="No outstanding advances" description="Everyone is settled up." />
-          ) : (
-            <div className="space-y-4">
-              {riskiest.map((e) => (
-                <div key={e.id}>
-                  <div className="mb-1.5 flex items-center justify-between text-sm">
-                    <span className="font-medium text-slate-200">{e.name}</span>
-                    <span className="text-slate-400">{formatCurrency(e.advanceBalance)}</span>
-                  </div>
-                  <AdvanceProgressBar balance={e.advanceBalance} monthlySalary={e.monthly_salary} showLabel={false} compact />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
+        <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <div className="space-y-8">
+            {order.map((id) => (
+              <SortableSection key={id} id={id} title={SECTION_META[id].title} icon={SECTION_META[id].icon}>
+                {renderSection(id)}
+              </SortableSection>
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   )
 }
