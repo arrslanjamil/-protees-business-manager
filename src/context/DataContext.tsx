@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import type {
   Advance,
   AdvanceDeduction,
@@ -113,6 +114,7 @@ interface DataContextValue {
 const DataContext = createContext<DataContextValue | null>(null)
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const { appUser } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [units, setUnits] = useState<Unit[]>([])
@@ -132,6 +134,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!isSupabaseConfigured) {
       setLoading(false)
       setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.')
+      return
+    }
+    if (!appUser) {
+      // Not signed in as an allowed user yet — nothing to fetch (RLS would
+      // return empty results anyway); avoid the wasted round trips.
+      setLoading(false)
       return
     }
     if (!hasLoadedOnceRef.current) setLoading(true)
@@ -164,11 +172,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setExpenseCategories(ec.data ?? [])
       hasLoadedOnceRef.current = true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data from Supabase.')
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'Failed to load data from Supabase.'
+      setError(message)
     } finally {
       setLoading(false)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appUser?.id])
 
   useEffect(() => {
     refreshAll()

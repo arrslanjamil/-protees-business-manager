@@ -17,6 +17,7 @@ interface TimelineEntry {
   gross?: number
   overtime?: number
   deduction?: number
+  createdByUsername: string | null
 }
 
 export function ProteesUnitPage() {
@@ -49,7 +50,14 @@ export function ProteesUnitPage() {
   const timeline = useMemo<TimelineEntry[]>(() => {
     const rows: TimelineEntry[] = []
     for (const a of unitAdvances) {
-      rows.push({ id: `adv-${a.id}`, date: a.payment_date, type: 'Advance', amount: Number(a.amount), notes: a.notes })
+      rows.push({
+        id: `adv-${a.id}`,
+        date: a.payment_date,
+        type: 'Advance',
+        amount: Number(a.amount),
+        notes: a.notes,
+        createdByUsername: a.created_by_username,
+      })
     }
     for (const p of unitPayments) {
       rows.push({
@@ -61,6 +69,7 @@ export function ProteesUnitPage() {
         gross: Number(p.total_amount),
         overtime: Number(p.overtime_amount),
         deduction: Number(p.advance_given),
+        createdByUsername: p.created_by_username,
       })
     }
     return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -299,6 +308,7 @@ export function ProteesUnitPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge color={entry.type === 'Advance' ? 'red' : 'green'}>{entry.type}</Badge>
                     <span className="text-xs text-slate-500">{formatDate(entry.date)}</span>
+                    <span className="text-xs text-slate-600">· {entry.createdByUsername ?? '—'}</span>
                   </div>
 
                   {entry.type === 'Payment' ? (

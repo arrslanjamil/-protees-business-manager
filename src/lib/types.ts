@@ -11,6 +11,15 @@ export type Expense = Database['public']['Tables']['expenses']['Row']
 export type ExpenseCategory = Database['public']['Tables']['expense_categories']['Row']
 export type KhadimTransaction = Database['public']['Tables']['khadim_transactions']['Row']
 export type AdvanceBalanceRow = Database['public']['Views']['advance_balance_by_name']['Row']
+export type AppUser = Database['public']['Tables']['app_users']['Row']
+export type AuditLogEntry = Database['public']['Tables']['audit_log']['Row']
+export type AuditAction = AuditLogEntry['action']
+
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  create: 'Created',
+  update: 'Updated',
+  delete: 'Deleted',
+}
 
 export type Department = 'cutting_department' | 'protees_unit'
 

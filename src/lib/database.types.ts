@@ -1,3 +1,15 @@
+export type FactoryRole = 'admin' | 'cutting_head' | 'stitching_head' | 'quality_head' | 'store_manager'
+
+/** Trigger-managed attribution columns present on every audited business
+ * table. Never set by the client — always stamped server-side. */
+export interface AuditColumns {
+  created_by_user_id: string | null
+  created_by_username: string | null
+  updated_by_user_id: string | null
+  updated_by_username: string | null
+  updated_at: string | null
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -8,6 +20,11 @@ export interface Database {
           salary: number
           join_date: string | null
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -24,6 +41,11 @@ export interface Database {
           id: number
           name: string
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -42,6 +64,11 @@ export interface Database {
           payment_date: string
           notes: string | null
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -64,6 +91,11 @@ export interface Database {
           date: string
           notes: string | null
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -82,6 +114,11 @@ export interface Database {
           id: number
           name: string
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -104,6 +141,11 @@ export interface Database {
           payment_date: string
           notes: string | null
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -137,6 +179,11 @@ export interface Database {
           month: number
           year: number
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -168,6 +215,11 @@ export interface Database {
           amount: number
           date: string
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -208,6 +260,11 @@ export interface Database {
           name: string
           location: string | null
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -227,6 +284,11 @@ export interface Database {
           notes: string | null
           description: string | null
           created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: number
@@ -240,6 +302,278 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['khadim_transactions']['Insert']>
         Relationships: []
       }
+      app_users: {
+        Row: {
+          id: string
+          username: string
+          display_name: string
+          email: string
+          created_at: string
+        }
+        Insert: {
+          id: string
+          username: string
+          display_name: string
+          email: string
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['app_users']['Insert']>
+        Relationships: []
+      }
+      audit_log: {
+        Row: {
+          id: number
+          table_name: string
+          record_id: string
+          action: 'create' | 'update' | 'delete'
+          performed_by: string | null
+          performed_by_username: string | null
+          performed_at: string
+          old_data: Record<string, unknown> | null
+          new_data: Record<string, unknown> | null
+        }
+        // Written only by the stamp_and_log_audit() trigger (security
+        // definer) — the app never calls .insert()/.update() on this table,
+        // but Insert/Update still need real object shapes: a literal
+        // `never` here collapses every OTHER table's insert/update types to
+        // `never[]` too, since supabase-js infers them from the whole
+        // Database['public']['Tables'] union.
+        Insert: {
+          id?: number
+          table_name: string
+          record_id: string
+          action: 'create' | 'update' | 'delete'
+          performed_by?: string | null
+          performed_by_username?: string | null
+          performed_at?: string
+          old_data?: Record<string, unknown> | null
+          new_data?: Record<string, unknown> | null
+        }
+        Update: Partial<Database['public']['Tables']['audit_log']['Insert']>
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          id: string
+          name: string
+          role: FactoryRole | null
+          created_at: string
+        }
+        Insert: {
+          id: string
+          name: string
+          role?: FactoryRole | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['profiles']['Insert']>
+        Relationships: []
+      }
+      colors: {
+        Row: {
+          id: number
+          name: string
+          hex: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          hex?: string
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['colors']['Insert']>
+        Relationships: []
+      }
+      products: {
+        Row: {
+          id: number
+          name: string
+          picture_url: string | null
+          production_type: 'normal' | 'digital_print'
+          size_group: 'adult' | 'kids'
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          picture_url?: string | null
+          production_type?: 'normal' | 'digital_print'
+          size_group?: 'adult' | 'kids'
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['products']['Insert']>
+        Relationships: []
+      }
+      product_sizes: {
+        Row: {
+          id: number
+          product_id: number
+          size_label: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          product_id: number
+          size_label: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['product_sizes']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'product_sizes_product_id_fkey'
+            columns: ['product_id']
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      product_colors: {
+        Row: {
+          product_id: number
+          color_id: number
+        }
+        Insert: {
+          product_id: number
+          color_id: number
+        }
+        Update: Partial<Database['public']['Tables']['product_colors']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'product_colors_product_id_fkey'
+            columns: ['product_id']
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'product_colors_color_id_fkey'
+            columns: ['color_id']
+            referencedRelation: 'colors'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      product_operations: {
+        Row: {
+          id: number
+          product_id: number
+          department_label: string
+          operation_name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          product_id: number
+          department_label: string
+          operation_name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['product_operations']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'product_operations_product_id_fkey'
+            columns: ['product_id']
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      product_operation_rates: {
+        Row: {
+          id: number
+          product_operation_id: number
+          rate: number
+          effective_from: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          product_operation_id: number
+          rate: number
+          effective_from?: string
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['product_operation_rates']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'product_operation_rates_product_operation_id_fkey'
+            columns: ['product_operation_id']
+            referencedRelation: 'product_operations'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      production_plans: {
+        Row: {
+          id: number
+          product_id: number
+          color_id: number | null
+          production_type: 'normal' | 'digital_print'
+          plan_date: string
+          expected_completion_date: string | null
+          remarks: string | null
+          status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          product_id: number
+          color_id?: number | null
+          production_type?: 'normal' | 'digital_print'
+          plan_date?: string
+          expected_completion_date?: string | null
+          remarks?: string | null
+          status?: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['production_plans']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'production_plans_product_id_fkey'
+            columns: ['product_id']
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'production_plans_color_id_fkey'
+            columns: ['color_id']
+            referencedRelation: 'colors'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      production_plan_sizes: {
+        Row: {
+          id: number
+          production_plan_id: number
+          size_label: string
+          planned_qty: number
+        }
+        Insert: {
+          id?: number
+          production_plan_id: number
+          size_label: string
+          planned_qty: number
+        }
+        Update: Partial<Database['public']['Tables']['production_plan_sizes']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'production_plan_sizes_production_plan_id_fkey'
+            columns: ['production_plan_id']
+            referencedRelation: 'production_plans'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
       advance_balance_by_name: {
@@ -252,8 +586,21 @@ export interface Database {
         }
         Relationships: []
       }
+      product_operation_current_rates: {
+        Row: {
+          product_operation_id: number
+          rate: number
+          effective_from: string
+        }
+        Relationships: []
+      }
     }
-    Functions: Record<string, never>
+    Functions: {
+      resolve_login_email: {
+        Args: { p_username: string }
+        Returns: string
+      }
+    }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
   }

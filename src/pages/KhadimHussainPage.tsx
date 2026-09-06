@@ -185,6 +185,7 @@ export function KhadimHussainPage() {
                       {entry.type === 'payment_given' ? 'Payment Given' : 'Bill Submitted'}
                     </Badge>
                     <span className="text-xs text-slate-500">{formatDate(entry.date)}</span>
+                    <span className="text-xs text-slate-600">· {entry.created_by_username ?? '—'}</span>
                   </div>
                   <p className={`mt-2 text-sm font-semibold ${entry.type === 'payment_given' ? 'text-neon-green' : 'text-neon-red'}`}>
                     {entry.type === 'payment_given' ? '+' : '-'}

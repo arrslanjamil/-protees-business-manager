@@ -114,6 +114,7 @@ export function UnitExpensesPage() {
                 <th className="px-5 py-3.5">Amount</th>
                 <th className="px-5 py-3.5">Notes</th>
                 <th className="px-5 py-3.5">Date</th>
+                <th className="px-5 py-3.5">Created By</th>
                 <th className="px-5 py-3.5" />
               </tr>
             </thead>
@@ -127,6 +128,7 @@ export function UnitExpensesPage() {
                   <td className="px-5 py-3.5 text-slate-300">{formatCurrency(exp.amount)}</td>
                   <td className="px-5 py-3.5 text-slate-400">{exp.notes || '—'}</td>
                   <td className="px-5 py-3.5 text-slate-500">{formatDate(exp.date)}</td>
+                  <td className="px-5 py-3.5 text-slate-500">{exp.created_by_username ?? '—'}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button
                       className="rounded-lg p-1.5 text-slate-500 hover:bg-neon-red/10 hover:text-neon-red"
