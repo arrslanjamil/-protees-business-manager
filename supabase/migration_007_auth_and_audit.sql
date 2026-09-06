@@ -35,10 +35,25 @@ create table if not exists app_users (
   created_at timestamptz not null default now()
 );
 
+-- SECURITY DEFINER so it bypasses RLS on app_users internally — used by
+-- every policy below instead of a raw "select id from app_users" subquery.
+-- That raw form would re-trigger app_users' own RLS policy every time it's
+-- evaluated (including from app_users' own policy), causing Postgres error
+-- 42P17 "infinite recursion detected in policy for relation app_users".
+create or replace function public.is_app_user()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (select 1 from app_users where id = auth.uid());
+$$;
+
 alter table app_users enable row level security;
 drop policy if exists "allowed users read directory" on app_users;
 create policy "allowed users read directory" on app_users
-  for select using (auth.uid() in (select id from app_users));
+  for select using (is_app_user());
 
 -- Resolves username -> email for the login screen, callable *before* the
 -- user is authenticated (grant to anon). Returns nothing for an unknown
@@ -98,7 +113,7 @@ create index if not exists idx_audit_log_performed_at on audit_log(performed_at 
 alter table audit_log enable row level security;
 drop policy if exists "allowed users read audit log" on audit_log;
 create policy "allowed users read audit log" on audit_log
-  for select using (auth.uid() in (select id from app_users));
+  for select using (is_app_user());
 
 -- ---------------------------------------------------------------------------
 -- 3. Reusable trigger: stamps created_by_*/updated_by_* on the row AND
@@ -230,31 +245,31 @@ create trigger audit_units before insert or update or delete on units for each r
 --    reasoning as section 4.
 -- ---------------------------------------------------------------------------
 drop policy if exists "allow all" on employees;
-create policy "authenticated app users only" on employees for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on employees for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on supervisors;
-create policy "authenticated app users only" on supervisors for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on supervisors for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on advances;
-create policy "authenticated app users only" on advances for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on advances for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on expenses;
-create policy "authenticated app users only" on expenses for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on expenses for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on salary_payments;
-create policy "authenticated app users only" on salary_payments for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on salary_payments for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on unit_payments;
-create policy "authenticated app users only" on unit_payments for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on unit_payments for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on advance_deductions;
-create policy "authenticated app users only" on advance_deductions for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on advance_deductions for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on units;
-create policy "authenticated app users only" on units for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on units for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on khadim_transactions;
-create policy "authenticated app users only" on khadim_transactions for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on khadim_transactions for all using (is_app_user()) with check (is_app_user());
 
 drop policy if exists "allow all" on expense_categories;
-create policy "authenticated app users only" on expense_categories for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+create policy "authenticated app users only" on expense_categories for all using (is_app_user()) with check (is_app_user());
