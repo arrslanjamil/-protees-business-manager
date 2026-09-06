@@ -81,7 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signIn(username: string, password: string) {
     const trimmed = username.trim().toLowerCase()
     const { data: email, error: lookupError } = await supabase.rpc('resolve_login_email', { p_username: trimmed })
-    if (lookupError || !email) {
+    // A real infrastructure error (missing function/table, network failure)
+    // is NOT the same as "this username isn't allowed" — surface it as a
+    // normal error instead of the polished Unauthorized Access screen,
+    // which would otherwise misleadingly imply the backend is working.
+    if (lookupError) {
+      throw new Error(lookupError.message)
+    }
+    if (!email) {
       throw new UnauthorizedAccessError()
     }
 
