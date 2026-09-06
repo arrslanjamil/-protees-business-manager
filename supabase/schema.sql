@@ -610,49 +610,123 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 4. Per-table: add attribution columns + attach the trigger.
 --    Covers every business table that can be created/edited/deleted.
+--    Written as flat, explicit statements (not a PL/pgSQL loop) so that if
+--    any single line fails, Supabase's SQL editor points at that exact
+--    line instead of an opaque "error in PL/pgSQL function" — and so nothing
+--    hides inside a DO block that could obscure a failure.
 -- ---------------------------------------------------------------------------
-do $$
-declare
-  t text;
-  tables text[] := array[
-    'employees', 'supervisors', 'advances', 'salary_payments',
-    'unit_payments', 'advance_deductions', 'expenses',
-    'expense_categories', 'khadim_transactions', 'units'
-  ];
-begin
-  foreach t in array tables loop
-    execute format('alter table %I add column if not exists created_by_user_id uuid', t);
-    execute format('alter table %I add column if not exists created_by_username text', t);
-    execute format('alter table %I add column if not exists updated_by_user_id uuid', t);
-    execute format('alter table %I add column if not exists updated_by_username text', t);
-    execute format('alter table %I add column if not exists updated_at timestamptz', t);
-    execute format('drop trigger if exists audit_%I on %I', t, t);
-    execute format(
-      'create trigger audit_%I before insert or update or delete on %I for each row execute function stamp_and_log_audit()',
-      t, t
-    );
-  end loop;
-end $$;
+alter table employees add column if not exists created_by_user_id uuid;
+alter table employees add column if not exists created_by_username text;
+alter table employees add column if not exists updated_by_user_id uuid;
+alter table employees add column if not exists updated_by_username text;
+alter table employees add column if not exists updated_at timestamptz;
+drop trigger if exists audit_employees on employees;
+create trigger audit_employees before insert or update or delete on employees for each row execute function stamp_and_log_audit();
+
+alter table supervisors add column if not exists created_by_user_id uuid;
+alter table supervisors add column if not exists created_by_username text;
+alter table supervisors add column if not exists updated_by_user_id uuid;
+alter table supervisors add column if not exists updated_by_username text;
+alter table supervisors add column if not exists updated_at timestamptz;
+drop trigger if exists audit_supervisors on supervisors;
+create trigger audit_supervisors before insert or update or delete on supervisors for each row execute function stamp_and_log_audit();
+
+alter table advances add column if not exists created_by_user_id uuid;
+alter table advances add column if not exists created_by_username text;
+alter table advances add column if not exists updated_by_user_id uuid;
+alter table advances add column if not exists updated_by_username text;
+alter table advances add column if not exists updated_at timestamptz;
+drop trigger if exists audit_advances on advances;
+create trigger audit_advances before insert or update or delete on advances for each row execute function stamp_and_log_audit();
+
+alter table salary_payments add column if not exists created_by_user_id uuid;
+alter table salary_payments add column if not exists created_by_username text;
+alter table salary_payments add column if not exists updated_by_user_id uuid;
+alter table salary_payments add column if not exists updated_by_username text;
+alter table salary_payments add column if not exists updated_at timestamptz;
+drop trigger if exists audit_salary_payments on salary_payments;
+create trigger audit_salary_payments before insert or update or delete on salary_payments for each row execute function stamp_and_log_audit();
+
+alter table unit_payments add column if not exists created_by_user_id uuid;
+alter table unit_payments add column if not exists created_by_username text;
+alter table unit_payments add column if not exists updated_by_user_id uuid;
+alter table unit_payments add column if not exists updated_by_username text;
+alter table unit_payments add column if not exists updated_at timestamptz;
+drop trigger if exists audit_unit_payments on unit_payments;
+create trigger audit_unit_payments before insert or update or delete on unit_payments for each row execute function stamp_and_log_audit();
+
+alter table advance_deductions add column if not exists created_by_user_id uuid;
+alter table advance_deductions add column if not exists created_by_username text;
+alter table advance_deductions add column if not exists updated_by_user_id uuid;
+alter table advance_deductions add column if not exists updated_by_username text;
+alter table advance_deductions add column if not exists updated_at timestamptz;
+drop trigger if exists audit_advance_deductions on advance_deductions;
+create trigger audit_advance_deductions before insert or update or delete on advance_deductions for each row execute function stamp_and_log_audit();
+
+alter table expenses add column if not exists created_by_user_id uuid;
+alter table expenses add column if not exists created_by_username text;
+alter table expenses add column if not exists updated_by_user_id uuid;
+alter table expenses add column if not exists updated_by_username text;
+alter table expenses add column if not exists updated_at timestamptz;
+drop trigger if exists audit_expenses on expenses;
+create trigger audit_expenses before insert or update or delete on expenses for each row execute function stamp_and_log_audit();
+
+alter table expense_categories add column if not exists created_by_user_id uuid;
+alter table expense_categories add column if not exists created_by_username text;
+alter table expense_categories add column if not exists updated_by_user_id uuid;
+alter table expense_categories add column if not exists updated_by_username text;
+alter table expense_categories add column if not exists updated_at timestamptz;
+drop trigger if exists audit_expense_categories on expense_categories;
+create trigger audit_expense_categories before insert or update or delete on expense_categories for each row execute function stamp_and_log_audit();
+
+alter table khadim_transactions add column if not exists created_by_user_id uuid;
+alter table khadim_transactions add column if not exists created_by_username text;
+alter table khadim_transactions add column if not exists updated_by_user_id uuid;
+alter table khadim_transactions add column if not exists updated_by_username text;
+alter table khadim_transactions add column if not exists updated_at timestamptz;
+drop trigger if exists audit_khadim_transactions on khadim_transactions;
+create trigger audit_khadim_transactions before insert or update or delete on khadim_transactions for each row execute function stamp_and_log_audit();
+
+alter table units add column if not exists created_by_user_id uuid;
+alter table units add column if not exists created_by_username text;
+alter table units add column if not exists updated_by_user_id uuid;
+alter table units add column if not exists updated_by_username text;
+alter table units add column if not exists updated_at timestamptz;
+drop trigger if exists audit_units on units;
+create trigger audit_units before insert or update or delete on units for each row execute function stamp_and_log_audit();
 
 -- ---------------------------------------------------------------------------
 -- 5. RLS tightening — replace "allow all" with "must be an allowed user".
 --    Untouched: profiles/colors/products/... (Factory module) and
---    app_users/audit_log (already policed above).
+--    app_users/audit_log (already policed above). Same flat-statement
+--    reasoning as section 4.
 -- ---------------------------------------------------------------------------
-do $$
-declare
-  t text;
-  tables text[] := array[
-    'employees', 'supervisors', 'advances', 'expenses', 'salary_payments',
-    'unit_payments', 'advance_deductions', 'units', 'khadim_transactions',
-    'expense_categories'
-  ];
-begin
-  foreach t in array tables loop
-    execute format('drop policy if exists "allow all" on %I', t);
-    execute format(
-      'create policy "authenticated app users only" on %I for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users))',
-      t
-    );
-  end loop;
-end $$;
+drop policy if exists "allow all" on employees;
+create policy "authenticated app users only" on employees for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on supervisors;
+create policy "authenticated app users only" on supervisors for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on advances;
+create policy "authenticated app users only" on advances for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on expenses;
+create policy "authenticated app users only" on expenses for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on salary_payments;
+create policy "authenticated app users only" on salary_payments for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on unit_payments;
+create policy "authenticated app users only" on unit_payments for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on advance_deductions;
+create policy "authenticated app users only" on advance_deductions for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on units;
+create policy "authenticated app users only" on units for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on khadim_transactions;
+create policy "authenticated app users only" on khadim_transactions for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
+
+drop policy if exists "allow all" on expense_categories;
+create policy "authenticated app users only" on expense_categories for all using (auth.uid() in (select id from app_users)) with check (auth.uid() in (select id from app_users));
