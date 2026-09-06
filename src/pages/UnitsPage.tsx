@@ -3,6 +3,7 @@ import { Boxes, MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Attribution } from '@/components/ui/Attribution'
 import type { Unit } from '@/lib/types'
 
 export function UnitsPage() {
@@ -108,6 +109,13 @@ export function UnitsPage() {
                   <MapPin size={12} /> {unit.location}
                 </p>
               )}
+              <Attribution
+                className="mt-2 text-[11px] text-slate-600"
+                createdByUsername={unit.created_by_username}
+                createdAt={unit.created_at}
+                updatedByUsername={unit.updated_by_username}
+                updatedAt={unit.updated_at}
+              />
             </div>
           ))}
         </div>

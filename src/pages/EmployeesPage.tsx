@@ -146,6 +146,7 @@ export function EmployeesPage() {
                           <CalendarDays size={11} /> Joined {formatDate(emp.join_date)}
                         </p>
                       )}
+                      <p className="mt-0.5 text-[11px] text-slate-600">Added by {emp.created_by_username ?? '—'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">

@@ -3,14 +3,28 @@ import { Sidebar } from './Sidebar'
 import { MobileNav } from './MobileNav'
 import { VoiceWidget } from '@/components/voice/VoiceWidget'
 import { useData } from '@/context/DataContext'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { AlertTriangle, Loader2, LogOut, Zap } from 'lucide-react'
 
 export function AppLayout() {
   const { loading, error, configured } = useData()
+  const { displayName, signOut } = useAuth()
 
   return (
     <div className="min-h-screen bg-base-900 bg-grid-glow">
       <Sidebar />
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-base-900/95 px-4 py-3 backdrop-blur-xl lg:hidden">
+        <div className="flex items-center gap-2">
+          <Zap size={16} className="text-neon-cyan" />
+          <p className="font-display text-sm font-bold tracking-wider text-white">PROTEES</p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-medium text-slate-300">{displayName}</span>
+          <button onClick={signOut} aria-label="Log out" className="rounded-lg p-1.5 text-slate-500 hover:bg-white/5 hover:text-neon-red">
+            <LogOut size={15} />
+          </button>
+        </div>
+      </header>
       <MobileNav />
       <div className="lg:pl-64">
         <main className="mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
