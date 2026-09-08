@@ -3,15 +3,18 @@ import { CalendarDays, ChevronDown, Pencil, Plus, Search, Trash2, Users } from '
 import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
-import type { Employee } from '@/lib/types'
+import { EMPLOYEE_TYPE_LABELS, type Employee, type EmployeeType } from '@/lib/types'
 import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const emptyForm = {
   name: '',
   salary: '',
   joinDate: todayISO(),
+  employeeType: 'monthly' as EmployeeType,
+  ratePerPiece: '',
 }
 
 export function EmployeesPage() {
@@ -47,6 +50,8 @@ export function EmployeesPage() {
       name: emp.name,
       salary: String(emp.salary ?? ''),
       joinDate: emp.join_date ?? todayISO(),
+      employeeType: emp.employee_type,
+      ratePerPiece: emp.rate_per_piece != null ? String(emp.rate_per_piece) : '',
     })
     setError(null)
     setModalOpen(true)
@@ -57,15 +62,33 @@ export function EmployeesPage() {
       setError('Name is required.')
       return
     }
-    const salary = Number(form.salary)
-    if (Number.isNaN(salary) || salary < 0) {
+    const isContract = form.employeeType === 'contract'
+    let ratePerPiece: number | null = null
+    if (isContract) {
+      ratePerPiece = Number(form.ratePerPiece)
+      if (Number.isNaN(ratePerPiece) || ratePerPiece <= 0) {
+        setError('Enter a valid rate per piece.')
+        return
+      }
+    }
+    // Contract employees don't have a fixed monthly salary — store 0 so
+    // existing salary-dependent displays (advance risk bar, etc.) degrade
+    // gracefully instead of needing a nullable column everywhere.
+    const salary = isContract ? 0 : Number(form.salary)
+    if (!isContract && (Number.isNaN(salary) || salary < 0)) {
       setError('Enter a valid monthly salary.')
       return
     }
     setSaving(true)
     setError(null)
     try {
-      const payload = { name: form.name.trim(), salary, joinDate: form.joinDate || null }
+      const payload = {
+        name: form.name.trim(),
+        salary,
+        joinDate: form.joinDate || null,
+        employeeType: form.employeeType,
+        ratePerPiece,
+      }
       if (editing) {
         await updateEmployee(editing.id, payload)
       } else {
@@ -140,7 +163,12 @@ export function EmployeesPage() {
                         .toUpperCase()}
                     </div>
                     <div>
-                      <p className="font-semibold text-white">{emp.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-white">{emp.name}</p>
+                        <Badge color={emp.employee_type === 'contract' ? 'purple' : 'cyan'}>
+                          {EMPLOYEE_TYPE_LABELS[emp.employee_type]}
+                        </Badge>
+                      </div>
                       {emp.join_date && (
                         <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
                           <CalendarDays size={11} /> Joined {formatDate(emp.join_date)}
@@ -178,8 +206,10 @@ export function EmployeesPage() {
                 </div>
 
                 <div className="mt-4 flex items-center justify-between rounded-xl bg-white/[0.02] px-3.5 py-2.5">
-                  <span className="text-xs text-slate-400">Monthly Salary</span>
-                  <span className="font-display text-sm font-semibold text-white">{formatCurrency(emp.salary)}</span>
+                  <span className="text-xs text-slate-400">{emp.employee_type === 'contract' ? 'Rate Per Piece' : 'Monthly Salary'}</span>
+                  <span className="font-display text-sm font-semibold text-white">
+                    {emp.employee_type === 'contract' ? formatCurrency(emp.rate_per_piece ?? 0) : formatCurrency(emp.salary)}
+                  </span>
                 </div>
 
                 <div className="mt-3">
@@ -204,17 +234,50 @@ export function EmployeesPage() {
             <label className="label-field">Full name</label>
             <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ali Raza" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label-field">Monthly salary</label>
-              <input
-                type="number"
-                className="input-field"
-                value={form.salary}
-                onChange={(e) => setForm({ ...form, salary: e.target.value })}
-                placeholder="0"
-              />
+          <div>
+            <label className="label-field">Employee type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['monthly', 'contract'] as EmployeeType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setForm({ ...form, employeeType: t })}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
+                    form.employeeType === t
+                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {EMPLOYEE_TYPE_LABELS[t]}
+                </button>
+              ))}
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {form.employeeType === 'contract' ? (
+              <div>
+                <label className="label-field">Rate per piece</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={form.ratePerPiece}
+                  onChange={(e) => setForm({ ...form, ratePerPiece: e.target.value })}
+                  placeholder="e.g. 15"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="label-field">Monthly salary</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={form.salary}
+                  onChange={(e) => setForm({ ...form, salary: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+            )}
             <div>
               <label className="label-field">Join date</label>
               <input

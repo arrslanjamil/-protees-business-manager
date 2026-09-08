@@ -15,6 +15,7 @@ import type {
   AdvanceDeduction,
   Department,
   Employee,
+  EmployeeType,
   EmployeeWithBalance,
   Expense,
   ExpenseCategory,
@@ -38,6 +39,8 @@ interface RecordSalaryInput {
   year: number
   paymentDate?: string
   notes?: string
+  piecesCompleted?: number | null
+  ratePerPiece?: number | null
 }
 
 interface RecordUnitPaymentInput {
@@ -80,8 +83,17 @@ interface DataContextValue {
   updateUnit: (id: number, input: { name: string; location?: string | null }) => Promise<void>
   deleteUnit: (id: number) => Promise<void>
 
-  addEmployee: (input: { name: string; salary: number; joinDate?: string | null }) => Promise<void>
-  updateEmployee: (id: number, input: Partial<{ name: string; salary: number; joinDate: string | null }>) => Promise<void>
+  addEmployee: (input: {
+    name: string
+    salary: number
+    joinDate?: string | null
+    employeeType?: EmployeeType
+    ratePerPiece?: number | null
+  }) => Promise<void>
+  updateEmployee: (
+    id: number,
+    input: Partial<{ name: string; salary: number; joinDate: string | null; employeeType: EmployeeType; ratePerPiece: number | null }>
+  ) => Promise<void>
   deleteEmployee: (id: number) => Promise<void>
 
   addSupervisor: (input: { name: string }) => Promise<void>
@@ -352,16 +364,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Employees -----------------------------------------------------------
-  const addEmployee: DataContextValue['addEmployee'] = async ({ name, salary, joinDate }) => {
-    const { error: err } = await supabase.from('employees').insert({ name, salary, join_date: joinDate ?? null })
+  const addEmployee: DataContextValue['addEmployee'] = async ({ name, salary, joinDate, employeeType, ratePerPiece }) => {
+    const { error: err } = await supabase.from('employees').insert({
+      name,
+      salary,
+      join_date: joinDate ?? null,
+      employee_type: employeeType ?? 'monthly',
+      rate_per_piece: ratePerPiece ?? null,
+    })
     if (err) throw err
     await refreshAll()
   }
   const updateEmployee: DataContextValue['updateEmployee'] = async (id, input) => {
-    const payload: { name?: string; salary?: number; join_date?: string | null } = {}
+    const payload: { name?: string; salary?: number; join_date?: string | null; employee_type?: EmployeeType; rate_per_piece?: number | null } = {}
     if (input.name !== undefined) payload.name = input.name
     if (input.salary !== undefined) payload.salary = input.salary
     if (input.joinDate !== undefined) payload.join_date = input.joinDate
+    if (input.employeeType !== undefined) payload.employee_type = input.employeeType
+    if (input.ratePerPiece !== undefined) payload.rate_per_piece = input.ratePerPiece
     const { error: err } = await supabase.from('employees').update(payload).eq('id', id)
     if (err) throw err
     await refreshAll()
@@ -417,6 +437,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     year,
     paymentDate,
     notes,
+    piecesCompleted,
+    ratePerPiece,
   }) => {
     const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount)
     const date = paymentDate ?? todayISO()
@@ -433,6 +455,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         year,
         payment_date: date,
         notes: notes ?? null,
+        pieces_completed: piecesCompleted ?? null,
+        rate_per_piece: ratePerPiece ?? null,
       })
       .select()
       .single()

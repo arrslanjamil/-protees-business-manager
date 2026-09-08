@@ -14,6 +14,7 @@ export function SalaryPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [employeeName, setEmployeeName] = useState('')
   const [baseAmount, setBaseAmount] = useState('')
+  const [piecesCompleted, setPiecesCompleted] = useState('')
   const [overtimeAmount, setOvertimeAmount] = useState('')
   const [deduction, setDeduction] = useState('')
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -23,6 +24,10 @@ export function SalaryPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const selectedEmployee = employeesWithBalance.find((e) => e.name === employeeName)
+  const isContract = selectedEmployee?.employee_type === 'contract'
+  const ratePerPiece = selectedEmployee?.rate_per_piece ?? 0
+
   const sortedPayments = useMemo(
     () => [...salaryPayments].sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
     [salaryPayments]
@@ -31,6 +36,7 @@ export function SalaryPage() {
   function openCreate() {
     setEmployeeName('')
     setBaseAmount('')
+    setPiecesCompleted('')
     setOvertimeAmount('')
     setDeduction('')
     setMonth(now.getMonth() + 1)
@@ -44,14 +50,28 @@ export function SalaryPage() {
   function handleEmployeeChange(name: string) {
     setEmployeeName(name)
     const emp = employeesWithBalance.find((e) => e.name === name)
-    if (emp) {
+    if (!emp) return
+    setPiecesCompleted('')
+    if (emp.employee_type === 'contract') {
+      setBaseAmount('')
+      setDeduction('0')
+    } else {
       setBaseAmount(String(emp.salary))
       setDeduction(String(suggestedDeduction(name, 'cutting_department', Number(emp.salary))))
     }
   }
 
+  function handlePiecesChange(value: string) {
+    setPiecesCompleted(value)
+    if (isContract && employeeName) {
+      const gross = (Number(value) || 0) * ratePerPiece
+      setDeduction(String(suggestedDeduction(employeeName, 'cutting_department', gross)))
+    }
+  }
+
   const currentBalance = employeeName ? balanceFor(employeeName, 'cutting_department') : 0
-  const base = Number(baseAmount) || 0
+  const pieces = Number(piecesCompleted) || 0
+  const base = isContract ? pieces * ratePerPiece : Number(baseAmount) || 0
   const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
   const net = Math.max(0, base + overtime - ded)
@@ -61,7 +81,12 @@ export function SalaryPage() {
       setError('Select an employee.')
       return
     }
-    if (Number.isNaN(base) || base < 0) {
+    if (isContract) {
+      if (Number.isNaN(pieces) || pieces <= 0) {
+        setError('Enter a valid number of pieces completed.')
+        return
+      }
+    } else if (Number.isNaN(base) || base < 0) {
       setError('Enter a valid base salary amount.')
       return
     }
@@ -70,7 +95,7 @@ export function SalaryPage() {
       return
     }
     if (ded < 0 || ded > base + overtime) {
-      setError('Deduction cannot be negative or exceed base salary + overtime.')
+      setError('Deduction cannot be negative or exceed the gross amount + overtime.')
       return
     }
     if (ded > currentBalance) {
@@ -89,6 +114,8 @@ export function SalaryPage() {
         year,
         paymentDate,
         notes: notes.trim() || undefined,
+        piecesCompleted: isContract ? pieces : null,
+        ratePerPiece: isContract ? ratePerPiece : null,
       })
       setModalOpen(false)
     } catch (err) {
@@ -140,7 +167,14 @@ export function SalaryPage() {
                   <td className="px-5 py-3.5 text-slate-400">
                     {MONTH_NAMES[p.month - 1]} {p.year}
                   </td>
-                  <td className="px-5 py-3.5 text-slate-300">{formatCurrency(p.base_amount)}</td>
+                  <td className="px-5 py-3.5 text-slate-300">
+                    {formatCurrency(p.base_amount)}
+                    {p.pieces_completed != null && p.rate_per_piece != null && (
+                      <span className="ml-1.5 text-[11px] text-slate-500">
+                        ({p.pieces_completed} × {formatCurrency(p.rate_per_piece)})
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5">
                     {p.overtime_amount > 0 ? (
                       <span className="text-neon-cyan">+{formatCurrency(p.overtime_amount)}</span>
@@ -204,16 +238,41 @@ export function SalaryPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label-field">Base salary</label>
-              <input type="number" className="input-field" value={baseAmount} onChange={(e) => setBaseAmount(e.target.value)} placeholder="0" />
+          {isContract ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-field">Pieces completed</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={piecesCompleted}
+                  onChange={(e) => handlePiecesChange(e.target.value)}
+                  placeholder="e.g. 500"
+                />
+              </div>
+              <div>
+                <label className="label-field">Rate per piece</label>
+                <input type="text" className="input-field opacity-70" value={formatCurrency(ratePerPiece)} readOnly />
+              </div>
             </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-field">Base salary</label>
+                <input type="number" className="input-field" value={baseAmount} onChange={(e) => setBaseAmount(e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <label className="label-field">Overtime</label>
+                <input type="number" className="input-field" value={overtimeAmount} onChange={(e) => setOvertimeAmount(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+          )}
+          {isContract && (
             <div>
               <label className="label-field">Overtime</label>
               <input type="number" className="input-field" value={overtimeAmount} onChange={(e) => setOvertimeAmount(e.target.value)} placeholder="0" />
             </div>
-          </div>
+          )}
 
           {employeeName && (
             <div>
@@ -222,8 +281,14 @@ export function SalaryPage() {
               </label>
               <input type="number" className="input-field" value={deduction} onChange={(e) => setDeduction(e.target.value)} placeholder="0" />
               <div className="mt-2 space-y-1.5 rounded-xl bg-white/[0.02] px-3.5 py-2.5 text-xs text-slate-400">
+                {isContract && (
+                  <div className="flex items-center justify-between">
+                    <span>Pieces Completed</span>
+                    <span className="text-slate-300">{pieces}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
-                  <span>Salary Amount</span>
+                  <span>{isContract ? 'Gross Amount' : 'Salary Amount'}</span>
                   <span className="text-slate-300">{formatCurrency(base)}</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -231,11 +296,11 @@ export function SalaryPage() {
                   <span className="text-neon-cyan">+{formatCurrency(overtime)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Advance Deduction</span>
+                  <span>Advances Deducted</span>
                   <span className="text-neon-red">-{formatCurrency(ded)}</span>
                 </div>
                 <div className="flex items-center justify-between border-t border-white/5 pt-1.5 font-semibold">
-                  <span className="text-slate-300">Final Paid Amount</span>
+                  <span className="text-slate-300">Final Payable Amount</span>
                   <span className="text-neon-green">{formatCurrency(net)}</span>
                 </div>
               </div>
