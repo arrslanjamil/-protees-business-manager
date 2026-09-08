@@ -15,5 +15,16 @@ if (!isSupabaseConfigured) {
 
 export const supabase = createClient<Database>(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-anon-key'
+  supabaseAnonKey || 'placeholder-anon-key',
+  {
+    auth: {
+      // sessionStorage instead of the default localStorage: the session
+      // survives a page refresh (same tab, same browser session) but is
+      // gone the moment the browser/tab is closed and reopened — every
+      // fresh app open requires signing in again, on purpose.
+      storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  }
 )

@@ -23,6 +23,13 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
 
 export type Department = 'cutting_department' | 'protees_unit'
 
+export type EmployeeType = 'monthly' | 'contract'
+
+export const EMPLOYEE_TYPE_LABELS: Record<EmployeeType, string> = {
+  monthly: 'Monthly',
+  contract: 'Contract',
+}
+
 export const DEPARTMENT_LABELS: Record<Department, string> = {
   cutting_department: 'Employees',
   protees_unit: 'Protees Unit',
