@@ -1,4 +1,5 @@
 import { MONTH_NAMES } from '@/lib/types'
+import { toLocalISODate } from '@/lib/utils'
 
 export interface MonthBucket {
   key: string
@@ -25,6 +26,40 @@ export function monthBucketsInRange(start: string, end: string): MonthBucket[] {
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
   }
   return buckets
+}
+
+export interface TrendBucket {
+  key: string
+  label: string
+  start: string
+  end: string
+}
+
+/** Buckets [start,end] by day when the range is short (<=45 days),
+ * otherwise by calendar month — keeps the trend chart readable across
+ * every preset from "Today" to "Annually" without either a single-point
+ * chart or an unreadably dense one. */
+export function trendBucketsInRange(start: string, end: string): TrendBucket[] {
+  const s = new Date(start)
+  const e = new Date(end)
+  const dayCount = Math.round((e.getTime() - s.getTime()) / 86400000) + 1
+
+  if (dayCount <= 45) {
+    const buckets: TrendBucket[] = []
+    const cursor = new Date(s)
+    while (cursor <= e && buckets.length < 45) {
+      const iso = toLocalISODate(cursor)
+      buckets.push({ key: iso, label: `${cursor.getDate()} ${MONTH_NAMES[cursor.getMonth()].slice(0, 3)}`, start: iso, end: iso })
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    return buckets
+  }
+
+  return monthBucketsInRange(start, end).map((m) => {
+    const monthStart = new Date(m.year, m.month - 1, 1)
+    const monthEnd = new Date(m.year, m.month, 0)
+    return { key: m.key, label: m.label, start: toLocalISODate(monthStart), end: toLocalISODate(monthEnd) }
+  })
 }
 
 /** Cycling palette for category pie/bar charts — theme neon colors first,

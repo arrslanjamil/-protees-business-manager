@@ -15,8 +15,19 @@ export function formatDate(date: string | Date): string {
   })
 }
 
+/** Formats a Date's LOCAL calendar date as YYYY-MM-DD. Unlike
+ * `.toISOString()`, this never rolls over to the adjacent day for
+ * timezones ahead of UTC (e.g. Pakistan, UTC+5) — `.toISOString()`
+ * converts to UTC first, which pushes local midnight back a day. */
+export function toLocalISODate(d: Date): string {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
+  return toLocalISODate(new Date())
 }
 
 /** Ratio of outstanding advance balance to monthly salary, 0-100+. */
@@ -91,62 +102,67 @@ export function presetDateRange(preset: DateRangePreset, customStart?: string, c
     const diffToMonday = (day + 6) % 7
     const monday = new Date(now)
     monday.setDate(now.getDate() - diffToMonday)
-    return { start: monday.toISOString().slice(0, 10), end }
+    return { start: toLocalISODate(monday), end }
   }
   if (preset === 'month') {
     const first = new Date(now.getFullYear(), now.getMonth(), 1)
-    return { start: first.toISOString().slice(0, 10), end }
+    return { start: toLocalISODate(first), end }
   }
   // year
   const firstOfYear = new Date(now.getFullYear(), 0, 1)
-  return { start: firstOfYear.toISOString().slice(0, 10), end }
+  return { start: toLocalISODate(firstOfYear), end }
 }
 
 export function isWithinRange(dateStr: string, start: string, end: string): boolean {
   return dateStr >= start && dateStr <= end
 }
 
-export type DashboardDatePreset = '15d' | '30d' | '3m' | '6m' | '12m' | 'custom'
+export type DashboardDatePreset = 'today' | 'yesterday' | '15d' | 'monthly' | '6m' | 'annually' | 'custom'
 
 export const DASHBOARD_DATE_PRESET_LABELS: Record<DashboardDatePreset, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
   '15d': 'Last 15 Days',
-  '30d': 'Last 30 Days',
-  '3m': 'Last 3 Months',
+  monthly: 'Monthly',
   '6m': 'Last 6 Months',
-  '12m': 'Last 12 Months',
-  custom: 'Custom Range',
+  annually: 'Annually',
+  custom: 'Custom Date Range',
 }
 
-/** Date range for the dashboard's flexible filter — separate from the
- * Reports page's own presets since the dashboard needs longer, rolling
- * windows (15/30 days, 3/6/12 months) rather than calendar-aligned ones. */
+/** Date range for the dashboard's global filter. */
 export function dashboardDateRange(preset: DashboardDatePreset, customStart?: string, customEnd?: string): { start: string; end: string } {
-  const end = todayISO()
-  if (preset === 'custom') {
-    return { start: customStart || end, end: customEnd || end }
-  }
   const now = new Date()
-  let start: Date
+  const end = todayISO()
   switch (preset) {
-    case '15d':
-      start = new Date(now)
-      start.setDate(start.getDate() - 14)
-      break
-    case '30d':
-      start = new Date(now)
-      start.setDate(start.getDate() - 29)
-      break
-    case '3m':
-      start = new Date(now.getFullYear(), now.getMonth() - 2, now.getDate())
-      break
-    case '6m':
-      start = new Date(now.getFullYear(), now.getMonth() - 5, now.getDate())
-      break
-    case '12m':
-      start = new Date(now.getFullYear(), now.getMonth() - 11, now.getDate())
-      break
+    case 'today':
+      return { start: end, end }
+    case 'yesterday': {
+      const y = new Date(now)
+      y.setDate(y.getDate() - 1)
+      const iso = toLocalISODate(y)
+      return { start: iso, end: iso }
+    }
+    case '15d': {
+      const s = new Date(now)
+      s.setDate(s.getDate() - 14)
+      return { start: toLocalISODate(s), end }
+    }
+    case 'monthly': {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { start: toLocalISODate(s), end }
+    }
+    case '6m': {
+      const s = new Date(now.getFullYear(), now.getMonth() - 5, now.getDate())
+      return { start: toLocalISODate(s), end }
+    }
+    case 'annually': {
+      const s = new Date(now.getFullYear(), 0, 1)
+      return { start: toLocalISODate(s), end }
+    }
+    case 'custom':
+    default:
+      return { start: customStart || end, end: customEnd || end }
   }
-  return { start: start.toISOString().slice(0, 10), end }
 }
 
 /** Simple fuzzy match: scores how well `query` matches `target` by token overlap. */

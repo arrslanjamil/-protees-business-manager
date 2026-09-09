@@ -360,6 +360,20 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['audit_log']['Insert']>
         Relationships: []
       }
+      dashboard_layouts: {
+        Row: {
+          user_id: string
+          widget_order: string[]
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          widget_order: string[]
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['dashboard_layouts']['Insert']>
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string

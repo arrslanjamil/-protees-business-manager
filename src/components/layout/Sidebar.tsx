@@ -1,5 +1,4 @@
 import {
-  Banknote,
   Boxes,
   Factory,
   FileBarChart,
@@ -23,7 +22,6 @@ const NAV_ITEMS = [
   { to: '/employees', label: 'Employees', icon: Users },
   { to: '/salary', label: 'Salary', icon: Wallet },
   { to: '/advances', label: 'Advances', icon: HandCoins },
-  { to: '/khadim-hussain', label: 'Khadim Hussain', icon: Banknote },
   { to: '/reports', label: 'Reports', icon: FileBarChart },
   { to: '/activity-log', label: 'Activity Log', icon: History },
   { to: '/factory', label: 'Factory', icon: Factory },

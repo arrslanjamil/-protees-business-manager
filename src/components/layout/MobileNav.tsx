@@ -1,4 +1,4 @@
-import { Banknote, Boxes, Factory, FileBarChart, HandCoins, History, LayoutDashboard, LogOut, Receipt, Users, Wallet } from 'lucide-react'
+import { Boxes, Factory, FileBarChart, HandCoins, History, LayoutDashboard, LogOut, Receipt, Users, Wallet } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { classNames } from '@/lib/utils'
@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { to: '/employees', label: 'Staff', icon: Users },
   { to: '/salary', label: 'Salary', icon: Wallet },
   { to: '/advances', label: 'Advance', icon: HandCoins },
-  { to: '/khadim-hussain', label: 'Khadim', icon: Banknote },
   { to: '/reports', label: 'Reports', icon: FileBarChart },
   { to: '/activity-log', label: 'Activity', icon: History },
   { to: '/factory', label: 'Factory', icon: Factory },
