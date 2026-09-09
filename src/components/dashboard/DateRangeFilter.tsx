@@ -1,7 +1,7 @@
 import { Calendar } from 'lucide-react'
 import { DASHBOARD_DATE_PRESET_LABELS, formatDate, classNames, type DashboardDatePreset } from '@/lib/utils'
 
-const PRESET_ORDER: DashboardDatePreset[] = ['15d', '30d', '3m', '6m', '12m', 'custom']
+const PRESET_ORDER: DashboardDatePreset[] = ['today', 'yesterday', '15d', 'monthly', '6m', 'annually', 'custom']
 
 interface DateRangeFilterProps {
   preset: DashboardDatePreset

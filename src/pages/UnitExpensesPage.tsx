@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Banknote, Plus, Receipt, Trash2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Plus, Receipt, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -9,7 +8,7 @@ import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 export function UnitExpensesPage() {
-  const { expenses, addExpense, deleteExpense, khadimTotals, expenseCategoryNames, addExpenseCategory } = useData()
+  const { expenses, addExpense, deleteExpense, expenseCategoryNames, addExpenseCategory } = useData()
   const [modalOpen, setModalOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<string>('')
@@ -88,19 +87,6 @@ export function UnitExpensesPage() {
           <Plus size={16} /> Add Expense
         </button>
       </div>
-
-      <Link
-        to="/khadim-hussain"
-        className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 transition hover:border-neon-cyan/30 hover:bg-white/[0.04]"
-      >
-        <div className="flex items-center gap-2.5">
-          <Banknote size={16} className="text-neon-cyan" />
-          <span className="text-sm text-slate-300">Khadim Hussain Account balance</span>
-        </div>
-        <span className={`font-display text-sm font-bold ${khadimTotals.balance === 0 ? 'text-neon-green' : 'text-neon-amber'}`}>
-          {khadimTotals.balance === 0 ? '✅ Cleared' : formatCurrency(khadimTotals.balance)}
-        </span>
-      </Link>
 
       {sortedExpenses.length === 0 ? (
         <EmptyState icon={Receipt} title="No expenses recorded" description="Track thread, fabric, packing, transport, printing, and other unit costs here." />

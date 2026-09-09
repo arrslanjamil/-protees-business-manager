@@ -15,7 +15,6 @@ import { UnitExpensesPage } from '@/pages/UnitExpensesPage'
 import { AdvancesPage } from '@/pages/AdvancesPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { UnitsPage } from '@/pages/UnitsPage'
-import { KhadimHussainPage } from '@/pages/KhadimHussainPage'
 import { FactoryAuthProvider } from '@/context/FactoryAuthContext'
 import { FactoryRoot } from '@/pages/factory/FactoryRoot'
 import { FactoryDashboardPage } from '@/pages/factory/FactoryDashboardPage'
@@ -43,7 +42,6 @@ export default function App() {
                   <Route path="/salary" element={<SalaryPage />} />
                   <Route path="/advances" element={<AdvancesPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
-                  <Route path="/khadim-hussain" element={<KhadimHussainPage />} />
                   <Route path="/units" element={<UnitsPage />} />
                   <Route path="/activity-log" element={<ActivityLogPage />} />
                 </Route>
