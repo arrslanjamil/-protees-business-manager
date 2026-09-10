@@ -4,6 +4,7 @@ import { MobileNav } from './MobileNav'
 import { VoiceWidget } from '@/components/voice/VoiceWidget'
 import { useData } from '@/context/DataContext'
 import { useAuth } from '@/context/AuthContext'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { AlertTriangle, Loader2, LogOut, Zap } from 'lucide-react'
 
 export function AppLayout() {
@@ -18,8 +19,9 @@ export function AppLayout() {
           <Zap size={16} className="text-neon-cyan" />
           <p className="font-display text-sm font-bold tracking-wider text-white">PROTEES</p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-300">{displayName}</span>
+          <ThemeToggle />
           <button onClick={signOut} aria-label="Log out" className="rounded-lg p-1.5 text-slate-500 hover:bg-white/5 hover:text-neon-red">
             <LogOut size={15} />
           </button>

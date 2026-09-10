@@ -1,25 +1,42 @@
 /** @type {import('tailwindcss').Config} */
+function themeColor(name) {
+  return `rgb(var(--${name}) / <alpha-value>)`
+}
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
+        // Theme-aware — flip between dark/light via CSS variables in index.css.
+        white: themeColor('c-white'),
+        slate: {
+          100: themeColor('c-slate-100'),
+          200: themeColor('c-slate-200'),
+          300: themeColor('c-slate-300'),
+          400: themeColor('c-slate-400'),
+          500: themeColor('c-slate-500'),
+          600: themeColor('c-slate-600'),
+        },
         base: {
+          // 950 stays a fixed, literal dark tone — used for modal scrims and
+          // icon glyphs on bright gradient chips, both of which need to stay
+          // dark regardless of theme (never used as a page/card background).
           950: '#05070d',
-          900: '#0a0e17',
-          850: '#0d1220',
-          800: '#111827',
-          700: '#1a2236',
-          600: '#26314a',
+          900: themeColor('c-base-900'),
+          850: themeColor('c-base-850'),
+          800: themeColor('c-base-800'),
+          700: themeColor('c-base-700'),
+          600: themeColor('c-base-600'),
         },
         neon: {
-          cyan: '#22d3ee',
-          purple: '#a855f7',
-          pink: '#f472b6',
-          green: '#34d399',
-          red: '#f87171',
-          amber: '#fbbf24',
+          cyan: themeColor('c-neon-cyan'),
+          purple: themeColor('c-neon-purple'),
+          pink: themeColor('c-neon-pink'),
+          green: themeColor('c-neon-green'),
+          red: themeColor('c-neon-red'),
+          amber: themeColor('c-neon-amber'),
         },
       },
       fontFamily: {

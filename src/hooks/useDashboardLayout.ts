@@ -3,23 +3,21 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 
 export type WidgetId =
-  | 'total-expenses'
-  | 'total-salaries'
-  | 'outstanding-advances'
+  | 'total-employees'
   | 'total-payroll'
-  | 'trend-chart'
+  | 'salary-paid'
+  | 'salary-due'
+  | 'outstanding-advances'
+  | 'total-expenses'
   | 'khadim'
-  | 'recent-activity'
 
-export const DEFAULT_WIDGET_ORDER: WidgetId[] = [
-  'total-expenses',
-  'total-salaries',
-  'outstanding-advances',
-  'total-payroll',
-  'trend-chart',
-  'khadim',
-  'recent-activity',
-]
+/** The 4 large top-row KPIs — the numbers an owner needs within 5 seconds. */
+export const TOP_KPI_IDS: WidgetId[] = ['total-employees', 'total-payroll', 'salary-paid', 'salary-due']
+
+/** Smaller, secondary KPIs shown below the top row. */
+export const SECONDARY_KPI_IDS: WidgetId[] = ['outstanding-advances', 'total-expenses', 'khadim']
+
+export const DEFAULT_WIDGET_ORDER: WidgetId[] = [...TOP_KPI_IDS, ...SECONDARY_KPI_IDS]
 
 function sanitizeOrder(saved: string[] | null | undefined): WidgetId[] {
   if (!saved || saved.length === 0) return DEFAULT_WIDGET_ORDER
