@@ -14,7 +14,7 @@ import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 import { DataTable, type DataTableColumn } from '@/components/dashboard/DataTable'
 import { useDashboardLayout, TOP_KPI_IDS, SECONDARY_KPI_IDS, type WidgetId } from '@/hooks/useDashboardLayout'
 import { trendBucketsInRange } from '@/lib/dashboardAnalytics'
-import { dashboardDateRange, formatCurrency, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
+import { dashboardDateRange, formatCurrency, formatCurrencyCompact, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
 
 function isKhadimExpense(title: string, category: string, notes: string | null): boolean {
   const needle = 'khadim'
@@ -160,11 +160,18 @@ export function DashboardPage() {
       case 'total-employees':
         return <KpiCard label="Total Employees" value={String(employeesWithBalance.length)} tone="info" />
       case 'total-payroll':
-        return <KpiCard label="Total Payroll" value={formatCurrency(totalPayroll)} tone="info" />
+        return <KpiCard label="Total Payroll" value={formatCurrencyCompact(totalPayroll)} fullValue={formatCurrency(totalPayroll)} tone="info" />
       case 'salary-paid':
-        return <KpiCard label="Salary Paid" value={formatCurrency(salaryPaid)} tone="positive" />
+        return <KpiCard label="Salary Paid" value={formatCurrencyCompact(salaryPaid)} fullValue={formatCurrency(salaryPaid)} tone="positive" />
       case 'salary-due':
-        return <KpiCard label="Salary Due" value={formatCurrency(salaryDue)} tone={salaryDue > 0 ? 'due' : 'positive'} />
+        return (
+          <KpiCard
+            label="Salary Due"
+            value={formatCurrencyCompact(salaryDue)}
+            fullValue={formatCurrency(salaryDue)}
+            tone={salaryDue > 0 ? 'due' : 'positive'}
+          />
+        )
       default:
         return null
     }
@@ -173,11 +180,38 @@ export function DashboardPage() {
   function renderSecondaryWidget(id: WidgetId) {
     switch (id) {
       case 'outstanding-advances':
-        return <StatCard label="Outstanding Advances" value={formatCurrency(outstandingAdvances)} icon={HandCoins} accent="amber" hint="Live balance" />
+        return (
+          <StatCard
+            label="Outstanding Advances"
+            value={formatCurrencyCompact(outstandingAdvances)}
+            fullValue={formatCurrency(outstandingAdvances)}
+            icon={HandCoins}
+            accent="amber"
+            hint="Live balance"
+          />
+        )
       case 'total-expenses':
-        return <StatCard label="Total Expenses" value={formatCurrency(totalExpenses)} icon={Wallet} accent="cyan" hint="Selected period" />
+        return (
+          <StatCard
+            label="Total Expenses"
+            value={formatCurrencyCompact(totalExpenses)}
+            fullValue={formatCurrency(totalExpenses)}
+            icon={Wallet}
+            accent="cyan"
+            hint="Selected period"
+          />
+        )
       case 'khadim':
-        return <StatCard label="Khadim Sahib Expenses" value={formatCurrency(khadimExpenseTotal)} icon={Receipt} accent="cyan" hint="Selected period" />
+        return (
+          <StatCard
+            label="Khadim Sahib Expenses"
+            value={formatCurrencyCompact(khadimExpenseTotal)}
+            fullValue={formatCurrency(khadimExpenseTotal)}
+            icon={Receipt}
+            accent="cyan"
+            hint="Selected period"
+          />
+        )
       default:
         return null
     }

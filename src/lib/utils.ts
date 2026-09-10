@@ -6,6 +6,23 @@ export function formatCurrency(amount: number): string {
   }).format(amount || 0)
 }
 
+/** Compact form for KPI cards: >=1M -> "Rs 2.05M", >=1K -> "Rs 23.5K",
+ * else the full formatted amount. Trailing ".0"/".00" is dropped (707000
+ * -> "707K", not "707.0K"). Pair with formatCurrency(amount) as a title/
+ * tooltip so the exact value is still available on hover. */
+export function formatCurrencyCompact(amount: number): string {
+  const value = amount || 0
+  const abs = Math.abs(value)
+  const sign = value < 0 ? '-' : ''
+  if (abs >= 1_000_000) {
+    return `${sign}Rs ${parseFloat((abs / 1_000_000).toFixed(2))}M`
+  }
+  if (abs >= 1_000) {
+    return `${sign}Rs ${parseFloat((abs / 1_000).toFixed(1))}K`
+  }
+  return formatCurrency(value)
+}
+
 export function formatDate(date: string | Date): string {
   const d = typeof date === 'string' ? new Date(date) : date
   return d.toLocaleDateString('en-GB', {
