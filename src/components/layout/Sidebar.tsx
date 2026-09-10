@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { classNames } from '@/lib/utils'
 
 const NAV_ITEMS = [
@@ -81,13 +82,16 @@ export function Sidebar() {
             </div>
             <span className="text-sm font-medium text-slate-200">{displayName ?? 'Unknown'}</span>
           </div>
-          <button
-            onClick={signOut}
-            aria-label="Log out"
-            className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-neon-red"
-          >
-            <LogOut size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <button
+              onClick={signOut}
+              aria-label="Log out"
+              className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-neon-red"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

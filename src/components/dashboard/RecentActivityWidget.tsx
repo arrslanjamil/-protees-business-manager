@@ -58,27 +58,21 @@ export function RecentActivityWidget() {
     }
   }, [])
 
+  if (loading) return <p className="text-sm text-slate-500">Loading…</p>
+  if (entries.length === 0) return <EmptyState icon={History} title="No activity yet" description="Actions across the app will show up here." />
+
   return (
-    <div className="card">
-      <h3 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Recent Activity</h3>
-      {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : entries.length === 0 ? (
-        <EmptyState icon={History} title="No activity yet" description="Actions across the app will show up here." />
-      ) : (
-        <ul className="divide-y divide-white/5">
-          {entries.map((entry) => (
-            <li key={entry.id} className="flex items-center justify-between gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <Badge color={ACTION_BADGE_COLOR[entry.action]}>{AUDIT_ACTION_LABELS[entry.action]}</Badge>
-                <span className="truncate text-slate-300">{TABLE_LABELS[entry.table_name] ?? entry.table_name}</span>
-                <span className="shrink-0 text-slate-500">by {entry.performed_by_username ?? '—'}</span>
-              </div>
-              <span className="shrink-0 text-xs text-slate-500">{formatRelative(entry.performed_at)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <ul className="divide-y divide-white/5">
+      {entries.map((entry) => (
+        <li key={entry.id} className="flex items-center justify-between gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Badge color={ACTION_BADGE_COLOR[entry.action]}>{AUDIT_ACTION_LABELS[entry.action]}</Badge>
+            <span className="truncate text-slate-300">{TABLE_LABELS[entry.table_name] ?? entry.table_name}</span>
+            <span className="shrink-0 text-slate-500">by {entry.performed_by_username ?? '—'}</span>
+          </div>
+          <span className="shrink-0 text-xs text-slate-500">{formatRelative(entry.performed_at)}</span>
+        </li>
+      ))}
+    </ul>
   )
 }

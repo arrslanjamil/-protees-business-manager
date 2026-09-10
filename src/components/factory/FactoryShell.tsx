@@ -15,6 +15,7 @@ import {
 import { useFactoryAuth } from '@/context/FactoryAuthContext'
 import { FactoryDataProvider } from '@/context/FactoryDataContext'
 import { FACTORY_ROLE_LABELS, type FactoryRole } from '@/lib/factoryTypes'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { classNames } from '@/lib/utils'
 
 interface FactoryNavItem {
@@ -63,6 +64,7 @@ export function FactoryShell() {
                 <p className="text-xs font-medium text-slate-300">{profile?.name}</p>
                 <p className="text-[10px] uppercase tracking-wider text-neon-cyan">{role ? FACTORY_ROLE_LABELS[role] : ''}</p>
               </div>
+              <ThemeToggle />
               <button
                 onClick={signOut}
                 className="rounded-lg p-2 text-slate-500 transition hover:bg-white/5 hover:text-neon-red"

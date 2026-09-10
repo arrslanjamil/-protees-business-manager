@@ -1,15 +1,18 @@
 import { useMemo, useState } from 'react'
-import { Banknote, HandCoins, ReceiptText, Wallet } from 'lucide-react'
+import { HandCoins, Receipt, Wallet } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useData } from '@/context/DataContext'
 import { StatCard } from '@/components/ui/StatCard'
+import { Badge } from '@/components/ui/Badge'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
 import { TrendChart } from '@/components/dashboard/TrendChart'
-import { KhadimExpenseCard } from '@/components/dashboard/KhadimExpenseCard'
 import { RecentActivityWidget } from '@/components/dashboard/RecentActivityWidget'
 import { SortableWidget } from '@/components/dashboard/SortableWidget'
-import { useDashboardLayout, type WidgetId } from '@/hooks/useDashboardLayout'
+import { KpiCard } from '@/components/dashboard/KpiCard'
+import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
+import { DataTable, type DataTableColumn } from '@/components/dashboard/DataTable'
+import { useDashboardLayout, TOP_KPI_IDS, SECONDARY_KPI_IDS, type WidgetId } from '@/hooks/useDashboardLayout'
 import { trendBucketsInRange } from '@/lib/dashboardAnalytics'
 import { dashboardDateRange, formatCurrency, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
 
@@ -18,7 +21,26 @@ function isKhadimExpense(title: string, category: string, notes: string | null):
   return title.toLowerCase().includes(needle) || category.toLowerCase().includes(needle) || (notes ?? '').toLowerCase().includes(needle)
 }
 
-const FULL_WIDTH_WIDGETS = new Set<WidgetId>(['trend-chart', 'khadim', 'recent-activity'])
+interface ExpectedSalaryRow {
+  id: number
+  name: string
+  type: 'Monthly' | 'Contract'
+  expectedLabel: string
+  expectedAmount: number
+}
+
+interface CategoryRow {
+  name: string
+  amount: number
+  percent: number
+}
+
+interface DepartmentRow {
+  department: string
+  payroll: number | null
+  paid: number
+  due: number | null
+}
 
 export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, expenses, salaryPayments, unitPayments } = useData()
@@ -30,6 +52,8 @@ export function DashboardPage() {
   const { start, end } = useMemo(() => dashboardDateRange(preset, customStart, customEnd), [preset, customStart, customEnd])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const topOrder = useMemo(() => order.filter((id) => TOP_KPI_IDS.includes(id)), [order])
+  const secondaryOrder = useMemo(() => order.filter((id) => SECONDARY_KPI_IDS.includes(id)), [order])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -50,7 +74,7 @@ export function DashboardPage() {
   const totalExpenses = periodExpensesList.reduce((s, e) => s + Number(e.amount), 0)
   const periodSalaryNet = periodSalaryList.reduce((s, p) => s + Number(p.net_amount), 0)
   const periodUnitNet = periodUnitList.reduce((s, p) => s + Number(p.net_amount), 0)
-  const totalSalaries = periodSalaryNet + periodUnitNet
+  const salaryPaid = periodSalaryNet + periodUnitNet
 
   // Outstanding Advances — a live balance, not period-scoped: what's owed
   // right now regardless of which dates are selected.
@@ -67,6 +91,7 @@ export function DashboardPage() {
   )
   const totalContractPayroll = contractPeriodPayments.reduce((s, p) => s + Number(p.base_amount), 0)
   const totalPayroll = totalMonthlyPayroll + totalContractPayroll
+  const salaryDue = Math.max(0, totalPayroll - periodSalaryNet - outstandingAdvances)
 
   // --- Trend chart: expenses vs salaries, day- or month-bucketed ----------
   const trendBuckets = useMemo(() => trendBucketsInRange(start, end), [start, end])
@@ -88,30 +113,100 @@ export function DashboardPage() {
     [periodExpensesList]
   )
 
-  function renderWidget(id: WidgetId) {
+  // --- Expected Salary By Employee ------------------------------------------
+  const expectedSalaryRows = useMemo<ExpectedSalaryRow[]>(
+    () =>
+      employeesWithBalance.map((emp) => {
+        if (emp.employee_type === 'monthly') {
+          return { id: emp.id, name: emp.name, type: 'Monthly', expectedLabel: formatCurrency(emp.salary), expectedAmount: Number(emp.salary) }
+        }
+        const payment = periodSalaryList.find((p) => p.employee_name === emp.name)
+        if (payment && payment.pieces_completed != null) {
+          const rate = Number(payment.rate_per_piece ?? emp.rate_per_piece ?? 0)
+          const amount = payment.pieces_completed * rate
+          return {
+            id: emp.id,
+            name: emp.name,
+            type: 'Contract',
+            expectedLabel: `${payment.pieces_completed} × ${formatCurrency(rate)} = ${formatCurrency(amount)}`,
+            expectedAmount: amount,
+          }
+        }
+        return { id: emp.id, name: emp.name, type: 'Contract', expectedLabel: 'No pieces entered', expectedAmount: 0 }
+      }),
+    [employeesWithBalance, periodSalaryList]
+  )
+
+  // --- Top Expense Categories ------------------------------------------------
+  const categoryRows = useMemo<CategoryRow[]>(() => {
+    const totals = new Map<string, number>()
+    for (const e of periodExpensesList) totals.set(e.category, (totals.get(e.category) ?? 0) + Number(e.amount))
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, amount]) => ({ name, amount, percent: totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0 }))
+  }, [periodExpensesList, totalExpenses])
+
+  // --- Department Payroll -----------------------------------------------------
+  const departmentRows = useMemo<DepartmentRow[]>(
+    () => [
+      { department: 'Employees (Cutting Department)', payroll: totalPayroll, paid: periodSalaryNet, due: salaryDue },
+      { department: 'Protees Unit', payroll: null, paid: periodUnitNet, due: null },
+    ],
+    [totalPayroll, periodSalaryNet, salaryDue, periodUnitNet]
+  )
+
+  function renderTopWidget(id: WidgetId) {
     switch (id) {
-      case 'total-expenses':
-        return <StatCard label="Total Expenses" value={formatCurrency(totalExpenses)} icon={Wallet} accent="red" hint="Selected period" />
-      case 'total-salaries':
-        return <StatCard label="Total Salaries Paid" value={formatCurrency(totalSalaries)} icon={Banknote} accent="cyan" hint="Selected period" />
-      case 'outstanding-advances':
-        return <StatCard label="Outstanding Advances" value={formatCurrency(outstandingAdvances)} icon={HandCoins} accent="amber" hint="Live balance" />
+      case 'total-employees':
+        return <KpiCard label="Total Employees" value={String(employeesWithBalance.length)} tone="info" />
       case 'total-payroll':
-        return <StatCard label="Total Payroll" value={formatCurrency(totalPayroll)} icon={ReceiptText} accent="purple" hint="Active employees" />
-      case 'trend-chart':
-        return <TrendChart data={trendData} />
-      case 'khadim':
-        return <KhadimExpenseCard amount={khadimExpenseTotal} />
-      case 'recent-activity':
-        return <RecentActivityWidget />
+        return <KpiCard label="Total Payroll" value={formatCurrency(totalPayroll)} tone="info" />
+      case 'salary-paid':
+        return <KpiCard label="Salary Paid" value={formatCurrency(salaryPaid)} tone="positive" />
+      case 'salary-due':
+        return <KpiCard label="Salary Due" value={formatCurrency(salaryDue)} tone={salaryDue > 0 ? 'due' : 'positive'} />
+      default:
+        return null
     }
   }
+
+  function renderSecondaryWidget(id: WidgetId) {
+    switch (id) {
+      case 'outstanding-advances':
+        return <StatCard label="Outstanding Advances" value={formatCurrency(outstandingAdvances)} icon={HandCoins} accent="amber" hint="Live balance" />
+      case 'total-expenses':
+        return <StatCard label="Total Expenses" value={formatCurrency(totalExpenses)} icon={Wallet} accent="cyan" hint="Selected period" />
+      case 'khadim':
+        return <StatCard label="Khadim Sahib Expenses" value={formatCurrency(khadimExpenseTotal)} icon={Receipt} accent="cyan" hint="Selected period" />
+      default:
+        return null
+    }
+  }
+
+  const expectedSalaryColumns: DataTableColumn<ExpectedSalaryRow>[] = [
+    { key: 'name', header: 'Employee', render: (r) => <span className="font-medium text-white">{r.name}</span> },
+    { key: 'type', header: 'Type', render: (r) => <Badge color={r.type === 'Monthly' ? 'cyan' : 'purple'}>{r.type}</Badge> },
+    { key: 'expected', header: 'Expected Salary', align: 'right', render: (r) => r.expectedLabel },
+  ]
+
+  const categoryColumns: DataTableColumn<CategoryRow>[] = [
+    { key: 'name', header: 'Category', render: (r) => r.name },
+    { key: 'amount', header: 'Amount', align: 'right', render: (r) => formatCurrency(r.amount) },
+    { key: 'percent', header: '%', align: 'right', render: (r) => `${r.percent.toFixed(1)}%` },
+  ]
+
+  const departmentColumns: DataTableColumn<DepartmentRow>[] = [
+    { key: 'department', header: 'Department', render: (r) => <span className="font-medium text-white">{r.department}</span> },
+    { key: 'payroll', header: 'Payroll', align: 'right', render: (r) => (r.payroll === null ? '—' : formatCurrency(r.payroll)) },
+    { key: 'paid', header: 'Paid', align: 'right', render: (r) => formatCurrency(r.paid) },
+    { key: 'due', header: 'Due', align: 'right', render: (r) => (r.due === null ? '—' : formatCurrency(r.due)) },
+  ]
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-400">Business overview at a glance. Drag any card to reorder your layout.</p>
+        <p className="mt-1 text-sm text-slate-400">Business overview at a glance.</p>
       </div>
 
       <DateRangeFilter
@@ -127,17 +222,61 @@ export function DashboardPage() {
 
       {loaded && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={order} strategy={rectSortingStrategy}>
+          <SortableContext items={topOrder} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {order.map((id) => (
-                <SortableWidget key={id} id={id} className={FULL_WIDTH_WIDGETS.has(id) ? 'sm:col-span-2 xl:col-span-4' : undefined}>
-                  {renderWidget(id)}
+              {topOrder.map((id) => (
+                <SortableWidget key={id} id={id}>
+                  {renderTopWidget(id)}
+                </SortableWidget>
+              ))}
+            </div>
+          </SortableContext>
+
+          <SortableContext items={secondaryOrder} strategy={rectSortingStrategy}>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {secondaryOrder.map((id) => (
+                <SortableWidget key={id} id={id}>
+                  {renderSecondaryWidget(id)}
                 </SortableWidget>
               ))}
             </div>
           </SortableContext>
         </DndContext>
       )}
+
+      <TrendChart data={trendData} />
+
+      <div className="space-y-4">
+        <CollapsibleSection title="Expected Salary By Employee" summary={`${expectedSalaryRows.length} employees · ${formatCurrency(totalPayroll)} total`}>
+          <DataTable
+            columns={expectedSalaryColumns}
+            rows={expectedSalaryRows}
+            getRowId={(r) => r.id}
+            searchPlaceholder="Search employees…"
+            searchFn={(r, q) => r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q)}
+            emptyMessage="No employees yet."
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Recent Activity" summary="View latest actions across the app">
+          <RecentActivityWidget />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Top Expense Categories" summary={`${categoryRows.length} categories · ${formatCurrency(totalExpenses)} total`}>
+          <DataTable
+            columns={categoryColumns}
+            rows={categoryRows}
+            getRowId={(r) => r.name}
+            searchPlaceholder="Search categories…"
+            searchFn={(r, q) => r.name.toLowerCase().includes(q)}
+            emptyMessage="No expenses in this period."
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Department Payroll" summary={`${formatCurrency(salaryPaid)} paid this period`}>
+          <DataTable columns={departmentColumns} rows={departmentRows} getRowId={(r) => r.department} />
+        </CollapsibleSection>
+      </div>
     </div>
   )
 }
