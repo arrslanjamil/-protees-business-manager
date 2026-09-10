@@ -407,11 +407,15 @@ export interface Database {
         Row: {
           id: number
           monthly_budget: number
+          opening_balance: number
+          opening_month: string
           updated_at: string
         }
         Insert: {
           id?: number
           monthly_budget?: number
+          opening_balance?: number
+          opening_month?: string
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['zakat_settings']['Insert']>

@@ -1,17 +1,11 @@
 import { Link } from 'react-router-dom'
 import { classNames, formatCurrency } from '@/lib/utils'
+import type { ZakatProgressSnapshot } from '@/lib/zakat'
 
-interface ZakatProgressCardProps {
-  monthlyBudget: number
-  distributed: number
-}
-
-/** Current-month Zakat distribution progress — mirrors the same
- * budget/distributed/remaining math shown on the Zakat Management page. */
-export function ZakatProgressCard({ monthlyBudget, distributed }: ZakatProgressCardProps) {
-  const remaining = Math.max(0, monthlyBudget - distributed)
-  const percent = monthlyBudget > 0 ? Math.min(100, Math.round((distributed / monthlyBudget) * 100)) : 0
-
+/** Dashboard Zakat widget — Target/Distributed/Remaining/Percent all come
+ * from the same running-balance snapshot as the Zakat page, so
+ * "Remaining" here always matches "Outstanding Zakat Balance" above it. */
+export function ZakatProgressCard({ grossAccrued, totalDistributed, remaining, percent }: ZakatProgressSnapshot) {
   return (
     <div className="card">
       <div className="flex items-center justify-between">
@@ -20,14 +14,20 @@ export function ZakatProgressCard({ monthlyBudget, distributed }: ZakatProgressC
           View Zakat
         </Link>
       </div>
-      <div className="mt-4 grid grid-cols-3 gap-4 text-center sm:text-left">
+
+      <div className="mt-4">
+        <p className="text-[11px] uppercase tracking-wider text-slate-500">Outstanding Zakat Balance</p>
+        <p className="mt-1 font-display text-2xl font-bold text-neon-amber">{formatCurrency(remaining)}</p>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-4 border-t border-white/5 pt-4 text-center sm:text-left">
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500">Monthly Target</p>
-          <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(monthlyBudget)}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500">Target</p>
+          <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(grossAccrued)}</p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-500">Distributed</p>
-          <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(distributed)}</p>
+          <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(totalDistributed)}</p>
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-wider text-slate-500">Remaining</p>

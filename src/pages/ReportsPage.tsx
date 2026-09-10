@@ -3,6 +3,7 @@ import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
+import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
 import { classNames, formatCurrency, formatDate, isWithinRange, presetDateRange, todayISO, type DateRangePreset } from '@/lib/utils'
 
 type ReportView = 'overview' | 'unit-cost' | 'unit-payroll' | 'unit-expenses' | 'zakat' | 'advances'
@@ -264,13 +265,26 @@ export function ReportsPage() {
   )
   const zakatDistributedInPeriod = zakatRowsInPeriod.reduce((s, t) => s + Number(t.amount), 0)
   const zakatMonthlyBudget = zakatSettings?.monthly_budget ?? 100_000
+  const zakatOpeningBalance = zakatSettings?.opening_balance ?? 0
+  const zakatOpeningMonth = zakatSettings?.opening_month ?? todayISO().slice(0, 8) + '01'
+  const zakatMonthlyAddedInPeriod = monthsAccruedInRange(start, end, zakatOpeningMonth) * zakatMonthlyBudget
+  const zakatTotalDistributedSinceOpening = useMemo(
+    () => zakatTransactions.filter((t) => t.date >= zakatOpeningMonth).reduce((s, t) => s + Number(t.amount), 0),
+    [zakatTransactions, zakatOpeningMonth]
+  )
+  const zakatOutstandingBalance = computeZakatOutstanding({
+    openingBalance: zakatOpeningBalance,
+    openingMonth: zakatOpeningMonth,
+    monthlyTarget: zakatMonthlyBudget,
+    totalDistributedSinceOpening: zakatTotalDistributedSinceOpening,
+  })
 
   async function exportZakat(format: 'pdf' | 'excel') {
     const filenameBase = `protees-zakat-distribution-${start}-to-${end}`
     if (format === 'pdf') {
       await exportReportPdf({
         title: 'Zakat Distribution',
-        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Monthly Budget: ${formatCurrency(zakatMonthlyBudget)}`,
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Opening Balance: ${formatCurrency(zakatOpeningBalance)}  ·  Outstanding Balance: ${formatCurrency(zakatOutstandingBalance)}`,
         head: ['Date', 'Recipient', 'Amount', 'Notes'],
         rows: zakatRowsInPeriod.map((t) => [formatDate(t.date), t.recipient_name, formatCurrency(t.amount), t.notes ?? '']),
         footer: ['', 'Total Distributed', formatCurrency(zakatDistributedInPeriod), ''],
@@ -596,9 +610,11 @@ export function ReportsPage() {
 
       {view === 'zakat' && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <SummaryCard label="Monthly Budget" value={formatCurrency(zakatMonthlyBudget)} />
-            <SummaryCard label="Distributed (period)" value={formatCurrency(zakatDistributedInPeriod)} tone="text-neon-green" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <SummaryCard label="Opening Balance" value={formatCurrency(zakatOpeningBalance)} />
+            <SummaryCard label="Monthly Added Zakat (period)" value={formatCurrency(zakatMonthlyAddedInPeriod)} />
+            <SummaryCard label="Total Distributed (period)" value={formatCurrency(zakatDistributedInPeriod)} tone="text-neon-green" />
+            <SummaryCard label="Current Outstanding Balance" value={formatCurrency(zakatOutstandingBalance)} tone="text-neon-amber" />
             <SummaryCard label="Recipients (period)" value={String(zakatRowsInPeriod.length)} />
           </div>
           {zakatRowsInPeriod.length === 0 ? (

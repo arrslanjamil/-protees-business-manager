@@ -877,3 +877,30 @@ insert into zakat_settings (id, monthly_budget) values (1, 100000) on conflict (
 alter table zakat_settings enable row level security;
 drop policy if exists "authenticated app users only" on zakat_settings;
 create policy "authenticated app users only" on zakat_settings for all using (is_app_user()) with check (is_app_user());
+
+-- =============================================================================
+-- Zakat opening balance + cumulative outstanding (see migration_011_zakat_opening_balance.sql)
+-- =============================================================================
+
+-- Reworks Zakat tracking from a per-month-reset budget into a running
+-- outstanding balance:
+--
+--   Outstanding Balance = Opening Balance
+--                        + (months elapsed since opening_month × Monthly Target)
+--                        - (Zakat distributed since opening_month)
+--
+-- opening_balance: pending unpaid Zakat carried in from before tracking
+-- started. opening_month: the first-of-month date it's effective as of —
+-- Monthly Target accrues once per calendar month from there on, computed
+-- in the app as a pure function of today's date (no cron/trigger needed).
+--
+-- Safe to re-run — the UPDATE only seeds these on first run.
+
+alter table zakat_settings add column if not exists opening_balance numeric(12,2) not null default 0;
+alter table zakat_settings add column if not exists opening_month date not null default date_trunc('month', current_date)::date;
+
+update zakat_settings
+set opening_balance = 326500,
+    opening_month = date_trunc('month', current_date)::date,
+    updated_at = now()
+where id = 1 and opening_balance = 0;
