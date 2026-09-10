@@ -15,6 +15,7 @@ import { ProteesUnitPage } from '@/pages/ProteesUnitPage'
 import { UnitExpensesPage } from '@/pages/UnitExpensesPage'
 import { AdvancesPage } from '@/pages/AdvancesPage'
 import { ReportsPage } from '@/pages/ReportsPage'
+import { ZakatPage } from '@/pages/ZakatPage'
 import { UnitsPage } from '@/pages/UnitsPage'
 import { FactoryAuthProvider } from '@/context/FactoryAuthContext'
 import { FactoryRoot } from '@/pages/factory/FactoryRoot'
@@ -43,6 +44,7 @@ export default function App() {
                     <Route path="/employees" element={<EmployeesPage />} />
                     <Route path="/salary" element={<SalaryPage />} />
                     <Route path="/advances" element={<AdvancesPage />} />
+                    <Route path="/zakat" element={<ZakatPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route path="/units" element={<UnitsPage />} />
                     <Route path="/activity-log" element={<ActivityLogPage />} />

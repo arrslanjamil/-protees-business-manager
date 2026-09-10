@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
-import { EMPLOYEE_TYPE_LABELS, type Employee, type EmployeeType } from '@/lib/types'
+import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, type Employee, type EmployeeGroup, type EmployeeType } from '@/lib/types'
 import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const emptyForm = {
@@ -15,6 +15,7 @@ const emptyForm = {
   joinDate: todayISO(),
   employeeType: 'monthly' as EmployeeType,
   ratePerPiece: '',
+  employeeGroup: 'regular' as EmployeeGroup,
 }
 
 export function EmployeesPage() {
@@ -52,6 +53,7 @@ export function EmployeesPage() {
       joinDate: emp.join_date ?? todayISO(),
       employeeType: emp.employee_type,
       ratePerPiece: emp.rate_per_piece != null ? String(emp.rate_per_piece) : '',
+      employeeGroup: emp.employee_group,
     })
     setError(null)
     setModalOpen(true)
@@ -88,6 +90,7 @@ export function EmployeesPage() {
         joinDate: form.joinDate || null,
         employeeType: form.employeeType,
         ratePerPiece,
+        employeeGroup: form.employeeGroup,
       }
       if (editing) {
         await updateEmployee(editing.id, payload)
@@ -163,11 +166,12 @@ export function EmployeesPage() {
                         .toUpperCase()}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-white">{emp.name}</p>
                         <Badge color={emp.employee_type === 'contract' ? 'purple' : 'cyan'}>
                           {EMPLOYEE_TYPE_LABELS[emp.employee_type]}
                         </Badge>
+                        {emp.employee_group === 'unit' && <Badge color="amber">{EMPLOYEE_GROUP_LABELS.unit}</Badge>}
                       </div>
                       {emp.join_date && (
                         <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
@@ -253,6 +257,29 @@ export function EmployeesPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="label-field">Employee group</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['regular', 'unit'] as EmployeeGroup[]).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setForm({ ...form, employeeGroup: g })}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
+                    form.employeeGroup === g
+                      ? 'border-neon-amber/50 bg-neon-amber/10 text-neon-amber'
+                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {EMPLOYEE_GROUP_LABELS[g]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Unit Employee salaries count toward Unit Payroll/Unit Cost and are excluded from Regular Payroll totals.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             {form.employeeType === 'contract' ? (

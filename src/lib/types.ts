@@ -14,6 +14,8 @@ export type AdvanceBalanceRow = Database['public']['Views']['advance_balance_by_
 export type AppUser = Database['public']['Tables']['app_users']['Row']
 export type AuditLogEntry = Database['public']['Tables']['audit_log']['Row']
 export type AuditAction = AuditLogEntry['action']
+export type ZakatTransaction = Database['public']['Tables']['zakat_transactions']['Row']
+export type ZakatSettings = Database['public']['Tables']['zakat_settings']['Row']
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   create: 'Created',
@@ -33,6 +35,20 @@ export const EMPLOYEE_TYPE_LABELS: Record<EmployeeType, string> = {
 export const DEPARTMENT_LABELS: Record<Department, string> = {
   cutting_department: 'Employees',
   protees_unit: 'Protees Unit',
+}
+
+export type EmployeeGroup = 'regular' | 'unit'
+
+export const EMPLOYEE_GROUP_LABELS: Record<EmployeeGroup, string> = {
+  regular: 'Regular Employee',
+  unit: 'Unit Employee',
+}
+
+export type ExpenseScope = 'business' | 'unit'
+
+export const EXPENSE_SCOPE_LABELS: Record<ExpenseScope, string> = {
+  business: 'Business Expense',
+  unit: 'Unit Expense',
 }
 
 export interface PersonWithBalance {

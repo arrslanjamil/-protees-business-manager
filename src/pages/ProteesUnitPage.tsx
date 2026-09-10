@@ -26,6 +26,7 @@ export function ProteesUnitPage() {
     supervisors,
     advances,
     unitPayments,
+    expenses,
     addSupervisor,
     updateSupervisor,
     deleteSupervisor,
@@ -46,6 +47,15 @@ export function ProteesUnitPage() {
   const totalAdvancesGiven = unitAdvances.reduce((sum, a) => sum + Number(a.amount), 0)
   const totalPaymentsMade = unitPayments.reduce((sum, p) => sum + Number(p.net_amount), 0)
   const totalOvertimePaid = unitPayments.reduce((sum, p) => sum + Number(p.overtime_amount), 0)
+
+  // Unit Overview — Total Unit Cost = Unit Payments + Unit Expenses only
+  // (does not include business expenses; Unit Employee payroll is tracked
+  // separately via the Unit Payroll report).
+  const totalUnitExpenses = useMemo(
+    () => expenses.filter((e) => e.expense_scope === 'unit').reduce((sum, e) => sum + Number(e.amount), 0),
+    [expenses]
+  )
+  const totalUnitCost = totalPaymentsMade + totalUnitExpenses
 
   const timeline = useMemo<TimelineEntry[]>(() => {
     const rows: TimelineEntry[] = []
@@ -274,6 +284,29 @@ export function ProteesUnitPage() {
         <StatCard label="Total Payments Made" value={formatCurrency(totalPaymentsMade)} icon={Wallet} accent="green" hint={`${unitPayments.length} payments`} />
         <StatCard label="Outstanding Balance" value={formatCurrency(outstandingBalance)} icon={HandCoins} accent={outstandingBalance > 0 ? 'red' : 'green'} />
         <StatCard label="Total Overtime Paid" value={formatCurrency(totalOvertimePaid)} icon={Wallet} accent="cyan" />
+      </div>
+
+      <div className="card">
+        <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Unit Overview</h2>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Total Advances Given</p>
+            <p className="mt-1 font-display text-lg font-bold text-neon-amber">{formatCurrency(totalAdvancesGiven)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Total Payments Made</p>
+            <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(totalPaymentsMade)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Total Unit Expenses</p>
+            <p className="mt-1 font-display text-lg font-bold text-neon-purple">{formatCurrency(totalUnitExpenses)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Total Unit Cost</p>
+            <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(totalUnitCost)}</p>
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] text-slate-500">Total Unit Cost = Total Payments Made + Total Unit Expenses.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

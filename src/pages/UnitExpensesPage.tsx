@@ -5,7 +5,10 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { EXPENSE_SCOPE_LABELS, type ExpenseScope } from '@/lib/types'
+import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+
+type ScopeFilter = 'all' | ExpenseScope
 
 export function UnitExpensesPage() {
   const { expenses, addExpense, deleteExpense, expenseCategoryNames, addExpenseCategory } = useData()
@@ -15,12 +18,20 @@ export function UnitExpensesPage() {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO())
   const [notes, setNotes] = useState('')
+  const [expenseScope, setExpenseScope] = useState<ExpenseScope>('business')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
 
   const sortedExpenses = useMemo(
     () => [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [expenses]
+  )
+
+  const filteredExpenses = useMemo(
+    () => (scopeFilter === 'all' ? sortedExpenses : sortedExpenses.filter((e) => e.expense_scope === scopeFilter)),
+    [sortedExpenses, scopeFilter]
   )
 
   const totalThisMonth = useMemo(() => {
@@ -39,6 +50,7 @@ export function UnitExpensesPage() {
     setAmount('')
     setDate(todayISO())
     setNotes('')
+    setExpenseScope('business')
     setError(null)
     setModalOpen(true)
   }
@@ -60,7 +72,7 @@ export function UnitExpensesPage() {
     setSaving(true)
     setError(null)
     try {
-      await addExpense({ title: title.trim(), category, amount: amt, date, notes: notes.trim() || undefined })
+      await addExpense({ title: title.trim(), category, amount: amt, date, notes: notes.trim() || undefined, expenseScope })
       setModalOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record expense.')
@@ -78,7 +90,7 @@ export function UnitExpensesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-white">Unit Expenses</h1>
+          <h1 className="font-display text-2xl font-bold text-white">Expenses</h1>
           <p className="mt-1 text-sm text-slate-400">
             This month: <span className="font-semibold text-neon-red">{formatCurrency(totalThisMonth)}</span>
           </p>
@@ -88,14 +100,33 @@ export function UnitExpensesPage() {
         </button>
       </div>
 
-      {sortedExpenses.length === 0 ? (
-        <EmptyState icon={Receipt} title="No expenses recorded" description="Track thread, fabric, packing, transport, printing, and other unit costs here." />
+      <div className="flex flex-wrap gap-2">
+        {(['all', 'business', 'unit'] as ScopeFilter[]).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setScopeFilter(f)}
+            className={classNames(
+              'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
+              scopeFilter === f
+                ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+            )}
+          >
+            {f === 'all' ? 'All' : EXPENSE_SCOPE_LABELS[f]}
+          </button>
+        ))}
+      </div>
+
+      {filteredExpenses.length === 0 ? (
+        <EmptyState icon={Receipt} title="No expenses recorded" description="Track thread, fabric, packing, transport, printing, and other costs here." />
       ) : (
         <div className="card overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
                 <th className="px-5 py-3.5">Title</th>
+                <th className="px-5 py-3.5">Scope</th>
                 <th className="px-5 py-3.5">Category</th>
                 <th className="px-5 py-3.5">Amount</th>
                 <th className="px-5 py-3.5">Notes</th>
@@ -105,9 +136,12 @@ export function UnitExpensesPage() {
               </tr>
             </thead>
             <tbody>
-              {sortedExpenses.map((exp) => (
+              {filteredExpenses.map((exp) => (
                 <tr key={exp.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                   <td className="px-5 py-3.5 font-medium text-white">{exp.title}</td>
+                  <td className="px-5 py-3.5">
+                    <Badge color={exp.expense_scope === 'unit' ? 'purple' : 'green'}>{EXPENSE_SCOPE_LABELS[exp.expense_scope]}</Badge>
+                  </td>
                   <td className="px-5 py-3.5">
                     <Badge color="amber">{exp.category}</Badge>
                   </td>
@@ -130,8 +164,28 @@ export function UnitExpensesPage() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Unit Expense">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Expense">
         <div className="space-y-4">
+          <div>
+            <label className="label-field">Expense type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['business', 'unit'] as ExpenseScope[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setExpenseScope(s)}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
+                    expenseScope === s
+                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {EXPENSE_SCOPE_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <label className="label-field">Title</label>
             <input className="input-field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Thread purchase" />

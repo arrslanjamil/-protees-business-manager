@@ -9,13 +9,14 @@ export type WidgetId =
   | 'salary-due'
   | 'outstanding-advances'
   | 'total-expenses'
+  | 'unit-expenses'
   | 'khadim'
 
 /** The 4 large top-row KPIs — the numbers an owner needs within 5 seconds. */
 export const TOP_KPI_IDS: WidgetId[] = ['total-employees', 'total-payroll', 'salary-paid', 'salary-due']
 
 /** Smaller, secondary KPIs shown below the top row. */
-export const SECONDARY_KPI_IDS: WidgetId[] = ['outstanding-advances', 'total-expenses', 'khadim']
+export const SECONDARY_KPI_IDS: WidgetId[] = ['outstanding-advances', 'total-expenses', 'unit-expenses', 'khadim']
 
 export const DEFAULT_WIDGET_ORDER: WidgetId[] = [...TOP_KPI_IDS, ...SECONDARY_KPI_IDS]
 
