@@ -16,6 +16,7 @@ import { ZakatProgressCard } from '@/components/dashboard/ZakatProgressCard'
 import { useDashboardLayout, TOP_KPI_IDS, SECONDARY_KPI_IDS, type WidgetId } from '@/hooks/useDashboardLayout'
 import { trendBucketsInRange } from '@/lib/dashboardAnalytics'
 import { dashboardDateRange, formatCurrency, formatCurrencyCompact, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
+import { computeZakatProgress } from '@/lib/zakat'
 
 const DEFAULT_ZAKAT_MONTHLY_BUDGET = 100_000
 
@@ -133,18 +134,22 @@ export function DashboardPage() {
     [periodExpensesList]
   )
 
-  // --- Zakat Progress (current calendar month, independent of the dashboard
-  // date filter — Zakat tracks against a monthly budget, not a custom range) --
+  // --- Zakat Progress — Target/Distributed/Remaining derived from the same
+  // running-balance snapshot as the Zakat page, independent of the
+  // dashboard's own date filter (Zakat tracks its own running balance).
   const zakatMonthlyBudget = zakatSettings?.monthly_budget ?? DEFAULT_ZAKAT_MONTHLY_BUDGET
-  const zakatDistributedThisMonth = useMemo(() => {
-    const now = new Date()
-    return zakatTransactions
-      .filter((t) => {
-        const d = new Date(t.date)
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-      })
-      .reduce((s, t) => s + Number(t.amount), 0)
-  }, [zakatTransactions])
+  const zakatOpeningBalance = zakatSettings?.opening_balance ?? 0
+  const zakatOpeningMonth = zakatSettings?.opening_month ?? new Date().toISOString().slice(0, 10)
+  const zakatTotalDistributedSinceOpening = useMemo(
+    () => zakatTransactions.filter((t) => t.date >= zakatOpeningMonth).reduce((s, t) => s + Number(t.amount), 0),
+    [zakatTransactions, zakatOpeningMonth]
+  )
+  const zakatProgress = computeZakatProgress({
+    openingBalance: zakatOpeningBalance,
+    openingMonth: zakatOpeningMonth,
+    monthlyTarget: zakatMonthlyBudget,
+    totalDistributedSinceOpening: zakatTotalDistributedSinceOpening,
+  })
 
   // --- Expected Salary By Employee (all employees, both groups shown) -------
   const expectedSalaryRows = useMemo<ExpectedSalaryRow[]>(
@@ -325,7 +330,7 @@ export function DashboardPage() {
         </DndContext>
       )}
 
-      <ZakatProgressCard monthlyBudget={zakatMonthlyBudget} distributed={zakatDistributedThisMonth} />
+      <ZakatProgressCard {...zakatProgress} />
 
       <TrendChart data={trendData} />
 

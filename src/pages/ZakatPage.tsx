@@ -3,44 +3,48 @@ import { HeartHandshake, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { MONTH_NAMES } from '@/lib/types'
-import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
+import { computeZakatProgress, monthsAccruedInRange } from '@/lib/zakat'
+import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
 const DEFAULT_MONTHLY_BUDGET = 100_000
 
 export function ZakatPage() {
   const { zakatTransactions, zakatSettings, addZakatTransaction, deleteZakatTransaction, updateZakatBudget } = useData()
 
-  const now = new Date()
-  const [viewAll, setViewAll] = useState(false)
-  const [month, setMonth] = useState(now.getMonth())
-  const [year, setYear] = useState(now.getFullYear())
-
   const monthlyBudget = zakatSettings?.monthly_budget ?? DEFAULT_MONTHLY_BUDGET
+  const openingBalance = zakatSettings?.opening_balance ?? 0
+  const openingMonth = zakatSettings?.opening_month ?? todayISO().slice(0, 8) + '01'
 
-  const yearOptions = useMemo(() => {
-    const years = new Set<number>([now.getFullYear()])
-    for (const t of zakatTransactions) years.add(new Date(t.date).getFullYear())
-    return Array.from(years).sort((a, b) => b - a)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zakatTransactions])
+  const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
+  const [customStart, setCustomStart] = useState<string>(() => dashboardDateRange('15d').start)
+  const [customEnd, setCustomEnd] = useState<string>(() => dashboardDateRange('15d').end)
+  const { start, end } = useMemo(() => dashboardDateRange(preset, customStart, customEnd), [preset, customStart, customEnd])
 
   const sortedTransactions = useMemo(
     () => [...zakatTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [zakatTransactions]
   )
+  const periodTransactions = useMemo(() => sortedTransactions.filter((t) => isWithinRange(t.date, start, end)), [sortedTransactions, start, end])
+  const distributedInPeriod = periodTransactions.reduce((s, t) => s + Number(t.amount), 0)
+  const monthlyAddedInPeriod = monthsAccruedInRange(start, end, openingMonth) * monthlyBudget
 
-  const filteredTransactions = useMemo(() => {
-    if (viewAll) return sortedTransactions
-    return sortedTransactions.filter((t) => {
-      const d = new Date(t.date)
-      return d.getMonth() === month && d.getFullYear() === year
-    })
-  }, [sortedTransactions, viewAll, month, year])
-
-  const distributed = filteredTransactions.reduce((sum, t) => sum + Number(t.amount), 0)
-  const remaining = Math.max(0, monthlyBudget - distributed)
-  const percent = monthlyBudget > 0 ? Math.min(100, Math.round((distributed / monthlyBudget) * 100)) : 0
+  // Outstanding Balance is a live, running total — not scoped to the
+  // selected period (same treatment as Outstanding Advances elsewhere).
+  // The progress bar's Target/Distributed/Remaining all derive from this
+  // same snapshot, so "Remaining" always matches the Outstanding Balance
+  // card above instead of a separate this-month-only figure.
+  const totalDistributedSinceOpening = useMemo(
+    () => zakatTransactions.filter((t) => t.date >= openingMonth).reduce((s, t) => s + Number(t.amount), 0),
+    [zakatTransactions, openingMonth]
+  )
+  const zakatProgress = computeZakatProgress({
+    openingBalance,
+    openingMonth,
+    monthlyTarget: monthlyBudget,
+    totalDistributedSinceOpening,
+  })
+  const outstandingBalance = zakatProgress.remaining
 
   // --- Add entry modal -------------------------------------------------------
   const [modalOpen, setModalOpen] = useState(false)
@@ -122,92 +126,88 @@ export function ZakatPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Zakat Management</h1>
-          <p className="mt-1 text-sm text-slate-400">Track Zakat distributions against the monthly budget.</p>
+          <p className="mt-1 text-sm text-slate-400">Track the running outstanding balance and Zakat distributions.</p>
         </div>
         <button className="btn-primary" onClick={openCreate}>
           <Plus size={16} /> Record Distribution
         </button>
       </div>
 
-      <div className="card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Monthly Zakat Budget</p>
-            <p className="mt-1.5 font-display text-2xl font-bold text-white">{formatCurrency(monthlyBudget)}</p>
-          </div>
-          <button className="btn-secondary" onClick={openBudgetModal}>
-            <Pencil size={14} /> Edit Budget
-          </button>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="card">
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Opening Balance</p>
+          <p className="mt-1.5 font-display text-xl font-bold text-white">{formatCurrency(openingBalance)}</p>
+          <p className="mt-1 text-[11px] text-slate-500">As of {formatDate(openingMonth)}</p>
         </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <select className="input-field w-auto" value={month} onChange={(e) => setMonth(Number(e.target.value))} disabled={viewAll}>
-            {MONTH_NAMES.map((m, i) => (
-              <option key={m} value={i}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select className="input-field w-auto" value={year} onChange={(e) => setYear(Number(e.target.value))} disabled={viewAll}>
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => setViewAll((v) => !v)}
-            className={classNames(
-              'ml-auto rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
-              viewAll ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-            )}
-          >
-            {viewAll ? 'Showing All History' : 'View All History'}
-          </button>
+        <div className="card">
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Current Outstanding Balance</p>
+          <p className="mt-1.5 font-display text-xl font-bold text-neon-amber">{formatCurrency(outstandingBalance)}</p>
+          <p className="mt-1 text-[11px] text-slate-500">Live running total</p>
         </div>
-
-        {!viewAll && (
-          <div className="mt-5">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Zakat Progress</p>
-            <div className="mt-3 grid grid-cols-3 gap-4 text-center sm:text-left">
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-slate-500">Monthly Target</p>
-                <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(monthlyBudget)}</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-slate-500">Distributed</p>
-                <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(distributed)}</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-slate-500">Remaining</p>
-                <p className={classNames('mt-1 font-display text-lg font-bold', remaining > 0 ? 'text-neon-amber' : 'text-neon-green')}>
-                  {formatCurrency(remaining)}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="mb-1.5 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Progress</span>
-                <span className="font-semibold text-neon-green">{percent}%</span>
-              </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full border border-white/5 bg-base-900">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-neon-cyan to-neon-green transition-all duration-500 ease-out"
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
-            </div>
+        <div className="card">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Monthly Zakat Target</p>
+            <button className="rounded-lg p-1 text-slate-500 hover:bg-white/5 hover:text-white" onClick={openBudgetModal} aria-label="Edit monthly target">
+              <Pencil size={13} />
+            </button>
           </div>
-        )}
+          <p className="mt-1.5 font-display text-xl font-bold text-white">{formatCurrency(monthlyBudget)}</p>
+          <p className="mt-1 text-[11px] text-slate-500">Added automatically each month</p>
+        </div>
+        <div className="card">
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Distributed (period)</p>
+          <p className="mt-1.5 font-display text-xl font-bold text-neon-green">{formatCurrency(distributedInPeriod)}</p>
+          <p className="mt-1 text-[11px] text-slate-500">Monthly added in period: {formatCurrency(monthlyAddedInPeriod)}</p>
+        </div>
       </div>
 
+      <div className="card">
+        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Zakat Progress</p>
+        <div className="mt-3 grid grid-cols-3 gap-4 text-center sm:text-left">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Target</p>
+            <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(zakatProgress.grossAccrued)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Distributed</p>
+            <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(zakatProgress.totalDistributed)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Remaining</p>
+            <p className={classNames('mt-1 font-display text-lg font-bold', zakatProgress.remaining > 0 ? 'text-neon-amber' : 'text-neon-green')}>
+              {formatCurrency(zakatProgress.remaining)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between text-xs">
+            <span className="text-slate-400">Progress</span>
+            <span className="font-semibold text-neon-green">{zakatProgress.percent}%</span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full border border-white/5 bg-base-900">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-neon-cyan to-neon-green transition-all duration-500 ease-out"
+              style={{ width: `${zakatProgress.percent}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <DateRangeFilter
+        preset={preset}
+        onPresetChange={setPreset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onCustomStartChange={setCustomStart}
+        onCustomEndChange={setCustomEnd}
+        rangeStart={start}
+        rangeEnd={end}
+      />
+
       <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          {viewAll ? 'Full Zakat History' : `Distributions — ${MONTH_NAMES[month]} ${year}`}
-        </h2>
-        {filteredTransactions.length === 0 ? (
-          <EmptyState icon={HeartHandshake} title="No Zakat distributions" description="Recorded distributions will show up here." />
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Recipient History</h2>
+        {periodTransactions.length === 0 ? (
+          <EmptyState icon={HeartHandshake} title="No Zakat distributions" description="Recorded distributions in this period will show up here." />
         ) : (
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -222,7 +222,7 @@ export function ZakatPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTransactions.map((t) => (
+                {periodTransactions.map((t) => (
                   <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                     <td className="px-5 py-3.5 font-medium text-white">{t.recipient_name}</td>
                     <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(t.amount)}</td>
@@ -274,10 +274,10 @@ export function ZakatPage() {
         </div>
       </Modal>
 
-      <Modal open={budgetModalOpen} onClose={() => setBudgetModalOpen(false)} title="Edit Monthly Zakat Budget" maxWidth="max-w-sm">
+      <Modal open={budgetModalOpen} onClose={() => setBudgetModalOpen(false)} title="Edit Monthly Zakat Target" maxWidth="max-w-sm">
         <div className="space-y-4">
           <div>
-            <label className="label-field">Monthly budget</label>
+            <label className="label-field">Monthly target</label>
             <input type="number" className="input-field" value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="100000" />
           </div>
           {budgetError && <p className="text-xs text-neon-red">{budgetError}</p>}
