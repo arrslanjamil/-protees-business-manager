@@ -15,10 +15,12 @@ import type {
   AdvanceDeduction,
   Department,
   Employee,
+  EmployeeGroup,
   EmployeeType,
   EmployeeWithBalance,
   Expense,
   ExpenseCategory,
+  ExpenseScope,
   KhadimTransaction,
   KhadimTransactionType,
   SalaryPayment,
@@ -26,6 +28,8 @@ import type {
   SupervisorWithBalance,
   Unit,
   UnitPayment,
+  ZakatSettings,
+  ZakatTransaction,
 } from '@/lib/types'
 import { sortExpenseCategoryNames } from '@/lib/types'
 import { todayISO } from '@/lib/utils'
@@ -74,6 +78,8 @@ interface DataContextValue {
   expenseCategoryNames: string[]
   khadimTransactions: KhadimTransaction[]
   khadimTotals: KhadimTotals
+  zakatTransactions: ZakatTransaction[]
+  zakatSettings: ZakatSettings | null
   employeesWithBalance: EmployeeWithBalance[]
   supervisorsWithBalance: SupervisorWithBalance[]
   balanceFor: (name: string, department: Department) => number
@@ -89,10 +95,18 @@ interface DataContextValue {
     joinDate?: string | null
     employeeType?: EmployeeType
     ratePerPiece?: number | null
+    employeeGroup?: EmployeeGroup
   }) => Promise<void>
   updateEmployee: (
     id: number,
-    input: Partial<{ name: string; salary: number; joinDate: string | null; employeeType: EmployeeType; ratePerPiece: number | null }>
+    input: Partial<{
+      name: string
+      salary: number
+      joinDate: string | null
+      employeeType: EmployeeType
+      ratePerPiece: number | null
+      employeeGroup: EmployeeGroup
+    }>
   ) => Promise<void>
   deleteEmployee: (id: number) => Promise<void>
 
@@ -109,7 +123,7 @@ interface DataContextValue {
   recordUnitPayment: (input: RecordUnitPaymentInput) => Promise<void>
   deleteUnitPayment: (id: number) => Promise<void>
 
-  addExpense: (input: { title: string; category: string; amount: number; date?: string; notes?: string }) => Promise<void>
+  addExpense: (input: { title: string; category: string; amount: number; date?: string; notes?: string; expenseScope?: ExpenseScope }) => Promise<void>
   deleteExpense: (id: number) => Promise<void>
 
   addExpenseCategory: (name: string) => Promise<void>
@@ -117,6 +131,10 @@ interface DataContextValue {
   addKhadimPayment: (input: { date?: string; amount: number; notes?: string }) => Promise<void>
   addKhadimBill: (input: { date?: string; amount: number; description: string }) => Promise<void>
   deleteKhadimTransaction: (id: number) => Promise<void>
+
+  addZakatTransaction: (input: { recipientName: string; amount: number; date?: string; notes?: string }) => Promise<void>
+  deleteZakatTransaction: (id: number) => Promise<void>
+  updateZakatBudget: (monthlyBudget: number) => Promise<void>
 
   suggestedDeduction: (name: string, department: Department, payAmount: number) => number
   findEmployeeByName: (name: string) => Employee | undefined
@@ -139,6 +157,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
   const [khadimTransactions, setKhadimTransactions] = useState<KhadimTransaction[]>([])
+  const [zakatTransactions, setZakatTransactions] = useState<ZakatTransaction[]>([])
+  const [zakatSettings, setZakatSettings] = useState<ZakatSettings | null>(null)
 
   const hasLoadedOnceRef = useRef(false)
 
@@ -157,7 +177,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [u, e, sup, a, sp, up, ad, ex, kh, ec] = await Promise.all([
+      const [u, e, sup, a, sp, up, ad, ex, kh, ec, zt, zs] = await Promise.all([
         supabase.from('units').select('*').order('name'),
         supabase.from('employees').select('*').order('created_at', { ascending: false }),
         supabase.from('supervisors').select('*').order('created_at', { ascending: false }),
@@ -168,8 +188,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         supabase.from('expenses').select('*').order('date', { ascending: false }),
         supabase.from('khadim_transactions').select('*').order('date', { ascending: true }),
         supabase.from('expense_categories').select('*').order('created_at', { ascending: true }),
+        supabase.from('zakat_transactions').select('*').order('date', { ascending: false }),
+        supabase.from('zakat_settings').select('*').eq('id', 1).maybeSingle(),
       ])
-      const firstError = [u, e, sup, a, sp, up, ad, ex, kh, ec].find((r) => r.error)?.error
+      const firstError = [u, e, sup, a, sp, up, ad, ex, kh, ec, zt, zs].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setUnits(u.data ?? [])
@@ -182,6 +204,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setExpenses(ex.data ?? [])
       setKhadimTransactions(kh.data ?? [])
       setExpenseCategories(ec.data ?? [])
+      setZakatTransactions(zt.data ?? [])
+      setZakatSettings(zs.data ?? null)
       hasLoadedOnceRef.current = true
     } catch (err) {
       const message =
@@ -364,24 +388,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Employees -----------------------------------------------------------
-  const addEmployee: DataContextValue['addEmployee'] = async ({ name, salary, joinDate, employeeType, ratePerPiece }) => {
+  const addEmployee: DataContextValue['addEmployee'] = async ({ name, salary, joinDate, employeeType, ratePerPiece, employeeGroup }) => {
     const { error: err } = await supabase.from('employees').insert({
       name,
       salary,
       join_date: joinDate ?? null,
       employee_type: employeeType ?? 'monthly',
       rate_per_piece: ratePerPiece ?? null,
+      employee_group: employeeGroup ?? 'regular',
     })
     if (err) throw err
     await refreshAll()
   }
   const updateEmployee: DataContextValue['updateEmployee'] = async (id, input) => {
-    const payload: { name?: string; salary?: number; join_date?: string | null; employee_type?: EmployeeType; rate_per_piece?: number | null } = {}
+    const payload: {
+      name?: string
+      salary?: number
+      join_date?: string | null
+      employee_type?: EmployeeType
+      rate_per_piece?: number | null
+      employee_group?: EmployeeGroup
+    } = {}
     if (input.name !== undefined) payload.name = input.name
     if (input.salary !== undefined) payload.salary = input.salary
     if (input.joinDate !== undefined) payload.join_date = input.joinDate
     if (input.employeeType !== undefined) payload.employee_type = input.employeeType
     if (input.ratePerPiece !== undefined) payload.rate_per_piece = input.ratePerPiece
+    if (input.employeeGroup !== undefined) payload.employee_group = input.employeeGroup
     const { error: err } = await supabase.from('employees').update(payload).eq('id', id)
     if (err) throw err
     await refreshAll()
@@ -532,14 +565,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
-  // --- Unit Expenses -------------------------------------------------------------
-  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes }) => {
+  // --- Expenses (Business or Unit, via expense_scope) -----------------------------
+  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope }) => {
     const { error: err } = await supabase.from('expenses').insert({
       title,
       category,
       amount,
       date: date ?? todayISO(),
       notes: notes ?? null,
+      expense_scope: expenseScope ?? 'business',
     })
     if (err) throw err
     await refreshAll()
@@ -584,6 +618,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  // --- Zakat Management --------------------------------------------------------
+  const addZakatTransaction: DataContextValue['addZakatTransaction'] = async ({ recipientName, amount, date, notes }) => {
+    const { error: err } = await supabase.from('zakat_transactions').insert({
+      recipient_name: recipientName,
+      amount,
+      date: date ?? todayISO(),
+      notes: notes ?? null,
+    })
+    if (err) throw err
+    await refreshAll()
+  }
+  const deleteZakatTransaction: DataContextValue['deleteZakatTransaction'] = async (id) => {
+    const { error: err } = await supabase.from('zakat_transactions').delete().eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+  const updateZakatBudget: DataContextValue['updateZakatBudget'] = async (monthlyBudget) => {
+    const { error: err } = await supabase
+      .from('zakat_settings')
+      .upsert({ id: 1, monthly_budget: monthlyBudget, updated_at: new Date().toISOString() })
+    if (err) throw err
+    await refreshAll()
+  }
+
   const value: DataContextValue = {
     loading,
     error,
@@ -600,6 +658,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     expenseCategoryNames,
     khadimTransactions,
     khadimTotals,
+    zakatTransactions,
+    zakatSettings,
     employeesWithBalance,
     supervisorsWithBalance,
     balanceFor,
@@ -625,6 +685,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addKhadimPayment,
     addKhadimBill,
     deleteKhadimTransaction,
+    addZakatTransaction,
+    deleteZakatTransaction,
+    updateZakatBudget,
     suggestedDeduction,
     findEmployeeByName,
     findSupervisorByName,

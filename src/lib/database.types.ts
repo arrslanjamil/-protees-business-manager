@@ -21,6 +21,7 @@ export interface Database {
           join_date: string | null
           employee_type: 'monthly' | 'contract'
           rate_per_piece: number | null
+          employee_group: 'regular' | 'unit'
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -35,6 +36,7 @@ export interface Database {
           join_date?: string | null
           employee_type?: 'monthly' | 'contract'
           rate_per_piece?: number | null
+          employee_group?: 'regular' | 'unit'
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['employees']['Insert']>
@@ -94,6 +96,7 @@ export interface Database {
           amount: number
           date: string
           notes: string | null
+          expense_scope: 'business' | 'unit'
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -108,6 +111,7 @@ export interface Database {
           amount: number
           date?: string
           notes?: string | null
+          expense_scope?: 'business' | 'unit'
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['expenses']['Insert']>
@@ -372,6 +376,45 @@ export interface Database {
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['dashboard_layouts']['Insert']>
+        Relationships: []
+      }
+      zakat_transactions: {
+        Row: {
+          id: number
+          recipient_name: string
+          amount: number
+          date: string
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          recipient_name: string
+          amount: number
+          date?: string
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['zakat_transactions']['Insert']>
+        Relationships: []
+      }
+      zakat_settings: {
+        Row: {
+          id: number
+          monthly_budget: number
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          monthly_budget?: number
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['zakat_settings']['Insert']>
         Relationships: []
       }
       profiles: {

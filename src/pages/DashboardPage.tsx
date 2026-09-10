@@ -12,9 +12,12 @@ import { SortableWidget } from '@/components/dashboard/SortableWidget'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 import { DataTable, type DataTableColumn } from '@/components/dashboard/DataTable'
+import { ZakatProgressCard } from '@/components/dashboard/ZakatProgressCard'
 import { useDashboardLayout, TOP_KPI_IDS, SECONDARY_KPI_IDS, type WidgetId } from '@/hooks/useDashboardLayout'
 import { trendBucketsInRange } from '@/lib/dashboardAnalytics'
 import { dashboardDateRange, formatCurrency, formatCurrencyCompact, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
+
+const DEFAULT_ZAKAT_MONTHLY_BUDGET = 100_000
 
 function isKhadimExpense(title: string, category: string, notes: string | null): boolean {
   const needle = 'khadim'
@@ -25,6 +28,7 @@ interface ExpectedSalaryRow {
   id: number
   name: string
   type: 'Monthly' | 'Contract'
+  group: 'Regular' | 'Unit'
   expectedLabel: string
   expectedAmount: number
 }
@@ -43,7 +47,7 @@ interface DepartmentRow {
 }
 
 export function DashboardPage() {
-  const { employeesWithBalance, supervisorsWithBalance, expenses, salaryPayments, unitPayments } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
@@ -68,11 +72,24 @@ export function DashboardPage() {
 
   // --- Period-scoped records ---------------------------------------------------
   const periodExpensesList = useMemo(() => expenses.filter((e) => isWithinRange(e.date, start, end)), [expenses, start, end])
+  const periodBusinessExpenses = useMemo(() => periodExpensesList.filter((e) => e.expense_scope !== 'unit'), [periodExpensesList])
+  const periodUnitExpenses = useMemo(() => periodExpensesList.filter((e) => e.expense_scope === 'unit'), [periodExpensesList])
   const periodSalaryList = useMemo(() => salaryPayments.filter((p) => isWithinRange(p.payment_date, start, end)), [salaryPayments, start, end])
   const periodUnitList = useMemo(() => unitPayments.filter((p) => isWithinRange(p.payment_date, start, end)), [unitPayments, start, end])
 
-  const totalExpenses = periodExpensesList.reduce((s, e) => s + Number(e.amount), 0)
-  const periodSalaryNet = periodSalaryList.reduce((s, p) => s + Number(p.net_amount), 0)
+  // Total Expenses is business-only — Unit Expenses are excluded and get
+  // their own card/calculations instead (per the Unit module restructure).
+  const totalExpenses = periodBusinessExpenses.reduce((s, e) => s + Number(e.amount), 0)
+  const unitExpensesTotal = periodUnitExpenses.reduce((s, e) => s + Number(e.amount), 0)
+
+  // Regular Payroll is scoped to employee_group='regular' — Unit Employees'
+  // salaries count toward Unit Payroll/Unit Cost instead (see Unit Payroll
+  // report and the Protees Unit page's Unit Overview card).
+  const periodSalaryListRegular = useMemo(
+    () => periodSalaryList.filter((p) => employeesWithBalance.find((e) => e.name === p.employee_name)?.employee_group !== 'unit'),
+    [periodSalaryList, employeesWithBalance]
+  )
+  const periodSalaryNet = periodSalaryListRegular.reduce((s, p) => s + Number(p.net_amount), 0)
   const periodUnitNet = periodUnitList.reduce((s, p) => s + Number(p.net_amount), 0)
   const salaryPaid = periodSalaryNet + periodUnitNet
 
@@ -82,24 +99,27 @@ export function DashboardPage() {
     employeesWithBalance.reduce((s, e) => s + Math.max(0, e.advanceBalance), 0) +
     supervisorsWithBalance.reduce((s, sup) => s + Math.max(0, sup.advanceBalance), 0)
 
-  // --- Payroll -------------------------------------------------------------
-  const monthlyEmployees = useMemo(() => employeesWithBalance.filter((e) => e.employee_type === 'monthly'), [employeesWithBalance])
+  // --- Payroll (Regular employees only) -------------------------------------
+  const regularEmployees = useMemo(() => employeesWithBalance.filter((e) => e.employee_group !== 'unit'), [employeesWithBalance])
+  const monthlyEmployees = useMemo(() => regularEmployees.filter((e) => e.employee_type === 'monthly'), [regularEmployees])
   const totalMonthlyPayroll = monthlyEmployees.reduce((s, e) => s + Number(e.salary), 0)
   const contractPeriodPayments = useMemo(
-    () => periodSalaryList.filter((p) => employeesWithBalance.find((e) => e.name === p.employee_name)?.employee_type === 'contract'),
-    [periodSalaryList, employeesWithBalance]
+    () => periodSalaryListRegular.filter((p) => employeesWithBalance.find((e) => e.name === p.employee_name)?.employee_type === 'contract'),
+    [periodSalaryListRegular, employeesWithBalance]
   )
   const totalContractPayroll = contractPeriodPayments.reduce((s, p) => s + Number(p.base_amount), 0)
   const totalPayroll = totalMonthlyPayroll + totalContractPayroll
   const salaryDue = Math.max(0, totalPayroll - periodSalaryNet - outstandingAdvances)
 
-  // --- Trend chart: expenses vs salaries, day- or month-bucketed ----------
+  // --- Trend chart: (business) expenses vs salaries, day- or month-bucketed --
   const trendBuckets = useMemo(() => trendBucketsInRange(start, end), [start, end])
   const trendData = useMemo(
     () =>
       trendBuckets.map((b) => ({
         label: b.label,
-        expenses: expenses.filter((e) => isWithinRange(e.date, b.start, b.end)).reduce((s, e) => s + Number(e.amount), 0),
+        expenses: expenses
+          .filter((e) => e.expense_scope !== 'unit' && isWithinRange(e.date, b.start, b.end))
+          .reduce((s, e) => s + Number(e.amount), 0),
         salaries:
           salaryPayments.filter((p) => isWithinRange(p.payment_date, b.start, b.end)).reduce((s, p) => s + Number(p.net_amount), 0) +
           unitPayments.filter((p) => isWithinRange(p.payment_date, b.start, b.end)).reduce((s, p) => s + Number(p.net_amount), 0),
@@ -113,12 +133,26 @@ export function DashboardPage() {
     [periodExpensesList]
   )
 
-  // --- Expected Salary By Employee ------------------------------------------
+  // --- Zakat Progress (current calendar month, independent of the dashboard
+  // date filter — Zakat tracks against a monthly budget, not a custom range) --
+  const zakatMonthlyBudget = zakatSettings?.monthly_budget ?? DEFAULT_ZAKAT_MONTHLY_BUDGET
+  const zakatDistributedThisMonth = useMemo(() => {
+    const now = new Date()
+    return zakatTransactions
+      .filter((t) => {
+        const d = new Date(t.date)
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      })
+      .reduce((s, t) => s + Number(t.amount), 0)
+  }, [zakatTransactions])
+
+  // --- Expected Salary By Employee (all employees, both groups shown) -------
   const expectedSalaryRows = useMemo<ExpectedSalaryRow[]>(
     () =>
       employeesWithBalance.map((emp) => {
+        const group = emp.employee_group === 'unit' ? 'Unit' : 'Regular'
         if (emp.employee_type === 'monthly') {
-          return { id: emp.id, name: emp.name, type: 'Monthly', expectedLabel: formatCurrency(emp.salary), expectedAmount: Number(emp.salary) }
+          return { id: emp.id, name: emp.name, type: 'Monthly', group, expectedLabel: formatCurrency(emp.salary), expectedAmount: Number(emp.salary) }
         }
         const payment = periodSalaryList.find((p) => p.employee_name === emp.name)
         if (payment && payment.pieces_completed != null) {
@@ -128,23 +162,24 @@ export function DashboardPage() {
             id: emp.id,
             name: emp.name,
             type: 'Contract',
+            group,
             expectedLabel: `${payment.pieces_completed} × ${formatCurrency(rate)} = ${formatCurrency(amount)}`,
             expectedAmount: amount,
           }
         }
-        return { id: emp.id, name: emp.name, type: 'Contract', expectedLabel: 'No pieces entered', expectedAmount: 0 }
+        return { id: emp.id, name: emp.name, type: 'Contract', group, expectedLabel: 'No pieces entered', expectedAmount: 0 }
       }),
     [employeesWithBalance, periodSalaryList]
   )
 
-  // --- Top Expense Categories ------------------------------------------------
+  // --- Top Expense Categories (business expenses only, matching Total Expenses) --
   const categoryRows = useMemo<CategoryRow[]>(() => {
     const totals = new Map<string, number>()
-    for (const e of periodExpensesList) totals.set(e.category, (totals.get(e.category) ?? 0) + Number(e.amount))
+    for (const e of periodBusinessExpenses) totals.set(e.category, (totals.get(e.category) ?? 0) + Number(e.amount))
     return Array.from(totals.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([name, amount]) => ({ name, amount, percent: totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0 }))
-  }, [periodExpensesList, totalExpenses])
+  }, [periodBusinessExpenses, totalExpenses])
 
   // --- Department Payroll -----------------------------------------------------
   const departmentRows = useMemo<DepartmentRow[]>(
@@ -198,6 +233,17 @@ export function DashboardPage() {
             fullValue={formatCurrency(totalExpenses)}
             icon={Wallet}
             accent="cyan"
+            hint="Business · Selected period"
+          />
+        )
+      case 'unit-expenses':
+        return (
+          <StatCard
+            label="Unit Expenses"
+            value={formatCurrencyCompact(unitExpensesTotal)}
+            fullValue={formatCurrency(unitExpensesTotal)}
+            icon={Wallet}
+            accent="purple"
             hint="Selected period"
           />
         )
@@ -220,6 +266,7 @@ export function DashboardPage() {
   const expectedSalaryColumns: DataTableColumn<ExpectedSalaryRow>[] = [
     { key: 'name', header: 'Employee', render: (r) => <span className="font-medium text-white">{r.name}</span> },
     { key: 'type', header: 'Type', render: (r) => <Badge color={r.type === 'Monthly' ? 'cyan' : 'purple'}>{r.type}</Badge> },
+    { key: 'group', header: 'Group', render: (r) => (r.group === 'Unit' ? <Badge color="amber">Unit</Badge> : <span className="text-slate-500">Regular</span>) },
     { key: 'expected', header: 'Expected Salary', align: 'right', render: (r) => r.expectedLabel },
   ]
 
@@ -267,7 +314,7 @@ export function DashboardPage() {
           </SortableContext>
 
           <SortableContext items={secondaryOrder} strategy={rectSortingStrategy}>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {secondaryOrder.map((id) => (
                 <SortableWidget key={id} id={id}>
                   {renderSecondaryWidget(id)}
@@ -277,6 +324,8 @@ export function DashboardPage() {
           </SortableContext>
         </DndContext>
       )}
+
+      <ZakatProgressCard monthlyBudget={zakatMonthlyBudget} distributed={zakatDistributedThisMonth} />
 
       <TrendChart data={trendData} />
 
