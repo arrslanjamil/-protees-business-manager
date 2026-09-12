@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { HandCoins, Receipt, Wallet } from 'lucide-react'
+import { HandCoins, HeartHandshake, Receipt, Wallet } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useData } from '@/context/DataContext'
@@ -48,7 +48,7 @@ interface DepartmentRow {
 }
 
 export function DashboardPage() {
-  const { employeesWithBalance, supervisorsWithBalance, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
@@ -99,6 +99,20 @@ export function DashboardPage() {
   const outstandingAdvances =
     employeesWithBalance.reduce((s, e) => s + Math.max(0, e.advanceBalance), 0) +
     supervisorsWithBalance.reduce((s, sup) => s + Math.max(0, sup.advanceBalance), 0)
+
+  // Total Advance Given — how much was actually disbursed in the selected
+  // period (distinct from Outstanding Advances, which is the live balance).
+  const periodAdvancesGiven = useMemo(
+    () => advances.filter((a) => isWithinRange(a.payment_date, start, end)).reduce((s, a) => s + Number(a.amount), 0),
+    [advances, start, end]
+  )
+
+  // Zakat Distributed — the selected period's distributions, distinct from
+  // the Zakat Progress widget's running-balance-since-opening figure.
+  const periodZakatDistributed = useMemo(
+    () => zakatTransactions.filter((t) => isWithinRange(t.date, start, end)).reduce((s, t) => s + Number(t.amount), 0),
+    [zakatTransactions, start, end]
+  )
 
   // --- Payroll (Regular employees only) -------------------------------------
   const regularEmployees = useMemo(() => employeesWithBalance.filter((e) => e.employee_group !== 'unit'), [employeesWithBalance])
@@ -230,6 +244,17 @@ export function DashboardPage() {
             hint="Live balance"
           />
         )
+      case 'advances-given':
+        return (
+          <StatCard
+            label="Total Advance Given"
+            value={formatCurrencyCompact(periodAdvancesGiven)}
+            fullValue={formatCurrency(periodAdvancesGiven)}
+            icon={HandCoins}
+            accent="red"
+            hint="Selected period"
+          />
+        )
       case 'total-expenses':
         return (
           <StatCard
@@ -260,6 +285,17 @@ export function DashboardPage() {
             fullValue={formatCurrency(khadimExpenseTotal)}
             icon={Receipt}
             accent="cyan"
+            hint="Selected period"
+          />
+        )
+      case 'zakat-distributed':
+        return (
+          <StatCard
+            label="Zakat Distributed"
+            value={formatCurrencyCompact(periodZakatDistributed)}
+            fullValue={formatCurrency(periodZakatDistributed)}
+            icon={HeartHandshake}
+            accent="green"
             hint="Selected period"
           />
         )
