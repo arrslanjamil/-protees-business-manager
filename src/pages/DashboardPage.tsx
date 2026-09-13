@@ -120,6 +120,12 @@ export function DashboardPage() {
     [zakatTransactions, start, end]
   )
 
+  // Total Money Given — every distinct money-out category combined into
+  // one figure, so nothing needs to be mentally added up across cards.
+  // Khadim Sahib Expenses is a subset of Total Expenses/Unit Expenses
+  // (derived from the same expense records), so it is not added again.
+  const totalMoneyGiven = totalExpenses + unitExpensesTotal + salaryPaid + periodAdvancesGiven + periodZakatDistributed
+
   // --- Collections (Shopify + Courier) — period-scoped, same treatment as
   // Total Advance Given / Zakat Distributed above.
   const periodShopifyCollections = useMemo(
@@ -390,13 +396,19 @@ export function DashboardPage() {
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Financial Summary</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Total Money Given"
+            value={formatCurrencyCompact(totalMoneyGiven)}
+            fullValue={formatCurrency(totalMoneyGiven)}
+            icon={Wallet}
+            accent="red"
+            hint="Expenses + Salary + Advances + Zakat · Selected period"
+          />
           <StatCard label="Total Collections" value={formatCurrencyCompact(periodTotalCollections)} fullValue={formatCurrency(periodTotalCollections)} icon={Wallet} accent="cyan" hint="Selected period" />
           <StatCard label="Courier Collections" value={formatCurrencyCompact(periodCourierCollections)} fullValue={formatCurrency(periodCourierCollections)} icon={HandCoins} accent="green" hint="Selected period" />
           <StatCard label="Shopify Collections" value={formatCurrencyCompact(periodShopifyCollections)} fullValue={formatCurrency(periodShopifyCollections)} icon={Receipt} accent="purple" hint="Selected period" />
           <StatCard label="Office Cash Balance" value={formatCurrencyCompact(cashBalance)} fullValue={formatCurrency(cashBalance)} icon={Wallet} accent="amber" hint="Live balance" />
           <StatCard label="Total Bank Balance" value={formatCurrencyCompact(totalBankBalance)} fullValue={formatCurrency(totalBankBalance)} icon={Receipt} accent="cyan" hint="Live balance" />
-          <StatCard label="Total Expenses" value={formatCurrencyCompact(totalExpenses)} fullValue={formatCurrency(totalExpenses)} icon={Wallet} accent="red" hint="Business · Selected period" />
-          <StatCard label="Total Payroll" value={formatCurrencyCompact(totalPayroll)} fullValue={formatCurrency(totalPayroll)} icon={HandCoins} accent="purple" hint="Selected period" />
           <StatCard label="Total Unit Cost" value={formatCurrencyCompact(totalUnitCost)} fullValue={formatCurrency(totalUnitCost)} icon={Receipt} accent="green" hint="Selected period" />
         </div>
       </div>
