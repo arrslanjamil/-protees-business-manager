@@ -9,9 +9,9 @@ import type {
   CashSettings,
   CashTransaction,
   CashTransactionType,
+  CashTransfer,
   Courier,
-  CourierExpectedCollection,
-  CourierPayment,
+  CourierCollection,
   CourierWithBalance,
   PaymentType,
   ShopifyOrder,
@@ -20,12 +20,17 @@ import type {
 
 const DEFAULT_CASH_OPENING_BALANCE = 0
 
-interface RecordCourierPaymentInput {
-  courierId: number
-  amount: number
-  paymentDate?: string
-  paymentType: PaymentType
+interface AddCourierInput {
+  name: string
+  paymentMethod: PaymentType
   bankAccountId?: number | null
+}
+
+interface AddCourierCollectionInput {
+  courierId: number
+  invoiceNumber?: string
+  invoiceDate?: string
+  amount: number
   notes?: string
 }
 
@@ -34,7 +39,13 @@ interface RecordCashTransactionInput {
   category: string
   amount: number
   date?: string
-  bankAccountId?: number | null
+  notes?: string
+}
+
+interface TransferCashToOfficeInput {
+  bankAccountId: number
+  amount: number
+  date?: string
   notes?: string
 }
 
@@ -44,14 +55,14 @@ interface CollectionsContextValue {
 
   couriers: Courier[]
   couriersWithBalance: CourierWithBalance[]
-  courierExpectedCollections: CourierExpectedCollection[]
-  courierPayments: CourierPayment[]
+  courierCollections: CourierCollection[]
 
   bankAccounts: BankAccount[]
   bankAccountsWithBalance: BankAccountWithBalance[]
   bankTransactions: BankTransaction[]
 
   cashTransactions: CashTransaction[]
+  cashTransfers: CashTransfer[]
   cashSettings: CashSettings | null
   cashBalance: number
 
@@ -60,16 +71,17 @@ interface CollectionsContextValue {
 
   refreshAll: () => Promise<void>
 
-  addCourier: (name: string) => Promise<Courier>
-  addExpectedCollection: (input: { courierId: number; amount: number; date?: string; orderReference?: string; notes?: string }) => Promise<void>
-  deleteExpectedCollection: (id: number) => Promise<void>
-  recordCourierPayment: (input: RecordCourierPaymentInput) => Promise<void>
-  deleteCourierPayment: (id: number) => Promise<void>
+  addCourier: (input: AddCourierInput) => Promise<Courier>
+  updateCourier: (id: number, input: AddCourierInput) => Promise<void>
+  addCourierCollection: (input: AddCourierCollectionInput) => Promise<void>
+  deleteCourierCollection: (id: number) => Promise<void>
 
   addBankAccount: (name: string) => Promise<BankAccount>
   recordCashTransaction: (input: RecordCashTransactionInput) => Promise<void>
   deleteCashTransaction: (id: number) => Promise<void>
   updateCashOpeningBalance: (amount: number, date?: string) => Promise<void>
+  transferCashToOffice: (input: TransferCashToOfficeInput) => Promise<void>
+  deleteCashTransfer: (id: number) => Promise<void>
 }
 
 const CollectionsContext = createContext<CollectionsContextValue | null>(null)
@@ -80,11 +92,11 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
 
   const [couriers, setCouriers] = useState<Courier[]>([])
-  const [courierExpectedCollections, setCourierExpectedCollections] = useState<CourierExpectedCollection[]>([])
-  const [courierPayments, setCourierPayments] = useState<CourierPayment[]>([])
+  const [courierCollections, setCourierCollections] = useState<CourierCollection[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([])
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([])
+  const [cashTransfers, setCashTransfers] = useState<CashTransfer[]>([])
   const [cashSettings, setCashSettings] = useState<CashSettings | null>(null)
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([])
   const [shopifySettings, setShopifySettings] = useState<ShopifySettings | null>(null)
@@ -99,26 +111,26 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [c, cec, cp, ba, bt, ct, cs, so, ss] = await Promise.all([
+      const [c, cc, ba, bt, ct, cf, cs, so, ss] = await Promise.all([
         supabase.from('couriers').select('*').order('name'),
-        supabase.from('courier_expected_collections').select('*').order('date', { ascending: false }),
-        supabase.from('courier_payments').select('*').order('payment_date', { ascending: false }),
+        supabase.from('courier_collections').select('*').order('invoice_date', { ascending: false }),
         supabase.from('bank_accounts').select('*').order('name'),
         supabase.from('bank_transactions').select('*').order('date', { ascending: false }),
         supabase.from('cash_transactions').select('*').order('date', { ascending: false }),
+        supabase.from('cash_transfers').select('*').order('date', { ascending: false }),
         supabase.from('cash_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('shopify_orders').select('*').order('order_date', { ascending: false }),
         supabase.from('shopify_settings').select('*').eq('id', 1).maybeSingle(),
       ])
-      const firstError = [c, cec, cp, ba, bt, ct, cs, so, ss].find((r) => r.error)?.error
+      const firstError = [c, cc, ba, bt, ct, cf, cs, so, ss].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setCouriers(c.data ?? [])
-      setCourierExpectedCollections(cec.data ?? [])
-      setCourierPayments(cp.data ?? [])
+      setCourierCollections(cc.data ?? [])
       setBankAccounts(ba.data ?? [])
       setBankTransactions(bt.data ?? [])
       setCashTransactions(ct.data ?? [])
+      setCashTransfers(cf.data ?? [])
       setCashSettings(cs.data ?? null)
       setShopifyOrders(so.data ?? [])
       setShopifySettings(ss.data ?? null)
@@ -141,28 +153,26 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     refreshAll()
   }, [refreshAll])
 
-  // --- Computed: Courier balances (Accounts Receivable) -----------------------
+  // --- Computed: Courier collection totals --------------------------------
+  const bankNameByIdMap = useMemo(() => new Map(bankAccounts.map((b) => [b.id, b.name])), [bankAccounts])
   const couriersWithBalance = useMemo<CourierWithBalance[]>(
     () =>
       couriers.map((courier) => {
-        const expectedCollection = courierExpectedCollections
-          .filter((e) => e.courier_id === courier.id)
-          .reduce((s, e) => s + Number(e.amount), 0)
-        const payments = courierPayments.filter((p) => p.courier_id === courier.id)
-        const paymentsReceived = payments.reduce((s, p) => s + Number(p.amount), 0)
-        const lastPaymentDate = payments.reduce<string | null>(
-          (latest, p) => (!latest || p.payment_date > latest ? p.payment_date : latest),
+        const collections = courierCollections.filter((c) => c.courier_id === courier.id)
+        const totalCollected = collections.reduce((s, c) => s + Number(c.amount), 0)
+        const lastCollectionDate = collections.reduce<string | null>(
+          (latest, c) => (!latest || c.invoice_date > latest ? c.invoice_date : latest),
           null
         )
         return {
           ...courier,
-          expectedCollection,
-          paymentsReceived,
-          pendingBalance: expectedCollection - paymentsReceived,
-          lastPaymentDate,
+          bankAccountName: courier.bank_account_id ? bankNameByIdMap.get(courier.bank_account_id) ?? null : null,
+          totalCollected,
+          collectionCount: collections.length,
+          lastCollectionDate,
         }
       }),
-    [couriers, courierExpectedCollections, courierPayments]
+    [couriers, courierCollections, bankNameByIdMap]
   )
 
   // --- Computed: Bank balances --------------------------------------------------
@@ -185,80 +195,61 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     return opening + cashIn - cashOut
   }, [cashSettings, cashTransactions])
 
-  // --- Couriers ------------------------------------------------------------------
-  const addCourier: CollectionsContextValue['addCourier'] = async (name) => {
+  // --- Couriers (one-time payment configuration) ---------------------------------
+  const addCourier: CollectionsContextValue['addCourier'] = async ({ name, paymentMethod, bankAccountId }) => {
     const trimmed = name.trim()
-    const existing = couriers.find((c) => c.name.toLowerCase() === trimmed.toLowerCase())
-    if (existing) return existing
-    const { data, error: err } = await supabase.from('couriers').insert({ name: trimmed }).select().single()
+    const { data, error: err } = await supabase
+      .from('couriers')
+      .insert({ name: trimmed, payment_method: paymentMethod, bank_account_id: paymentMethod === 'bank_transfer' ? (bankAccountId ?? null) : null })
+      .select()
+      .single()
     if (err) throw err
     await refreshAll()
     return data
   }
 
-  const addExpectedCollection: CollectionsContextValue['addExpectedCollection'] = async ({ courierId, amount, date, orderReference, notes }) => {
-    const { error: err } = await supabase.from('courier_expected_collections').insert({
-      courier_id: courierId,
-      amount,
-      date: date ?? todayISO(),
-      order_reference: orderReference ?? null,
-      notes: notes ?? null,
-    })
+  const updateCourier: CollectionsContextValue['updateCourier'] = async (id, { name, paymentMethod, bankAccountId }) => {
+    const { error: err } = await supabase
+      .from('couriers')
+      .update({ name: name.trim(), payment_method: paymentMethod, bank_account_id: paymentMethod === 'bank_transfer' ? (bankAccountId ?? null) : null })
+      .eq('id', id)
     if (err) throw err
     await refreshAll()
   }
 
-  const deleteExpectedCollection: CollectionsContextValue['deleteExpectedCollection'] = async (id) => {
-    const { error: err } = await supabase.from('courier_expected_collections').delete().eq('id', id)
-    if (err) throw err
-    await refreshAll()
-  }
+  /** Recording a collection automatically posts to the courier's
+   * configured money location — a bank credit or a cash-in — no
+   * per-entry bank/payment-type selection needed. */
+  const addCourierCollection: CollectionsContextValue['addCourierCollection'] = async ({ courierId, invoiceNumber, invoiceDate, amount, notes }) => {
+    const courier = couriers.find((c) => c.id === courierId)
+    if (!courier) throw new Error('Select a courier.')
+    const date = invoiceDate ?? todayISO()
 
-  /** Recording a courier payment reduces its pending balance (via the
-   * expected-minus-received computation above) and simultaneously credits
-   * the right money location — a bank (bank_transactions) or the Office
-   * Cash ledger (cash_transactions) — in the same action. */
-  const recordCourierPayment: CollectionsContextValue['recordCourierPayment'] = async ({
-    courierId,
-    amount,
-    paymentDate,
-    paymentType,
-    bankAccountId,
-    notes,
-  }) => {
-    const date = paymentDate ?? todayISO()
-    const { data: payment, error: payErr } = await supabase
-      .from('courier_payments')
-      .insert({
-        courier_id: courierId,
-        amount,
-        payment_date: date,
-        payment_type: paymentType,
-        bank_account_id: paymentType === 'bank_transfer' ? (bankAccountId ?? null) : null,
-        notes: notes ?? null,
-      })
+    const { data: collection, error: collErr } = await supabase
+      .from('courier_collections')
+      .insert({ courier_id: courierId, invoice_number: invoiceNumber ?? null, invoice_date: date, amount, notes: notes ?? null })
       .select()
       .single()
-    if (payErr) throw payErr
+    if (collErr) throw collErr
 
-    if (paymentType === 'bank_transfer' && bankAccountId) {
+    if (courier.payment_method === 'bank_transfer' && courier.bank_account_id) {
       const { error: bankErr } = await supabase.from('bank_transactions').insert({
-        bank_account_id: bankAccountId,
+        bank_account_id: courier.bank_account_id,
         type: 'credit',
         amount,
         date,
-        reference_type: 'courier_payment',
-        reference_id: payment.id,
+        reference_type: 'courier_collection',
+        reference_id: collection.id,
       })
       if (bankErr) throw bankErr
     } else {
       const { error: cashErr } = await supabase.from('cash_transactions').insert({
         type: 'cash_in',
-        category: 'Courier Cash Received',
+        category: 'Courier Cash Collection',
         amount,
         date,
-        reference_type: 'courier_payment',
-        reference_id: payment.id,
+        reference_type: 'courier_collection',
+        reference_id: collection.id,
       })
       if (cashErr) throw cashErr
     }
@@ -266,13 +257,10 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
-  const deleteCourierPayment: CollectionsContextValue['deleteCourierPayment'] = async (id) => {
-    // Linked bank/cash ledger rows reference this payment but have no FK
-    // cascade (ledgers are append-only history) — remove them together so
-    // deleting a payment doesn't leave a phantom credit/cash-in behind.
-    await supabase.from('bank_transactions').delete().eq('reference_type', 'courier_payment').eq('reference_id', id)
-    await supabase.from('cash_transactions').delete().eq('reference_type', 'courier_payment').eq('reference_id', id)
-    const { error: err } = await supabase.from('courier_payments').delete().eq('id', id)
+  const deleteCourierCollection: CollectionsContextValue['deleteCourierCollection'] = async (id) => {
+    await supabase.from('bank_transactions').delete().eq('reference_type', 'courier_collection').eq('reference_id', id)
+    await supabase.from('cash_transactions').delete().eq('reference_type', 'courier_collection').eq('reference_id', id)
+    const { error: err } = await supabase.from('courier_collections').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
   }
@@ -288,43 +276,23 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     return data
   }
 
-  /** Recording "Bank Withdrawal" as a Cash In category also debits the
-   * selected bank, so cash and bank balances move together atomically. */
-  const recordCashTransaction: CollectionsContextValue['recordCashTransaction'] = async ({ type, category, amount, date, bankAccountId, notes }) => {
-    const txnDate = date ?? todayISO()
-    const isWithdrawal = type === 'cash_in' && category === 'Bank Withdrawal'
-    const { data: txn, error: err } = await supabase
-      .from('cash_transactions')
-      .insert({
-        type,
-        category,
-        amount,
-        date: txnDate,
-        reference_type: isWithdrawal ? 'bank_withdrawal' : 'other',
-        bank_account_id: isWithdrawal ? (bankAccountId ?? null) : null,
-        notes: notes ?? null,
-      })
-      .select()
-      .single()
+  /** Manual Cash In / Cash Out — for entries with no dedicated flow of
+   * their own (bank-to-cash movements use transferCashToOffice; expenses
+   * post their own linked cash-out automatically). */
+  const recordCashTransaction: CollectionsContextValue['recordCashTransaction'] = async ({ type, category, amount, date, notes }) => {
+    const { error: err } = await supabase.from('cash_transactions').insert({
+      type,
+      category,
+      amount,
+      date: date ?? todayISO(),
+      reference_type: 'other',
+      notes: notes ?? null,
+    })
     if (err) throw err
-
-    if (isWithdrawal && bankAccountId) {
-      const { error: bankErr } = await supabase.from('bank_transactions').insert({
-        bank_account_id: bankAccountId,
-        type: 'debit',
-        amount,
-        date: txnDate,
-        reference_type: 'cash_withdrawal',
-        reference_id: txn.id,
-      })
-      if (bankErr) throw bankErr
-    }
-
     await refreshAll()
   }
 
   const deleteCashTransaction: CollectionsContextValue['deleteCashTransaction'] = async (id) => {
-    await supabase.from('bank_transactions').delete().eq('reference_type', 'cash_withdrawal').eq('reference_id', id)
     const { error: err } = await supabase.from('cash_transactions').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
@@ -338,31 +306,75 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  /** Transfer Cash To Office — moves money from a bank account into
+   * Office Cash. Debits the bank, credits cash, atomically. */
+  const transferCashToOffice: CollectionsContextValue['transferCashToOffice'] = async ({ bankAccountId, amount, date, notes }) => {
+    const txnDate = date ?? todayISO()
+    const { data: transfer, error: transferErr } = await supabase
+      .from('cash_transfers')
+      .insert({ bank_account_id: bankAccountId, amount, date: txnDate, notes: notes ?? null })
+      .select()
+      .single()
+    if (transferErr) throw transferErr
+
+    const { error: bankErr } = await supabase.from('bank_transactions').insert({
+      bank_account_id: bankAccountId,
+      type: 'debit',
+      amount,
+      date: txnDate,
+      reference_type: 'cash_transfer',
+      reference_id: transfer.id,
+    })
+    if (bankErr) throw bankErr
+
+    const { error: cashErr } = await supabase.from('cash_transactions').insert({
+      type: 'cash_in',
+      category: 'Bank Transfer to Office',
+      amount,
+      date: txnDate,
+      reference_type: 'cash_transfer',
+      reference_id: transfer.id,
+      bank_account_id: bankAccountId,
+    })
+    if (cashErr) throw cashErr
+
+    await refreshAll()
+  }
+
+  const deleteCashTransfer: CollectionsContextValue['deleteCashTransfer'] = async (id) => {
+    await supabase.from('bank_transactions').delete().eq('reference_type', 'cash_transfer').eq('reference_id', id)
+    await supabase.from('cash_transactions').delete().eq('reference_type', 'cash_transfer').eq('reference_id', id)
+    const { error: err } = await supabase.from('cash_transfers').delete().eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
   const value: CollectionsContextValue = {
     loading,
     error,
     couriers,
     couriersWithBalance,
-    courierExpectedCollections,
-    courierPayments,
+    courierCollections,
     bankAccounts,
     bankAccountsWithBalance,
     bankTransactions,
     cashTransactions,
+    cashTransfers,
     cashSettings,
     cashBalance,
     shopifyOrders,
     shopifySettings,
     refreshAll,
     addCourier,
-    addExpectedCollection,
-    deleteExpectedCollection,
-    recordCourierPayment,
-    deleteCourierPayment,
+    updateCourier,
+    addCourierCollection,
+    deleteCourierCollection,
     addBankAccount,
     recordCashTransaction,
     deleteCashTransaction,
     updateCashOpeningBalance,
+    transferCashToOffice,
+    deleteCashTransfer,
   }
 
   return <CollectionsContext.Provider value={value}>{children}</CollectionsContext.Provider>

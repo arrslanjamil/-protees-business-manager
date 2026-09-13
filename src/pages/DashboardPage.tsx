@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Clock, HandCoins, HeartHandshake, Layers, Receipt, ShoppingBag, Truck, Wallet } from 'lucide-react'
+import { HandCoins, HeartHandshake, Receipt, Wallet } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useData } from '@/context/DataContext'
@@ -50,7 +50,7 @@ interface DepartmentRow {
 
 export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
-  const { shopifyOrders, courierPayments, couriersWithBalance, cashBalance, bankAccountsWithBalance } = useCollections()
+  const { shopifyOrders, courierCollections, cashBalance, bankAccountsWithBalance } = useCollections()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('today')
@@ -96,6 +96,10 @@ export function DashboardPage() {
   const periodUnitNet = periodUnitList.reduce((s, p) => s + Number(p.net_amount), 0)
   const salaryPaid = periodSalaryNet + periodUnitNet
 
+  // Total Unit Cost — mirrors the Protees Unit page's Unit Overview card:
+  // Unit Employee/Supervisor payments plus Unit Expenses for the period.
+  const totalUnitCost = periodUnitNet + unitExpensesTotal
+
   // Outstanding Advances — a live balance, not period-scoped: what's owed
   // right now regardless of which dates are selected.
   const outstandingAdvances =
@@ -117,28 +121,17 @@ export function DashboardPage() {
   )
 
   // --- Collections (Shopify + Courier) — period-scoped, same treatment as
-  // Total Advance Given / Zakat Distributed above. Pending Courier Payments
-  // is a live accounts-receivable balance, not period-scoped.
+  // Total Advance Given / Zakat Distributed above.
   const periodShopifyCollections = useMemo(
     () => shopifyOrders.filter((o) => isWithinRange(o.order_date.slice(0, 10), start, end)).reduce((s, o) => s + Number(o.total_amount), 0),
     [shopifyOrders, start, end]
   )
   const periodCourierCollections = useMemo(
-    () => courierPayments.filter((p) => isWithinRange(p.payment_date, start, end)).reduce((s, p) => s + Number(p.amount), 0),
-    [courierPayments, start, end]
+    () => courierCollections.filter((c) => isWithinRange(c.invoice_date, start, end)).reduce((s, c) => s + Number(c.amount), 0),
+    [courierCollections, start, end]
   )
   const periodTotalCollections = periodShopifyCollections + periodCourierCollections
-  const totalPendingCourierPayments = useMemo(() => couriersWithBalance.reduce((s, c) => s + c.pendingBalance, 0), [couriersWithBalance])
   const totalBankBalance = useMemo(() => bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0), [bankAccountsWithBalance])
-
-  // --- Monthly Collection Summary — always the current calendar month,
-  // independent of the dashboard's own date filter.
-  const monthlyCollectionSummary = useMemo(() => {
-    const { start: mStart, end: mEnd } = dashboardDateRange('monthly')
-    const shopify = shopifyOrders.filter((o) => isWithinRange(o.order_date.slice(0, 10), mStart, mEnd)).reduce((s, o) => s + Number(o.total_amount), 0)
-    const courier = courierPayments.filter((p) => isWithinRange(p.payment_date, mStart, mEnd)).reduce((s, p) => s + Number(p.amount), 0)
-    return { shopify, courier, total: shopify + courier }
-  }, [shopifyOrders, courierPayments])
 
   // --- Payroll (Regular employees only) -------------------------------------
   const regularEmployees = useMemo(() => employeesWithBalance.filter((e) => e.employee_group !== 'unit'), [employeesWithBalance])
@@ -325,50 +318,6 @@ export function DashboardPage() {
             hint="Selected period"
           />
         )
-      case 'total-collections':
-        return (
-          <StatCard
-            label="Total Collections"
-            value={formatCurrencyCompact(periodTotalCollections)}
-            fullValue={formatCurrency(periodTotalCollections)}
-            icon={Layers}
-            accent="cyan"
-            hint="Shopify + Courier · Selected period"
-          />
-        )
-      case 'shopify-collections':
-        return (
-          <StatCard
-            label="Shopify Collections"
-            value={formatCurrencyCompact(periodShopifyCollections)}
-            fullValue={formatCurrency(periodShopifyCollections)}
-            icon={ShoppingBag}
-            accent="purple"
-            hint="Selected period"
-          />
-        )
-      case 'courier-collections':
-        return (
-          <StatCard
-            label="Courier Collections Received"
-            value={formatCurrencyCompact(periodCourierCollections)}
-            fullValue={formatCurrency(periodCourierCollections)}
-            icon={Truck}
-            accent="green"
-            hint="Selected period"
-          />
-        )
-      case 'pending-courier-payments':
-        return (
-          <StatCard
-            label="Pending Courier Payments"
-            value={formatCurrencyCompact(totalPendingCourierPayments)}
-            fullValue={formatCurrency(totalPendingCourierPayments)}
-            icon={Clock}
-            accent="amber"
-            hint="Live balance"
-          />
-        )
       default:
         return null
     }
@@ -438,29 +387,17 @@ export function DashboardPage() {
 
       <ZakatProgressCard {...zakatProgress} />
 
-      <div className="card">
-        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Collections Snapshot</p>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-slate-500">Cash Balance</p>
-            <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(cashBalance)}</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-slate-500">Bank Account Balances</p>
-            <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(totalBankBalance)}</p>
-            {bankAccountsWithBalance.length > 0 && (
-              <p className="mt-0.5 text-[11px] text-slate-500">
-                {bankAccountsWithBalance.map((b) => `${b.name}: ${formatCurrency(b.balance)}`).join(' · ')}
-              </p>
-            )}
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-slate-500">Monthly Collection Summary</p>
-            <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(monthlyCollectionSummary.total)}</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              Shopify {formatCurrency(monthlyCollectionSummary.shopify)} · Courier {formatCurrency(monthlyCollectionSummary.courier)}
-            </p>
-          </div>
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Financial Summary</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Total Collections" value={formatCurrencyCompact(periodTotalCollections)} fullValue={formatCurrency(periodTotalCollections)} icon={Wallet} accent="cyan" hint="Selected period" />
+          <StatCard label="Courier Collections" value={formatCurrencyCompact(periodCourierCollections)} fullValue={formatCurrency(periodCourierCollections)} icon={HandCoins} accent="green" hint="Selected period" />
+          <StatCard label="Shopify Collections" value={formatCurrencyCompact(periodShopifyCollections)} fullValue={formatCurrency(periodShopifyCollections)} icon={Receipt} accent="purple" hint="Selected period" />
+          <StatCard label="Office Cash Balance" value={formatCurrencyCompact(cashBalance)} fullValue={formatCurrency(cashBalance)} icon={Wallet} accent="amber" hint="Live balance" />
+          <StatCard label="Total Bank Balance" value={formatCurrencyCompact(totalBankBalance)} fullValue={formatCurrency(totalBankBalance)} icon={Receipt} accent="cyan" hint="Live balance" />
+          <StatCard label="Total Expenses" value={formatCurrencyCompact(totalExpenses)} fullValue={formatCurrency(totalExpenses)} icon={Wallet} accent="red" hint="Business · Selected period" />
+          <StatCard label="Total Payroll" value={formatCurrencyCompact(totalPayroll)} fullValue={formatCurrency(totalPayroll)} icon={HandCoins} accent="purple" hint="Selected period" />
+          <StatCard label="Total Unit Cost" value={formatCurrencyCompact(totalUnitCost)} fullValue={formatCurrency(totalUnitCost)} icon={Receipt} accent="green" hint="Selected period" />
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { useCollections } from '@/context/CollectionsContext'
-import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS, PAYMENT_TYPE_LABELS, type PaymentType } from '@/lib/types'
+import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
 import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
 import { classNames, formatCurrency, formatDate, isWithinRange, presetDateRange, todayISO, type DateRangePreset } from '@/lib/utils'
@@ -29,7 +29,7 @@ const REPORT_VIEWS: { key: ReportView; label: string; periodScoped: boolean }[] 
   { key: 'advances', label: 'Outstanding Advances', periodScoped: false },
   { key: 'shopify-collections', label: 'Shopify Collection Report', periodScoped: true },
   { key: 'courier-collections', label: 'Courier Collection Report', periodScoped: true },
-  { key: 'bank-summary', label: 'Bank Account Summary', periodScoped: true },
+  { key: 'bank-summary', label: 'Bank Ledger', periodScoped: true },
   { key: 'cash-ledger', label: 'Cash Ledger', periodScoped: true },
   { key: 'monthly-collections', label: 'Monthly Collection Summary', periodScoped: true },
 ]
@@ -73,7 +73,7 @@ export function ReportsPage() {
     employeesWithBalance,
     supervisorsWithBalance,
   } = useData()
-  const { shopifyOrders, couriers, courierPayments, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings } = useCollections()
+  const { shopifyOrders, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings } = useCollections()
 
   const [view, setView] = useState<ReportView>('overview')
   const [preset, setPreset] = useState<DateRangePreset>('month')
@@ -400,14 +400,24 @@ export function ReportsPage() {
   // =========================================================================
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
   const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
-  const courierPaymentRowsInPeriod = useMemo(
+  const courierDestinationById = useMemo(
     () =>
-      courierPayments
-        .filter((p) => isWithinRange(p.payment_date, start, end))
-        .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
-    [courierPayments, start, end]
+      new Map(
+        couriers.map((c) => [
+          c.id,
+          c.payment_method === 'bank_transfer' ? (c.bank_account_id ? bankNameById.get(c.bank_account_id) ?? 'Bank Transfer' : 'Bank Transfer') : 'Cash',
+        ])
+      ),
+    [couriers, bankNameById]
   )
-  const courierPaymentsTotalInPeriod = courierPaymentRowsInPeriod.reduce((s, p) => s + Number(p.amount), 0)
+  const courierCollectionRowsInPeriod = useMemo(
+    () =>
+      courierCollections
+        .filter((c) => isWithinRange(c.invoice_date, start, end))
+        .sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()),
+    [courierCollections, start, end]
+  )
+  const courierCollectionsTotalInPeriod = courierCollectionRowsInPeriod.reduce((s, c) => s + Number(c.amount), 0)
 
   async function exportCourierCollections(format: 'pdf' | 'excel') {
     const filenameBase = `protees-courier-collections-${start}-to-${end}`
@@ -415,25 +425,25 @@ export function ReportsPage() {
       await exportReportPdf({
         title: 'Courier Collection Report',
         subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
-        head: ['Date', 'Courier', 'Amount', 'Type', 'Bank'],
-        rows: courierPaymentRowsInPeriod.map((p) => [
-          formatDate(p.payment_date),
-          courierNameById.get(p.courier_id) ?? '',
-          formatCurrency(p.amount),
-          PAYMENT_TYPE_LABELS[p.payment_type as PaymentType],
-          p.bank_account_id ? bankNameById.get(p.bank_account_id) ?? '' : '',
+        head: ['Date', 'Courier', 'Invoice #', 'Amount', 'Posted To'],
+        rows: courierCollectionRowsInPeriod.map((c) => [
+          formatDate(c.invoice_date),
+          courierNameById.get(c.courier_id) ?? '',
+          c.invoice_number ?? '',
+          formatCurrency(c.amount),
+          courierDestinationById.get(c.courier_id) ?? '',
         ]),
-        footer: ['', 'Total Received', formatCurrency(courierPaymentsTotalInPeriod), '', ''],
+        footer: ['', '', 'Total Received', formatCurrency(courierCollectionsTotalInPeriod), ''],
         filename: `${filenameBase}.pdf`,
       })
     } else {
       await exportReportExcel({
-        rows: courierPaymentRowsInPeriod.map((p) => ({
-          Date: p.payment_date,
-          Courier: courierNameById.get(p.courier_id) ?? '',
-          Amount: p.amount,
-          Type: PAYMENT_TYPE_LABELS[p.payment_type as PaymentType],
-          Bank: p.bank_account_id ? bankNameById.get(p.bank_account_id) ?? '' : '',
+        rows: courierCollectionRowsInPeriod.map((c) => ({
+          Date: c.invoice_date,
+          Courier: courierNameById.get(c.courier_id) ?? '',
+          'Invoice #': c.invoice_number ?? '',
+          Amount: c.amount,
+          'Posted To': courierDestinationById.get(c.courier_id) ?? '',
         })),
         sheetName: 'Courier Collections',
         filename: `${filenameBase}.xlsx`,
@@ -552,17 +562,17 @@ export function ReportsPage() {
       bucket.shopify += Number(o.total_amount)
       byMonth.set(key, bucket)
     }
-    for (const p of courierPayments) {
-      if (!isWithinRange(p.payment_date, start, end)) continue
-      const key = p.payment_date.slice(0, 7)
+    for (const c of courierCollections) {
+      if (!isWithinRange(c.invoice_date, start, end)) continue
+      const key = c.invoice_date.slice(0, 7)
       const bucket = byMonth.get(key) ?? { shopify: 0, courier: 0 }
-      bucket.courier += Number(p.amount)
+      bucket.courier += Number(c.amount)
       byMonth.set(key, bucket)
     }
     return Array.from(byMonth.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([month, v]) => ({ month, shopify: v.shopify, courier: v.courier, total: v.shopify + v.courier }))
-  }, [shopifyOrders, courierPayments, start, end])
+  }, [shopifyOrders, courierCollections, start, end])
   const monthlyCollectionGrandTotal = monthlyCollectionRows.reduce((s, r) => s + r.total, 0)
 
   async function exportMonthlyCollections(format: 'pdf' | 'excel') {
@@ -620,7 +630,7 @@ export function ReportsPage() {
     zakat: zakatRowsInPeriod.length,
     advances: outstandingAdvanceRows.length,
     'shopify-collections': shopifyRowsInPeriod.length,
-    'courier-collections': courierPaymentRowsInPeriod.length,
+    'courier-collections': courierCollectionRowsInPeriod.length,
     'bank-summary': bankTransactionsInPeriod.length,
     'cash-ledger': cashTransactionsInPeriod.length,
     'monthly-collections': monthlyCollectionRows.length,
@@ -980,10 +990,10 @@ export function ReportsPage() {
       {view === 'courier-collections' && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SummaryCard label="Courier Collections Received (period)" value={formatCurrency(courierPaymentsTotalInPeriod)} tone="text-neon-green" />
-            <SummaryCard label="Payments" value={String(courierPaymentRowsInPeriod.length)} />
+            <SummaryCard label="Courier Collections Received (period)" value={formatCurrency(courierCollectionsTotalInPeriod)} tone="text-neon-green" />
+            <SummaryCard label="Collections" value={String(courierCollectionRowsInPeriod.length)} />
           </div>
-          {courierPaymentRowsInPeriod.length === 0 ? (
+          {courierCollectionRowsInPeriod.length === 0 ? (
             <EmptyReportState />
           ) : (
             <div className="card overflow-x-auto p-0">
@@ -992,19 +1002,19 @@ export function ReportsPage() {
                   <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
                     <th className="px-5 py-3.5">Date</th>
                     <th className="px-5 py-3.5">Courier</th>
+                    <th className="px-5 py-3.5">Invoice #</th>
                     <th className="px-5 py-3.5">Amount</th>
-                    <th className="px-5 py-3.5">Type</th>
-                    <th className="px-5 py-3.5">Bank</th>
+                    <th className="px-5 py-3.5">Posted To</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {courierPaymentRowsInPeriod.map((p) => (
-                    <tr key={p.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                      <td className="px-5 py-3.5 text-slate-500">{formatDate(p.payment_date)}</td>
-                      <td className="px-5 py-3.5 font-medium text-white">{courierNameById.get(p.courier_id) ?? '—'}</td>
-                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(p.amount)}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{PAYMENT_TYPE_LABELS[p.payment_type as PaymentType]}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{p.bank_account_id ? bankNameById.get(p.bank_account_id) ?? '—' : '—'}</td>
+                  {courierCollectionRowsInPeriod.map((c) => (
+                    <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(c.invoice_date)}</td>
+                      <td className="px-5 py-3.5 font-medium text-white">{courierNameById.get(c.courier_id) ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{c.invoice_number || '—'}</td>
+                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(c.amount)}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{courierDestinationById.get(c.courier_id) ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>

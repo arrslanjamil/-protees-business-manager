@@ -566,19 +566,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Expenses (Business or Unit, via expense_scope) -----------------------------
+  // Most expenses are paid from Office Cash, so every expense also posts a
+  // linked cash-out entry — keeping the Collections module's cash balance
+  // accurate without a separate manual step.
   const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope }) => {
-    const { error: err } = await supabase.from('expenses').insert({
-      title,
-      category,
-      amount,
-      date: date ?? todayISO(),
-      notes: notes ?? null,
-      expense_scope: expenseScope ?? 'business',
-    })
+    const expenseDate = date ?? todayISO()
+    const { data: expense, error: err } = await supabase
+      .from('expenses')
+      .insert({ title, category, amount, date: expenseDate, notes: notes ?? null, expense_scope: expenseScope ?? 'business' })
+      .select()
+      .single()
     if (err) throw err
+
+    const { error: cashErr } = await supabase.from('cash_transactions').insert({
+      type: 'cash_out',
+      category: title,
+      amount,
+      date: expenseDate,
+      reference_type: 'expense',
+      reference_id: expense.id,
+    })
+    if (cashErr) console.error('Failed to post linked cash-out for expense:', cashErr.message)
+
     await refreshAll()
   }
   const deleteExpense: DataContextValue['deleteExpense'] = async (id) => {
+    await supabase.from('cash_transactions').delete().eq('reference_type', 'expense').eq('reference_id', id)
     const { error: err } = await supabase.from('expenses').delete().eq('id', id)
     if (err) throw err
     await refreshAll()

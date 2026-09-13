@@ -13,15 +13,13 @@ export type WidgetId =
   | 'unit-expenses'
   | 'khadim'
   | 'zakat-distributed'
-  | 'total-collections'
-  | 'shopify-collections'
-  | 'courier-collections'
-  | 'pending-courier-payments'
 
 /** The 4 large top-row KPIs — the numbers an owner needs within 5 seconds. */
 export const TOP_KPI_IDS: WidgetId[] = ['total-employees', 'total-payroll', 'salary-paid', 'salary-due']
 
-/** Smaller, secondary KPIs shown below the top row. */
+/** Smaller, secondary KPIs shown below the top row. Collections figures
+ * live in the dedicated Financial Summary card instead, to avoid
+ * showing the same numbers twice. */
 export const SECONDARY_KPI_IDS: WidgetId[] = [
   'outstanding-advances',
   'advances-given',
@@ -29,10 +27,6 @@ export const SECONDARY_KPI_IDS: WidgetId[] = [
   'unit-expenses',
   'khadim',
   'zakat-distributed',
-  'total-collections',
-  'shopify-collections',
-  'courier-collections',
-  'pending-courier-payments',
 ]
 
 export const DEFAULT_WIDGET_ORDER: WidgetId[] = [...TOP_KPI_IDS, ...SECONDARY_KPI_IDS]
