@@ -426,6 +426,8 @@ export interface Database {
           id: number
           name: string
           is_active: boolean
+          payment_method: 'cash' | 'bank_transfer'
+          bank_account_id: number | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -437,18 +439,20 @@ export interface Database {
           id?: number
           name: string
           is_active?: boolean
+          payment_method?: 'cash' | 'bank_transfer'
+          bank_account_id?: number | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['couriers']['Insert']>
         Relationships: []
       }
-      courier_expected_collections: {
+      courier_collections: {
         Row: {
           id: number
           courier_id: number
+          invoice_number: string | null
+          invoice_date: string
           amount: number
-          date: string
-          order_reference: string | null
           notes: string | null
           created_at: string
           created_by_user_id: string | null
@@ -460,13 +464,38 @@ export interface Database {
         Insert: {
           id?: number
           courier_id: number
+          invoice_number?: string | null
+          invoice_date?: string
           amount: number
-          date?: string
-          order_reference?: string | null
           notes?: string | null
           created_at?: string
         }
-        Update: Partial<Database['public']['Tables']['courier_expected_collections']['Insert']>
+        Update: Partial<Database['public']['Tables']['courier_collections']['Insert']>
+        Relationships: []
+      }
+      cash_transfers: {
+        Row: {
+          id: number
+          bank_account_id: number
+          amount: number
+          date: string
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          bank_account_id: number
+          amount: number
+          date?: string
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['cash_transfers']['Insert']>
         Relationships: []
       }
       bank_accounts: {
@@ -490,35 +519,6 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['bank_accounts']['Insert']>
         Relationships: []
       }
-      courier_payments: {
-        Row: {
-          id: number
-          courier_id: number
-          amount: number
-          payment_date: string
-          payment_type: 'cash' | 'bank_transfer'
-          bank_account_id: number | null
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          courier_id: number
-          amount: number
-          payment_date?: string
-          payment_type: 'cash' | 'bank_transfer'
-          bank_account_id?: number | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['courier_payments']['Insert']>
-        Relationships: []
-      }
       bank_transactions: {
         Row: {
           id: number
@@ -526,7 +526,7 @@ export interface Database {
           type: 'credit' | 'debit'
           amount: number
           date: string
-          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | null
+          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | null
           reference_id: number | null
           notes: string | null
           created_at: string
@@ -539,7 +539,7 @@ export interface Database {
           type: 'credit' | 'debit'
           amount: number
           date?: string
-          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | null
+          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | null
           reference_id?: number | null
           notes?: string | null
           created_at?: string
@@ -554,7 +554,7 @@ export interface Database {
           category: string
           amount: number
           date: string
-          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | null
+          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | null
           reference_id: number | null
           bank_account_id: number | null
           notes: string | null
@@ -568,7 +568,7 @@ export interface Database {
           category: string
           amount: number
           date?: string
-          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | null
+          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | null
           reference_id?: number | null
           bank_account_id?: number | null
           notes?: string | null

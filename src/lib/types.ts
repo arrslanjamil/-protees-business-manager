@@ -17,9 +17,9 @@ export type AuditAction = AuditLogEntry['action']
 export type ZakatTransaction = Database['public']['Tables']['zakat_transactions']['Row']
 export type ZakatSettings = Database['public']['Tables']['zakat_settings']['Row']
 export type Courier = Database['public']['Tables']['couriers']['Row']
-export type CourierExpectedCollection = Database['public']['Tables']['courier_expected_collections']['Row']
+export type CourierCollection = Database['public']['Tables']['courier_collections']['Row']
 export type BankAccount = Database['public']['Tables']['bank_accounts']['Row']
-export type CourierPayment = Database['public']['Tables']['courier_payments']['Row']
+export type CashTransfer = Database['public']['Tables']['cash_transfers']['Row']
 export type BankTransaction = Database['public']['Tables']['bank_transactions']['Row']
 export type CashTransaction = Database['public']['Tables']['cash_transactions']['Row']
 export type CashSettings = Database['public']['Tables']['cash_settings']['Row']
@@ -74,16 +74,19 @@ export const CASH_TRANSACTION_TYPE_LABELS: Record<CashTransactionType, string> =
   cash_out: 'Cash Out',
 }
 
-/** Suggested Cash In / Cash Out categories — free text in the database
- * (like expense categories), this is just the quick-pick list. */
-export const CASH_IN_CATEGORIES = ['Courier Cash Received', 'Bank Withdrawal', 'Other Cash In'] as const
-export const CASH_OUT_CATEGORIES = ['Office Expenses', 'Petty Cash', 'Miscellaneous Expenses', 'Other Cash Out'] as const
+/** Suggested manual Cash In / Cash Out categories — free text in the
+ * database (like expense categories), this is just the quick-pick
+ * list. Bank-to-cash movements go through the dedicated Cash Transfer
+ * feature instead, and expenses post their own linked cash-out entry
+ * automatically — these are for everything else. */
+export const CASH_IN_CATEGORIES = ['Manual Cash Deposit', 'Other Cash In'] as const
+export const CASH_OUT_CATEGORIES = ['Petty Cash', 'Miscellaneous Cash Out', 'Other Cash Out'] as const
 
 export interface CourierWithBalance extends Courier {
-  expectedCollection: number
-  paymentsReceived: number
-  pendingBalance: number
-  lastPaymentDate: string | null
+  bankAccountName: string | null
+  totalCollected: number
+  collectionCount: number
+  lastCollectionDate: string | null
 }
 
 export interface BankAccountWithBalance extends BankAccount {

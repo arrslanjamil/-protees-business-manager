@@ -19,9 +19,6 @@ import { ReportsPage } from '@/pages/ReportsPage'
 import { ZakatPage } from '@/pages/ZakatPage'
 import { UnitsPage } from '@/pages/UnitsPage'
 import { CollectionsPage } from '@/pages/CollectionsPage'
-import { CourierAccountsPage } from '@/pages/CourierAccountsPage'
-import { BankAccountsPage } from '@/pages/BankAccountsPage'
-import { CashManagementPage } from '@/pages/CashManagementPage'
 import { FactoryAuthProvider } from '@/context/FactoryAuthContext'
 import { FactoryRoot } from '@/pages/factory/FactoryRoot'
 import { FactoryDashboardPage } from '@/pages/factory/FactoryDashboardPage'
@@ -36,55 +33,52 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <DataProvider>
-            <CollectionsProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
+          <CollectionsProvider>
+            <DataProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
 
-                <Route element={<ProtectedRoute />}>
-                  <Route element={<AppLayout />}>
-                    <Route path="/" element={<DashboardPage />} />
-                    <Route path="/protees-unit" element={<ProteesUnitPage />} />
-                    <Route path="/unit-expenses" element={<UnitExpensesPage />} />
-                    <Route path="/employees" element={<EmployeesPage />} />
-                    <Route path="/salary" element={<SalaryPage />} />
-                    <Route path="/advances" element={<AdvancesPage />} />
-                    <Route path="/zakat" element={<ZakatPage />} />
-                    <Route path="/collections" element={<CollectionsPage />} />
-                    <Route path="/couriers" element={<CourierAccountsPage />} />
-                    <Route path="/bank-accounts" element={<BankAccountsPage />} />
-                    <Route path="/cash" element={<CashManagementPage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
-                    <Route path="/units" element={<UnitsPage />} />
-                    <Route path="/activity-log" element={<ActivityLogPage />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route element={<AppLayout />}>
+                      <Route path="/" element={<DashboardPage />} />
+                      <Route path="/protees-unit" element={<ProteesUnitPage />} />
+                      <Route path="/unit-expenses" element={<UnitExpensesPage />} />
+                      <Route path="/employees" element={<EmployeesPage />} />
+                      <Route path="/salary" element={<SalaryPage />} />
+                      <Route path="/advances" element={<AdvancesPage />} />
+                      <Route path="/zakat" element={<ZakatPage />} />
+                      <Route path="/collections" element={<CollectionsPage />} />
+                      <Route path="/reports" element={<ReportsPage />} />
+                      <Route path="/units" element={<UnitsPage />} />
+                      <Route path="/activity-log" element={<ActivityLogPage />} />
+                    </Route>
                   </Route>
-                </Route>
 
-                <Route
-                  path="/factory/*"
-                  element={
-                    <FactoryAuthProvider>
-                      <FactoryRoot />
-                    </FactoryAuthProvider>
-                  }
-                >
-                  <Route index element={<FactoryDashboardPage />} />
-                  <Route path="products" element={<FactoryProductsPage />} />
-                  <Route path="products/:id" element={<FactoryProductDetailPage />} />
-                  <Route path="plans" element={<FactoryProductionPlansPage />} />
-                  <Route path="team" element={<FactoryTeamMembersPage />} />
-                  <Route path="digital-print" element={<FactoryComingSoonPage icon={Sparkles} title="Digital Print" phase="Phase 2" />} />
-                  <Route path="cutting" element={<FactoryComingSoonPage icon={Scissors} title="Cutting" phase="Phase 2" />} />
-                  <Route path="stitching" element={<FactoryComingSoonPage icon={ShoppingBag} title="Stitching" phase="Phase 3" />} />
-                  <Route path="quality" element={<FactoryComingSoonPage icon={ShieldCheck} title="Quality" phase="Phase 4" />} />
-                  <Route path="store" element={<FactoryComingSoonPage icon={Store} title="Store" phase="Phase 4" />} />
-                  <Route path="shopify" element={<FactoryComingSoonPage icon={ShoppingBag} title="Shopify" phase="Phase 5" />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
-            </CollectionsProvider>
-          </DataProvider>
+                  <Route
+                    path="/factory/*"
+                    element={
+                      <FactoryAuthProvider>
+                        <FactoryRoot />
+                      </FactoryAuthProvider>
+                    }
+                  >
+                    <Route index element={<FactoryDashboardPage />} />
+                    <Route path="products" element={<FactoryProductsPage />} />
+                    <Route path="products/:id" element={<FactoryProductDetailPage />} />
+                    <Route path="plans" element={<FactoryProductionPlansPage />} />
+                    <Route path="team" element={<FactoryTeamMembersPage />} />
+                    <Route path="digital-print" element={<FactoryComingSoonPage icon={Sparkles} title="Digital Print" phase="Phase 2" />} />
+                    <Route path="cutting" element={<FactoryComingSoonPage icon={Scissors} title="Cutting" phase="Phase 2" />} />
+                    <Route path="stitching" element={<FactoryComingSoonPage icon={ShoppingBag} title="Stitching" phase="Phase 3" />} />
+                    <Route path="quality" element={<FactoryComingSoonPage icon={ShieldCheck} title="Quality" phase="Phase 4" />} />
+                    <Route path="store" element={<FactoryComingSoonPage icon={Store} title="Store" phase="Phase 4" />} />
+                    <Route path="shopify" element={<FactoryComingSoonPage icon={ShoppingBag} title="Shopify" phase="Phase 5" />} />
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+            </DataProvider>
+          </CollectionsProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>
