@@ -74,7 +74,7 @@ export function ReportsPage() {
     employeesWithBalance,
     supervisorsWithBalance,
   } = useData()
-  const { shopifyOrders, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings } = useCollections()
+  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings } = useCollections()
 
   const [view, setView] = useState<ReportView>('overview')
   const [preset, setPreset] = useState<DateRangePreset>('month')
@@ -368,6 +368,7 @@ export function ReportsPage() {
     [shopifyOrders, start, end]
   )
   const shopifyTotalInPeriod = shopifyRowsInPeriod.reduce((s, o) => s + Number(o.total_amount), 0)
+  const shopifyStoreNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
 
   async function exportShopifyCollections(format: 'pdf' | 'excel') {
     const filenameBase = `protees-shopify-collections-${start}-to-${end}`
@@ -375,17 +376,28 @@ export function ReportsPage() {
       await exportReportPdf({
         title: 'Shopify Collection Report',
         subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
-        head: ['Order #', 'Date', 'Customer', 'Amount', 'Payment Method', 'Status'],
-        rows: shopifyRowsInPeriod.map((o) => [o.order_number, formatDate(o.order_date), o.customer_name ?? '', formatCurrency(o.total_amount), o.payment_method ?? '', o.financial_status]),
-        footer: ['', '', '', 'Total', formatCurrency(shopifyTotalInPeriod), ''],
+        head: ['Store', 'Order #', 'Date', 'Customer', 'Phone', 'Amount', 'Payment Method', 'Status'],
+        rows: shopifyRowsInPeriod.map((o) => [
+          o.store_key ? shopifyStoreNameByKey.get(o.store_key) ?? o.store_key : '',
+          o.order_number,
+          formatDate(o.order_date),
+          o.customer_name ?? '',
+          o.customer_phone ?? '',
+          formatCurrency(o.total_amount),
+          o.payment_method ?? '',
+          o.financial_status,
+        ]),
+        footer: ['', '', '', '', 'Total', formatCurrency(shopifyTotalInPeriod), '', ''],
         filename: `${filenameBase}.pdf`,
       })
     } else {
       await exportReportExcel({
         rows: shopifyRowsInPeriod.map((o) => ({
+          Store: o.store_key ? shopifyStoreNameByKey.get(o.store_key) ?? o.store_key : '',
           'Order #': o.order_number,
           Date: o.order_date,
           Customer: o.customer_name ?? '',
+          Phone: o.customer_phone ?? '',
           Amount: o.total_amount,
           'Payment Method': o.payment_method ?? '',
           Status: o.financial_status,
@@ -952,9 +964,11 @@ export function ReportsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Store</th>
                     <th className="px-5 py-3.5">Order #</th>
                     <th className="px-5 py-3.5">Date</th>
                     <th className="px-5 py-3.5">Customer</th>
+                    <th className="px-5 py-3.5">Phone</th>
                     <th className="px-5 py-3.5">Amount</th>
                     <th className="px-5 py-3.5">Payment Method</th>
                     <th className="px-5 py-3.5">Status</th>
@@ -963,9 +977,11 @@ export function ReportsPage() {
                 <tbody>
                   {shopifyRowsInPeriod.map((o) => (
                     <tr key={o.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-400">{o.store_key ? shopifyStoreNameByKey.get(o.store_key) ?? o.store_key : '—'}</td>
                       <td className="px-5 py-3.5 font-medium text-white">{o.order_number}</td>
                       <td className="px-5 py-3.5 text-slate-500">{formatDate(o.order_date)}</td>
                       <td className="px-5 py-3.5 text-slate-300">{o.customer_name || '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{o.customer_phone || '—'}</td>
                       <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(o.total_amount)}</td>
                       <td className="px-5 py-3.5 text-slate-400">{o.payment_method || '—'}</td>
                       <td className="px-5 py-3.5 text-slate-400">{o.financial_status}</td>

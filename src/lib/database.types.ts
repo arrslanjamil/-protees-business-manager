@@ -601,9 +601,12 @@ export interface Database {
           order_number: string
           order_date: string
           customer_name: string | null
+          customer_phone: string | null
+          customer_city: string | null
           total_amount: number
           payment_method: string | null
           financial_status: string
+          store_key: string | null
           imported_at: string
         }
         Insert: {
@@ -613,9 +616,12 @@ export interface Database {
           order_number: string
           order_date: string
           customer_name?: string | null
+          customer_phone?: string | null
+          customer_city?: string | null
           total_amount: number
           payment_method?: string | null
           financial_status: string
+          store_key?: string | null
           imported_at?: string
         }
         Update: Partial<Database['public']['Tables']['shopify_orders']['Insert']>
@@ -635,6 +641,35 @@ export interface Database {
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['shopify_settings']['Insert']>
+        Relationships: []
+      }
+      shopify_stores: {
+        Row: {
+          id: number
+          store_key: string
+          display_name: string
+          store_domain: string | null
+          is_connected: boolean
+          last_synced_at: string | null
+          last_sync_error: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          store_key: string
+          display_name: string
+          store_domain?: string | null
+          is_connected?: boolean
+          last_synced_at?: string | null
+          last_sync_error?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['shopify_stores']['Insert']>
         Relationships: []
       }
       profiles: {

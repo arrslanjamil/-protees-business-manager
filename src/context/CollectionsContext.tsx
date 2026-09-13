@@ -16,6 +16,7 @@ import type {
   PaymentType,
   ShopifyOrder,
   ShopifySettings,
+  ShopifyStore,
 } from '@/lib/types'
 
 const DEFAULT_CASH_OPENING_BALANCE = 0
@@ -68,8 +69,12 @@ interface CollectionsContextValue {
 
   shopifyOrders: ShopifyOrder[]
   shopifySettings: ShopifySettings | null
+  shopifyStores: ShopifyStore[]
+  shopifySyncing: boolean
 
   refreshAll: () => Promise<void>
+  updateShopifyStoreDomain: (storeKey: string, domain: string) => Promise<void>
+  syncShopifyNow: () => Promise<{ ok: boolean; message: string }>
 
   addCourier: (input: AddCourierInput) => Promise<Courier>
   updateCourier: (id: number, input: AddCourierInput) => Promise<void>
@@ -100,6 +105,8 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
   const [cashSettings, setCashSettings] = useState<CashSettings | null>(null)
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([])
   const [shopifySettings, setShopifySettings] = useState<ShopifySettings | null>(null)
+  const [shopifyStores, setShopifyStores] = useState<ShopifyStore[]>([])
+  const [shopifySyncing, setShopifySyncing] = useState(false)
 
   const hasLoadedOnceRef = useRef(false)
 
@@ -111,7 +118,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [c, cc, ba, bt, ct, cf, cs, so, ss] = await Promise.all([
+      const [c, cc, ba, bt, ct, cf, cs, so, ss, sst] = await Promise.all([
         supabase.from('couriers').select('*').order('name'),
         supabase.from('courier_collections').select('*').order('invoice_date', { ascending: false }),
         supabase.from('bank_accounts').select('*').order('name'),
@@ -121,8 +128,9 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         supabase.from('cash_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('shopify_orders').select('*').order('order_date', { ascending: false }),
         supabase.from('shopify_settings').select('*').eq('id', 1).maybeSingle(),
+        supabase.from('shopify_stores').select('*').order('store_key'),
       ])
-      const firstError = [c, cc, ba, bt, ct, cf, cs, so, ss].find((r) => r.error)?.error
+      const firstError = [c, cc, ba, bt, ct, cf, cs, so, ss, sst].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setCouriers(c.data ?? [])
@@ -134,6 +142,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
       setCashSettings(cs.data ?? null)
       setShopifyOrders(so.data ?? [])
       setShopifySettings(ss.data ?? null)
+      setShopifyStores(sst.data ?? [])
       hasLoadedOnceRef.current = true
     } catch (err) {
       const message =
@@ -349,6 +358,42 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  // --- Shopify (multi-store) ---------------------------------------------------
+  // Store domain is not secret — it can be edited from the client. Access
+  // tokens are never stored here; they live only in server-only Vercel env
+  // vars, read by /api/shopify-sync.
+  const updateShopifyStoreDomain: CollectionsContextValue['updateShopifyStoreDomain'] = async (storeKey, domain) => {
+    const { error: err } = await supabase.from('shopify_stores').update({ store_domain: domain.trim() || null }).eq('store_key', storeKey)
+    if (err) throw err
+    await refreshAll()
+  }
+
+  /** Calls the server-side sync function, authenticated as the current app
+   * user (verified server-side against app_users, mirroring is_app_user()).
+   * The function fetches paid orders from every store with credentials
+   * configured in Vercel and upserts them into shopify_orders. */
+  const syncShopifyNow: CollectionsContextValue['syncShopifyNow'] = async () => {
+    setShopifySyncing(true)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (!token) return { ok: false, message: 'Not signed in.' }
+
+      const res = await fetch('/api/shopify-sync', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body = await res.json().catch(() => ({}))
+      await refreshAll()
+      if (!res.ok) return { ok: false, message: body?.error ?? `Sync failed (${res.status}).` }
+      return { ok: true, message: body?.message ?? 'Sync complete.' }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : 'Sync failed.' }
+    } finally {
+      setShopifySyncing(false)
+    }
+  }
+
   const value: CollectionsContextValue = {
     loading,
     error,
@@ -364,7 +409,11 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     cashBalance,
     shopifyOrders,
     shopifySettings,
+    shopifyStores,
+    shopifySyncing,
     refreshAll,
+    updateShopifyStoreDomain,
+    syncShopifyNow,
     addCourier,
     updateCourier,
     addCourierCollection,
