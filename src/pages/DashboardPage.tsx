@@ -51,7 +51,7 @@ export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
   const { order, setOrder, loaded } = useDashboardLayout()
 
-  const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
+  const [preset, setPreset] = useState<DashboardDatePreset>('today')
   const [customStart, setCustomStart] = useState<string>(() => dashboardDateRange('15d').start)
   const [customEnd, setCustomEnd] = useState<string>(() => dashboardDateRange('15d').end)
   const { start, end } = useMemo(() => dashboardDateRange(preset, customStart, customEnd), [preset, customStart, customEnd])
