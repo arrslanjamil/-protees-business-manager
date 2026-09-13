@@ -95,7 +95,7 @@ interface CollectionDrillRow {
 
 export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
-  const { shopifyOrders, courierCollections, couriers, cashBalance, bankAccountsWithBalance } = useCollections()
+  const { shopifyOrders, shopifyStores, courierCollections, couriers, cashBalance, bankAccountsWithBalance } = useCollections()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('today')
@@ -358,10 +358,17 @@ export function DashboardPage() {
   )
 
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
+  const shopifyStoreNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
   const collectionDrillRows = useMemo<CollectionDrillRow[]>(
     () =>
       [
-        ...periodShopifyOrdersRows.map((o) => ({ id: `sho-${o.id}`, date: o.order_date, source: 'Shopify', reference: o.order_number, amount: Number(o.total_amount) })),
+        ...periodShopifyOrdersRows.map((o) => ({
+          id: `sho-${o.id}`,
+          date: o.order_date,
+          source: o.store_key ? `Shopify: ${shopifyStoreNameByKey.get(o.store_key) ?? o.store_key}` : 'Shopify',
+          reference: o.order_number,
+          amount: Number(o.total_amount),
+        })),
         ...periodCourierCollectionsRows.map((c) => ({
           id: `crc-${c.id}`,
           date: c.invoice_date,
@@ -370,7 +377,7 @@ export function DashboardPage() {
           amount: Number(c.amount),
         })),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [periodShopifyOrdersRows, periodCourierCollectionsRows, courierNameById]
+    [periodShopifyOrdersRows, periodCourierCollectionsRows, courierNameById, shopifyStoreNameByKey]
   )
 
   const totalMoneyOutRows = useMemo<LedgerDrillRow[]>(

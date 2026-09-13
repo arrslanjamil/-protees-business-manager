@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react'
-import { ArrowRightLeft, Banknote, Landmark, Pencil, Plus, Settings, ShoppingBag, Trash2, Truck, Wallet } from 'lucide-react'
+import { ArrowRightLeft, Banknote, CheckCircle2, Landmark, Pencil, Plus, RefreshCw, Settings, ShoppingBag, Trash2, Truck, Wallet, XCircle } from 'lucide-react'
 import { useCollections } from '@/context/CollectionsContext'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
-import { PAYMENT_TYPE_LABELS, type Courier, type PaymentType } from '@/lib/types'
+import { PAYMENT_TYPE_LABELS, SHOPIFY_STORE_KEYS, type Courier, type PaymentType } from '@/lib/types'
 import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
 type CollectionsTab = 'courier' | 'shopify'
+type StoreFilter = 'all' | (typeof SHOPIFY_STORE_KEYS)[number]
 
 export function CollectionsPage() {
   const {
@@ -19,16 +20,21 @@ export function CollectionsPage() {
     bankAccountsWithBalance,
     cashBalance,
     shopifyOrders,
+    shopifyStores,
+    shopifySyncing,
     addCourier,
     updateCourier,
     addCourierCollection,
     deleteCourierCollection,
     addBankAccount,
     transferCashToOffice,
+    updateShopifyStoreDomain,
+    syncShopifyNow,
   } = useCollections()
   const { showToast } = useToast()
 
   const [tab, setTab] = useState<CollectionsTab>('courier')
+  const [storeFilter, setStoreFilter] = useState<StoreFilter>('all')
 
   const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
   const [customStart, setCustomStart] = useState<string>(() => dashboardDateRange('15d').start)
@@ -53,9 +59,18 @@ export function CollectionsPage() {
     () => [...periodCourierCollections].sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()),
     [periodCourierCollections]
   )
+
+  const storeNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
+  const proteesCollectionsTotal = periodShopifyOrders.filter((o) => o.store_key === 'protees').reduce((s, o) => s + Number(o.total_amount), 0)
+  const littlePeanutsCollectionsTotal = periodShopifyOrders.filter((o) => o.store_key === 'little_peanuts').reduce((s, o) => s + Number(o.total_amount), 0)
+
+  const filteredShopifyOrders = useMemo(
+    () => (storeFilter === 'all' ? periodShopifyOrders : periodShopifyOrders.filter((o) => o.store_key === storeFilter)),
+    [periodShopifyOrders, storeFilter]
+  )
   const recentShopifyOrders = useMemo(
-    () => [...periodShopifyOrders].sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()),
-    [periodShopifyOrders]
+    () => [...filteredShopifyOrders].sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()),
+    [filteredShopifyOrders]
   )
 
   // --- Manage Couriers (Settings) ---------------------------------------------
@@ -218,6 +233,33 @@ export function CollectionsPage() {
     }
   }
 
+  // --- Manage Shopify Stores modal --------------------------------------------
+  const [storesModalOpen, setStoresModalOpen] = useState(false)
+  const [storeDomainDrafts, setStoreDomainDrafts] = useState<Record<string, string>>({})
+  const [savingStoreKey, setSavingStoreKey] = useState<string | null>(null)
+
+  function openStoresModal() {
+    setStoreDomainDrafts(Object.fromEntries(shopifyStores.map((s) => [s.store_key, s.store_domain ?? ''])))
+    setStoresModalOpen(true)
+  }
+
+  async function handleSaveStoreDomain(storeKey: string) {
+    setSavingStoreKey(storeKey)
+    try {
+      await updateShopifyStoreDomain(storeKey, storeDomainDrafts[storeKey] ?? '')
+      showToast('success', 'Store domain saved.')
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Failed to save store domain.')
+    } finally {
+      setSavingStoreKey(null)
+    }
+  }
+
+  async function handleSyncNow() {
+    const result = await syncShopifyNow()
+    showToast(result.ok ? 'success' : 'error', result.message)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -373,35 +415,74 @@ export function CollectionsPage() {
       )}
 
       {tab === 'shopify' && (
-        <div>
+        <div className="space-y-6">
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-primary" onClick={handleSyncNow} disabled={shopifySyncing}>
+              <RefreshCw size={16} className={shopifySyncing ? 'animate-spin' : undefined} /> {shopifySyncing ? 'Syncing…' : 'Sync Now'}
+            </button>
+            <button className="btn-secondary" onClick={openStoresModal}>
+              <Settings size={16} /> Manage Stores
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard label="Total Shopify Collections" value={formatCurrency(shopifyCollectionsTotal)} icon={ShoppingBag} accent="purple" hint="Selected period" />
+            <StatCard label="Protees Collections" value={formatCurrency(proteesCollectionsTotal)} icon={ShoppingBag} accent="cyan" hint="Selected period" />
+            <StatCard label="Little Peanuts Collections" value={formatCurrency(littlePeanutsCollectionsTotal)} icon={ShoppingBag} accent="green" hint="Selected period" />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {(['all', ...SHOPIFY_STORE_KEYS] as StoreFilter[]).map((key) => (
+              <button
+                key={key}
+                onClick={() => setStoreFilter(key)}
+                className={classNames(
+                  'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
+                  storeFilter === key ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                )}
+              >
+                {key === 'all' ? 'All Stores' : storeNameByKey.get(key) ?? key}
+              </button>
+            ))}
+          </div>
+
           {recentShopifyOrders.length === 0 ? (
             <EmptyState
               icon={ShoppingBag}
               title="No Shopify orders imported yet"
-              description="Shopify order sync has not been configured. Once connected, paid orders will appear here automatically."
+              description="Configure your stores below and hit Sync Now — paid orders from both stores will appear here automatically."
+              action={
+                <button className="btn-primary" onClick={openStoresModal}>
+                  <Settings size={16} /> Manage Stores
+                </button>
+              }
             />
           ) : (
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Store</th>
+                    <th className="px-5 py-3.5">Order ID</th>
                     <th className="px-5 py-3.5">Order #</th>
                     <th className="px-5 py-3.5">Customer</th>
-                    <th className="px-5 py-3.5">Amount</th>
-                    <th className="px-5 py-3.5">Payment Method</th>
-                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5">Phone</th>
                     <th className="px-5 py-3.5">Date</th>
+                    <th className="px-5 py-3.5">Payment Method</th>
+                    <th className="px-5 py-3.5">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recentShopifyOrders.map((o) => (
                     <tr key={o.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-400">{o.store_key ? storeNameByKey.get(o.store_key) ?? o.store_key : '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-500">{o.shopify_order_id}</td>
                       <td className="px-5 py-3.5 font-medium text-white">{o.order_number}</td>
                       <td className="px-5 py-3.5 text-slate-300">{o.customer_name || '—'}</td>
-                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(o.total_amount)}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{o.payment_method || '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{o.financial_status}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{o.customer_phone || '—'}</td>
                       <td className="px-5 py-3.5 text-slate-500">{formatDate(o.order_date)}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{o.payment_method || '—'}</td>
+                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(o.total_amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -585,6 +666,62 @@ export function CollectionsPage() {
               {savingTransfer ? 'Transferring…' : 'Transfer'}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* --- Manage Shopify Stores --- */}
+      <Modal
+        open={storesModalOpen}
+        onClose={() => setStoresModalOpen(false)}
+        title="Manage Shopify Stores"
+        subtitle="Access tokens are never entered here — they're set as server-only environment variables in Vercel."
+        maxWidth="max-w-xl"
+      >
+        <div className="space-y-4">
+          {shopifyStores.map((store) => (
+            <div key={store.store_key} className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">{store.display_name}</p>
+                {store.is_connected ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neon-green">
+                    <CheckCircle2 size={14} /> Connected
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                    <XCircle size={14} /> Not Connected
+                  </span>
+                )}
+              </div>
+              <div>
+                <label className="label-field">Shopify Store URL</label>
+                <div className="flex gap-2">
+                  <input
+                    className="input-field flex-1"
+                    value={storeDomainDrafts[store.store_key] ?? ''}
+                    onChange={(e) => setStoreDomainDrafts((prev) => ({ ...prev, [store.store_key]: e.target.value }))}
+                    placeholder={`${store.store_key}.myshopify.com`}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary shrink-0"
+                    onClick={() => handleSaveStoreDomain(store.store_key)}
+                    disabled={savingStoreKey === store.store_key}
+                  >
+                    {savingStoreKey === store.store_key ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Admin API Access Token: set{' '}
+                <code className="rounded bg-white/5 px-1 py-0.5 text-slate-300">
+                  SHOPIFY_{store.store_key.toUpperCase()}_TOKEN
+                </code>{' '}
+                in Vercel → Settings → Environment Variables, then redeploy.
+              </p>
+              {store.last_sync_error && <p className="text-[11px] text-neon-red">Last error: {store.last_sync_error}</p>}
+              {store.last_synced_at && <p className="text-[11px] text-slate-500">Last synced: {formatDate(store.last_synced_at)}</p>}
+            </div>
+          ))}
         </div>
       </Modal>
     </div>

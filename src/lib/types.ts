@@ -25,6 +25,10 @@ export type CashTransaction = Database['public']['Tables']['cash_transactions'][
 export type CashSettings = Database['public']['Tables']['cash_settings']['Row']
 export type ShopifyOrder = Database['public']['Tables']['shopify_orders']['Row']
 export type ShopifySettings = Database['public']['Tables']['shopify_settings']['Row']
+export type ShopifyStore = Database['public']['Tables']['shopify_stores']['Row']
+
+export const SHOPIFY_STORE_KEYS = ['protees', 'little_peanuts'] as const
+export type ShopifyStoreKey = (typeof SHOPIFY_STORE_KEYS)[number]
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   create: 'Created',
