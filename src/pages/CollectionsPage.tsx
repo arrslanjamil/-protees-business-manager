@@ -442,24 +442,13 @@ export function CollectionsPage() {
               <div>
                 <label className="label-field">Bank Account</label>
                 <select className="input-field" value={courierBankId} onChange={(e) => setCourierBankId(Number(e.target.value))}>
-                  {bankAccountsWithBalance.length === 0 && <option value="">No bank accounts yet</option>}
+                  {bankAccountsWithBalance.length === 0 && <option value="">No bank accounts yet — add one below</option>}
                   {bankAccountsWithBalance.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name}
                     </option>
                   ))}
                 </select>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    className="input-field flex-1"
-                    value={newBankName}
-                    onChange={(e) => setNewBankName(e.target.value)}
-                    placeholder="Create new bank (e.g. HBL)"
-                  />
-                  <button type="button" className="btn-secondary shrink-0" onClick={handleAddBank} disabled={addingBank || !newBankName.trim()}>
-                    {addingBank ? 'Adding…' : 'Add'}
-                  </button>
-                </div>
               </div>
             )}
             <div className="flex gap-3">
@@ -470,6 +459,25 @@ export function CollectionsPage() {
               )}
               <button className="btn-primary flex-1" onClick={handleSaveCourier} disabled={savingCourier}>
                 {savingCourier ? 'Saving…' : editingCourier ? 'Update Courier' : 'Save Courier'}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Bank Accounts</p>
+            {bankAccountsWithBalance.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {bankAccountsWithBalance.map((b) => (
+                  <span key={b.id} className="rounded-lg border border-white/10 bg-base-900/60 px-2.5 py-1 text-xs text-slate-300">
+                    {b.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input className="input-field flex-1" value={newBankName} onChange={(e) => setNewBankName(e.target.value)} placeholder="Add bank (e.g. HBL, UBL)" />
+              <button type="button" className="btn-primary shrink-0" onClick={handleAddBank} disabled={addingBank || !newBankName.trim()}>
+                {addingBank ? 'Adding…' : 'Add Bank'}
               </button>
             </div>
           </div>
