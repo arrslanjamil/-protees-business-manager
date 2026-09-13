@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, Banknote, CheckCircle2, Landmark, Pencil, Plus, RefreshCw, Settings, ShoppingBag, Trash2, Truck, Wallet, XCircle } from 'lucide-react'
 import { useCollections } from '@/context/CollectionsContext'
 import { useToast } from '@/context/ToastContext'
@@ -259,6 +259,21 @@ export function CollectionsPage() {
     const result = await syncShopifyNow()
     showToast(result.ok ? 'success' : 'error', result.message)
   }
+
+  // Best-effort ~30-minute freshness whenever someone has this page open,
+  // as a supplement to the Vercel Cron job (which runs at most once a day
+  // on the Hobby plan — see vercel.json). Silent: no toast, once per visit.
+  const autoSyncTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (autoSyncTriggeredRef.current) return
+    if (shopifyStores.length === 0) return
+    const staleMs = 30 * 60 * 1000
+    const isStale = shopifyStores.some((s) => !s.last_synced_at || Date.now() - new Date(s.last_synced_at).getTime() > staleMs)
+    if (!isStale) return
+    autoSyncTriggeredRef.current = true
+    syncShopifyNow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopifyStores])
 
   return (
     <div className="space-y-6">
