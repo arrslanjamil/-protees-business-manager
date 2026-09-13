@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Scissors, ShieldCheck, ShoppingBag, Sparkles, Store } from 'lucide-react'
 import { DataProvider } from '@/context/DataContext'
+import { CollectionsProvider } from '@/context/CollectionsContext'
 import { ToastProvider } from '@/context/ToastContext'
 import { AuthProvider } from '@/context/AuthContext'
 import { ThemeProvider } from '@/context/ThemeContext'
@@ -17,6 +18,10 @@ import { AdvancesPage } from '@/pages/AdvancesPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { ZakatPage } from '@/pages/ZakatPage'
 import { UnitsPage } from '@/pages/UnitsPage'
+import { CollectionsPage } from '@/pages/CollectionsPage'
+import { CourierAccountsPage } from '@/pages/CourierAccountsPage'
+import { BankAccountsPage } from '@/pages/BankAccountsPage'
+import { CashManagementPage } from '@/pages/CashManagementPage'
 import { FactoryAuthProvider } from '@/context/FactoryAuthContext'
 import { FactoryRoot } from '@/pages/factory/FactoryRoot'
 import { FactoryDashboardPage } from '@/pages/factory/FactoryDashboardPage'
@@ -32,6 +37,7 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <DataProvider>
+            <CollectionsProvider>
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
@@ -45,6 +51,10 @@ export default function App() {
                     <Route path="/salary" element={<SalaryPage />} />
                     <Route path="/advances" element={<AdvancesPage />} />
                     <Route path="/zakat" element={<ZakatPage />} />
+                    <Route path="/collections" element={<CollectionsPage />} />
+                    <Route path="/couriers" element={<CourierAccountsPage />} />
+                    <Route path="/bank-accounts" element={<BankAccountsPage />} />
+                    <Route path="/cash" element={<CashManagementPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route path="/units" element={<UnitsPage />} />
                     <Route path="/activity-log" element={<ActivityLogPage />} />
@@ -73,6 +83,7 @@ export default function App() {
                 </Route>
               </Routes>
             </BrowserRouter>
+            </CollectionsProvider>
           </DataProvider>
         </AuthProvider>
       </ToastProvider>

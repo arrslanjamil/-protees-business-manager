@@ -16,6 +16,15 @@ export type AuditLogEntry = Database['public']['Tables']['audit_log']['Row']
 export type AuditAction = AuditLogEntry['action']
 export type ZakatTransaction = Database['public']['Tables']['zakat_transactions']['Row']
 export type ZakatSettings = Database['public']['Tables']['zakat_settings']['Row']
+export type Courier = Database['public']['Tables']['couriers']['Row']
+export type CourierExpectedCollection = Database['public']['Tables']['courier_expected_collections']['Row']
+export type BankAccount = Database['public']['Tables']['bank_accounts']['Row']
+export type CourierPayment = Database['public']['Tables']['courier_payments']['Row']
+export type BankTransaction = Database['public']['Tables']['bank_transactions']['Row']
+export type CashTransaction = Database['public']['Tables']['cash_transactions']['Row']
+export type CashSettings = Database['public']['Tables']['cash_settings']['Row']
+export type ShopifyOrder = Database['public']['Tables']['shopify_orders']['Row']
+export type ShopifySettings = Database['public']['Tables']['shopify_settings']['Row']
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   create: 'Created',
@@ -49,6 +58,36 @@ export type ExpenseScope = 'business' | 'unit'
 export const EXPENSE_SCOPE_LABELS: Record<ExpenseScope, string> = {
   business: 'Business Expense',
   unit: 'Unit Expense',
+}
+
+export type PaymentType = 'cash' | 'bank_transfer'
+
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  cash: 'Cash',
+  bank_transfer: 'Bank Transfer',
+}
+
+export type CashTransactionType = 'cash_in' | 'cash_out'
+
+export const CASH_TRANSACTION_TYPE_LABELS: Record<CashTransactionType, string> = {
+  cash_in: 'Cash In',
+  cash_out: 'Cash Out',
+}
+
+/** Suggested Cash In / Cash Out categories — free text in the database
+ * (like expense categories), this is just the quick-pick list. */
+export const CASH_IN_CATEGORIES = ['Courier Cash Received', 'Bank Withdrawal', 'Other Cash In'] as const
+export const CASH_OUT_CATEGORIES = ['Office Expenses', 'Petty Cash', 'Miscellaneous Expenses', 'Other Cash Out'] as const
+
+export interface CourierWithBalance extends Courier {
+  expectedCollection: number
+  paymentsReceived: number
+  pendingBalance: number
+  lastPaymentDate: string | null
+}
+
+export interface BankAccountWithBalance extends BankAccount {
+  balance: number
 }
 
 export interface PersonWithBalance {

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { HandCoins, HeartHandshake, Receipt, Wallet } from 'lucide-react'
+import { Clock, HandCoins, HeartHandshake, Layers, Receipt, ShoppingBag, Truck, Wallet } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { StatCard } from '@/components/ui/StatCard'
 import { Badge } from '@/components/ui/Badge'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
@@ -49,6 +50,7 @@ interface DepartmentRow {
 
 export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
+  const { shopifyOrders, courierPayments, couriersWithBalance, cashBalance, bankAccountsWithBalance } = useCollections()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('today')
@@ -113,6 +115,30 @@ export function DashboardPage() {
     () => zakatTransactions.filter((t) => isWithinRange(t.date, start, end)).reduce((s, t) => s + Number(t.amount), 0),
     [zakatTransactions, start, end]
   )
+
+  // --- Collections (Shopify + Courier) — period-scoped, same treatment as
+  // Total Advance Given / Zakat Distributed above. Pending Courier Payments
+  // is a live accounts-receivable balance, not period-scoped.
+  const periodShopifyCollections = useMemo(
+    () => shopifyOrders.filter((o) => isWithinRange(o.order_date.slice(0, 10), start, end)).reduce((s, o) => s + Number(o.total_amount), 0),
+    [shopifyOrders, start, end]
+  )
+  const periodCourierCollections = useMemo(
+    () => courierPayments.filter((p) => isWithinRange(p.payment_date, start, end)).reduce((s, p) => s + Number(p.amount), 0),
+    [courierPayments, start, end]
+  )
+  const periodTotalCollections = periodShopifyCollections + periodCourierCollections
+  const totalPendingCourierPayments = useMemo(() => couriersWithBalance.reduce((s, c) => s + c.pendingBalance, 0), [couriersWithBalance])
+  const totalBankBalance = useMemo(() => bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0), [bankAccountsWithBalance])
+
+  // --- Monthly Collection Summary — always the current calendar month,
+  // independent of the dashboard's own date filter.
+  const monthlyCollectionSummary = useMemo(() => {
+    const { start: mStart, end: mEnd } = dashboardDateRange('monthly')
+    const shopify = shopifyOrders.filter((o) => isWithinRange(o.order_date.slice(0, 10), mStart, mEnd)).reduce((s, o) => s + Number(o.total_amount), 0)
+    const courier = courierPayments.filter((p) => isWithinRange(p.payment_date, mStart, mEnd)).reduce((s, p) => s + Number(p.amount), 0)
+    return { shopify, courier, total: shopify + courier }
+  }, [shopifyOrders, courierPayments])
 
   // --- Payroll (Regular employees only) -------------------------------------
   const regularEmployees = useMemo(() => employeesWithBalance.filter((e) => e.employee_group !== 'unit'), [employeesWithBalance])
@@ -299,6 +325,50 @@ export function DashboardPage() {
             hint="Selected period"
           />
         )
+      case 'total-collections':
+        return (
+          <StatCard
+            label="Total Collections"
+            value={formatCurrencyCompact(periodTotalCollections)}
+            fullValue={formatCurrency(periodTotalCollections)}
+            icon={Layers}
+            accent="cyan"
+            hint="Shopify + Courier · Selected period"
+          />
+        )
+      case 'shopify-collections':
+        return (
+          <StatCard
+            label="Shopify Collections"
+            value={formatCurrencyCompact(periodShopifyCollections)}
+            fullValue={formatCurrency(periodShopifyCollections)}
+            icon={ShoppingBag}
+            accent="purple"
+            hint="Selected period"
+          />
+        )
+      case 'courier-collections':
+        return (
+          <StatCard
+            label="Courier Collections Received"
+            value={formatCurrencyCompact(periodCourierCollections)}
+            fullValue={formatCurrency(periodCourierCollections)}
+            icon={Truck}
+            accent="green"
+            hint="Selected period"
+          />
+        )
+      case 'pending-courier-payments':
+        return (
+          <StatCard
+            label="Pending Courier Payments"
+            value={formatCurrencyCompact(totalPendingCourierPayments)}
+            fullValue={formatCurrency(totalPendingCourierPayments)}
+            icon={Clock}
+            accent="amber"
+            hint="Live balance"
+          />
+        )
       default:
         return null
     }
@@ -367,6 +437,32 @@ export function DashboardPage() {
       )}
 
       <ZakatProgressCard {...zakatProgress} />
+
+      <div className="card">
+        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Collections Snapshot</p>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Cash Balance</p>
+            <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(cashBalance)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Bank Account Balances</p>
+            <p className="mt-1 font-display text-lg font-bold text-white">{formatCurrency(totalBankBalance)}</p>
+            {bankAccountsWithBalance.length > 0 && (
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                {bankAccountsWithBalance.map((b) => `${b.name}: ${formatCurrency(b.balance)}`).join(' · ')}
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-slate-500">Monthly Collection Summary</p>
+            <p className="mt-1 font-display text-lg font-bold text-neon-green">{formatCurrency(monthlyCollectionSummary.total)}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Shopify {formatCurrency(monthlyCollectionSummary.shopify)} · Courier {formatCurrency(monthlyCollectionSummary.courier)}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <TrendChart data={trendData} />
 

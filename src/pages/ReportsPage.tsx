@@ -1,12 +1,24 @@
 import { useMemo, useState } from 'react'
 import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '@/context/DataContext'
-import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
+import { useCollections } from '@/context/CollectionsContext'
+import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS, PAYMENT_TYPE_LABELS, type PaymentType } from '@/lib/types'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
 import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
 import { classNames, formatCurrency, formatDate, isWithinRange, presetDateRange, todayISO, type DateRangePreset } from '@/lib/utils'
 
-type ReportView = 'overview' | 'unit-cost' | 'unit-payroll' | 'unit-expenses' | 'zakat' | 'advances'
+type ReportView =
+  | 'overview'
+  | 'unit-cost'
+  | 'unit-payroll'
+  | 'unit-expenses'
+  | 'zakat'
+  | 'advances'
+  | 'shopify-collections'
+  | 'courier-collections'
+  | 'bank-summary'
+  | 'cash-ledger'
+  | 'monthly-collections'
 
 const REPORT_VIEWS: { key: ReportView; label: string; periodScoped: boolean }[] = [
   { key: 'overview', label: 'Overview', periodScoped: true },
@@ -15,6 +27,11 @@ const REPORT_VIEWS: { key: ReportView; label: string; periodScoped: boolean }[] 
   { key: 'unit-expenses', label: 'Unit Expenses', periodScoped: true },
   { key: 'zakat', label: 'Zakat Distribution', periodScoped: true },
   { key: 'advances', label: 'Outstanding Advances', periodScoped: false },
+  { key: 'shopify-collections', label: 'Shopify Collection Report', periodScoped: true },
+  { key: 'courier-collections', label: 'Courier Collection Report', periodScoped: true },
+  { key: 'bank-summary', label: 'Bank Account Summary', periodScoped: true },
+  { key: 'cash-ledger', label: 'Cash Ledger', periodScoped: true },
+  { key: 'monthly-collections', label: 'Monthly Collection Summary', periodScoped: true },
 ]
 
 const PRESETS: { key: DateRangePreset; label: string }[] = [
@@ -56,6 +73,7 @@ export function ReportsPage() {
     employeesWithBalance,
     supervisorsWithBalance,
   } = useData()
+  const { shopifyOrders, couriers, courierPayments, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings } = useCollections()
 
   const [view, setView] = useState<ReportView>('overview')
   const [preset, setPreset] = useState<DateRangePreset>('month')
@@ -338,6 +356,235 @@ export function ReportsPage() {
     }
   }
 
+  // =========================================================================
+  // Shopify Collection Report
+  // =========================================================================
+  const shopifyRowsInPeriod = useMemo(
+    () =>
+      shopifyOrders
+        .filter((o) => isWithinRange(o.order_date.slice(0, 10), start, end))
+        .sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()),
+    [shopifyOrders, start, end]
+  )
+  const shopifyTotalInPeriod = shopifyRowsInPeriod.reduce((s, o) => s + Number(o.total_amount), 0)
+
+  async function exportShopifyCollections(format: 'pdf' | 'excel') {
+    const filenameBase = `protees-shopify-collections-${start}-to-${end}`
+    if (format === 'pdf') {
+      await exportReportPdf({
+        title: 'Shopify Collection Report',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
+        head: ['Order #', 'Date', 'Customer', 'Amount', 'Payment Method', 'Status'],
+        rows: shopifyRowsInPeriod.map((o) => [o.order_number, formatDate(o.order_date), o.customer_name ?? '', formatCurrency(o.total_amount), o.payment_method ?? '', o.financial_status]),
+        footer: ['', '', '', 'Total', formatCurrency(shopifyTotalInPeriod), ''],
+        filename: `${filenameBase}.pdf`,
+      })
+    } else {
+      await exportReportExcel({
+        rows: shopifyRowsInPeriod.map((o) => ({
+          'Order #': o.order_number,
+          Date: o.order_date,
+          Customer: o.customer_name ?? '',
+          Amount: o.total_amount,
+          'Payment Method': o.payment_method ?? '',
+          Status: o.financial_status,
+        })),
+        sheetName: 'Shopify Collections',
+        filename: `${filenameBase}.xlsx`,
+      })
+    }
+  }
+
+  // =========================================================================
+  // Courier Collection Report
+  // =========================================================================
+  const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
+  const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
+  const courierPaymentRowsInPeriod = useMemo(
+    () =>
+      courierPayments
+        .filter((p) => isWithinRange(p.payment_date, start, end))
+        .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
+    [courierPayments, start, end]
+  )
+  const courierPaymentsTotalInPeriod = courierPaymentRowsInPeriod.reduce((s, p) => s + Number(p.amount), 0)
+
+  async function exportCourierCollections(format: 'pdf' | 'excel') {
+    const filenameBase = `protees-courier-collections-${start}-to-${end}`
+    if (format === 'pdf') {
+      await exportReportPdf({
+        title: 'Courier Collection Report',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
+        head: ['Date', 'Courier', 'Amount', 'Type', 'Bank'],
+        rows: courierPaymentRowsInPeriod.map((p) => [
+          formatDate(p.payment_date),
+          courierNameById.get(p.courier_id) ?? '',
+          formatCurrency(p.amount),
+          PAYMENT_TYPE_LABELS[p.payment_type as PaymentType],
+          p.bank_account_id ? bankNameById.get(p.bank_account_id) ?? '' : '',
+        ]),
+        footer: ['', 'Total Received', formatCurrency(courierPaymentsTotalInPeriod), '', ''],
+        filename: `${filenameBase}.pdf`,
+      })
+    } else {
+      await exportReportExcel({
+        rows: courierPaymentRowsInPeriod.map((p) => ({
+          Date: p.payment_date,
+          Courier: courierNameById.get(p.courier_id) ?? '',
+          Amount: p.amount,
+          Type: PAYMENT_TYPE_LABELS[p.payment_type as PaymentType],
+          Bank: p.bank_account_id ? bankNameById.get(p.bank_account_id) ?? '' : '',
+        })),
+        sheetName: 'Courier Collections',
+        filename: `${filenameBase}.xlsx`,
+      })
+    }
+  }
+
+  // =========================================================================
+  // Bank Account Summary — live balances plus period transaction history
+  // =========================================================================
+  const bankTransactionsInPeriod = useMemo(
+    () =>
+      bankTransactions
+        .filter((t) => isWithinRange(t.date, start, end))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [bankTransactions, start, end]
+  )
+  const totalBankBalance = bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0)
+
+  async function exportBankSummary(format: 'pdf' | 'excel') {
+    const filenameBase = `protees-bank-account-summary-${start}-to-${end}`
+    if (format === 'pdf') {
+      await exportReportPdf({
+        title: 'Bank Account Summary',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Total Balance (live): ${formatCurrency(totalBankBalance)}`,
+        head: ['Bank', 'Type', 'Amount', 'Date', 'Reference'],
+        rows: bankTransactionsInPeriod.map((t) => [
+          bankNameById.get(t.bank_account_id) ?? '',
+          t.type === 'credit' ? 'Credit' : 'Debit',
+          formatCurrency(t.amount),
+          formatDate(t.date),
+          t.reference_type ?? '',
+        ]),
+        footer: ['', '', '', '', ''],
+        filename: `${filenameBase}.pdf`,
+      })
+    } else {
+      await exportReportExcel({
+        rows: bankTransactionsInPeriod.map((t) => ({
+          Bank: bankNameById.get(t.bank_account_id) ?? '',
+          Type: t.type,
+          Amount: t.amount,
+          Date: t.date,
+          Reference: t.reference_type ?? '',
+        })),
+        sheetName: 'Bank Account Summary',
+        filename: `${filenameBase}.xlsx`,
+      })
+    }
+  }
+
+  // =========================================================================
+  // Cash Ledger
+  // =========================================================================
+  const cashTransactionsInPeriod = useMemo(
+    () =>
+      cashTransactions
+        .filter((t) => isWithinRange(t.date, start, end))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [cashTransactions, start, end]
+  )
+  const cashInTotalInPeriod = cashTransactionsInPeriod.filter((t) => t.type === 'cash_in').reduce((s, t) => s + Number(t.amount), 0)
+  const cashOutTotalInPeriod = cashTransactionsInPeriod.filter((t) => t.type === 'cash_out').reduce((s, t) => s + Number(t.amount), 0)
+  const cashOpeningBalance = cashSettings?.opening_balance ?? 0
+
+  async function exportCashLedger(format: 'pdf' | 'excel') {
+    const filenameBase = `protees-cash-ledger-${start}-to-${end}`
+    if (format === 'pdf') {
+      await exportReportPdf({
+        title: 'Cash Ledger',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Opening Balance: ${formatCurrency(cashOpeningBalance)}`,
+        head: ['Date', 'Type', 'Category', 'Amount', 'Bank', 'Notes'],
+        rows: cashTransactionsInPeriod.map((t) => [
+          formatDate(t.date),
+          t.type === 'cash_in' ? 'Cash In' : 'Cash Out',
+          t.category,
+          formatCurrency(t.amount),
+          t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '' : '',
+          t.notes ?? '',
+        ]),
+        footer: ['', '', 'Net', formatCurrency(cashInTotalInPeriod - cashOutTotalInPeriod), '', ''],
+        filename: `${filenameBase}.pdf`,
+      })
+    } else {
+      await exportReportExcel({
+        rows: cashTransactionsInPeriod.map((t) => ({
+          Date: t.date,
+          Type: t.type,
+          Category: t.category,
+          Amount: t.amount,
+          Bank: t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '' : '',
+          Notes: t.notes ?? '',
+        })),
+        sheetName: 'Cash Ledger',
+        filename: `${filenameBase}.xlsx`,
+      })
+    }
+  }
+
+  // =========================================================================
+  // Monthly Collection Summary — Shopify + Courier totals grouped by month
+  // =========================================================================
+  interface MonthlyCollectionRow {
+    month: string
+    shopify: number
+    courier: number
+    total: number
+  }
+  const monthlyCollectionRows = useMemo<MonthlyCollectionRow[]>(() => {
+    const byMonth = new Map<string, { shopify: number; courier: number }>()
+    for (const o of shopifyOrders) {
+      const dateStr = o.order_date.slice(0, 10)
+      if (!isWithinRange(dateStr, start, end)) continue
+      const key = dateStr.slice(0, 7)
+      const bucket = byMonth.get(key) ?? { shopify: 0, courier: 0 }
+      bucket.shopify += Number(o.total_amount)
+      byMonth.set(key, bucket)
+    }
+    for (const p of courierPayments) {
+      if (!isWithinRange(p.payment_date, start, end)) continue
+      const key = p.payment_date.slice(0, 7)
+      const bucket = byMonth.get(key) ?? { shopify: 0, courier: 0 }
+      bucket.courier += Number(p.amount)
+      byMonth.set(key, bucket)
+    }
+    return Array.from(byMonth.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([month, v]) => ({ month, shopify: v.shopify, courier: v.courier, total: v.shopify + v.courier }))
+  }, [shopifyOrders, courierPayments, start, end])
+  const monthlyCollectionGrandTotal = monthlyCollectionRows.reduce((s, r) => s + r.total, 0)
+
+  async function exportMonthlyCollections(format: 'pdf' | 'excel') {
+    const filenameBase = `protees-monthly-collection-summary-${start}-to-${end}`
+    if (format === 'pdf') {
+      await exportReportPdf({
+        title: 'Monthly Collection Summary',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
+        head: ['Month', 'Shopify', 'Courier', 'Total'],
+        rows: monthlyCollectionRows.map((r) => [r.month, formatCurrency(r.shopify), formatCurrency(r.courier), formatCurrency(r.total)]),
+        footer: ['Grand Total', '', '', formatCurrency(monthlyCollectionGrandTotal)],
+        filename: `${filenameBase}.pdf`,
+      })
+    } else {
+      await exportReportExcel({
+        rows: monthlyCollectionRows.map((r) => ({ Month: r.month, Shopify: r.shopify, Courier: r.courier, Total: r.total })),
+        sheetName: 'Monthly Collections',
+        filename: `${filenameBase}.xlsx`,
+      })
+    }
+  }
+
   async function handleExport(format: 'pdf' | 'excel') {
     switch (view) {
       case 'overview':
@@ -352,21 +599,33 @@ export function ReportsPage() {
         return exportZakat(format)
       case 'advances':
         return exportAdvances(format)
+      case 'shopify-collections':
+        return exportShopifyCollections(format)
+      case 'courier-collections':
+        return exportCourierCollections(format)
+      case 'bank-summary':
+        return exportBankSummary(format)
+      case 'cash-ledger':
+        return exportCashLedger(format)
+      case 'monthly-collections':
+        return exportMonthlyCollections(format)
     }
   }
 
-  const currentRowCount =
-    view === 'overview'
-      ? overviewRows.length
-      : view === 'unit-cost'
-        ? unitCostRows.length
-        : view === 'unit-payroll'
-          ? unitPayrollRows.length
-          : view === 'unit-expenses'
-            ? unitExpensesInPeriod.length
-            : view === 'zakat'
-              ? zakatRowsInPeriod.length
-              : outstandingAdvanceRows.length
+  const REPORT_ROW_COUNTS: Record<ReportView, number> = {
+    overview: overviewRows.length,
+    'unit-cost': unitCostRows.length,
+    'unit-payroll': unitPayrollRows.length,
+    'unit-expenses': unitExpensesInPeriod.length,
+    zakat: zakatRowsInPeriod.length,
+    advances: outstandingAdvanceRows.length,
+    'shopify-collections': shopifyRowsInPeriod.length,
+    'courier-collections': courierPaymentRowsInPeriod.length,
+    'bank-summary': bankTransactionsInPeriod.length,
+    'cash-ledger': cashTransactionsInPeriod.length,
+    'monthly-collections': monthlyCollectionRows.length,
+  }
+  const currentRowCount = REPORT_ROW_COUNTS[view]
 
   return (
     <div className="space-y-6">
@@ -670,6 +929,207 @@ export function ReportsPage() {
                       <td className="px-5 py-3.5 font-medium text-white">{r.name}</td>
                       <td className="px-5 py-3.5 text-slate-400">{r.department}</td>
                       <td className="px-5 py-3.5 font-semibold text-neon-amber">{formatCurrency(r.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'shopify-collections' && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SummaryCard label="Shopify Collections (period)" value={formatCurrency(shopifyTotalInPeriod)} tone="text-neon-purple" />
+            <SummaryCard label="Orders" value={String(shopifyRowsInPeriod.length)} />
+          </div>
+          {shopifyRowsInPeriod.length === 0 ? (
+            <EmptyReportState />
+          ) : (
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Order #</th>
+                    <th className="px-5 py-3.5">Date</th>
+                    <th className="px-5 py-3.5">Customer</th>
+                    <th className="px-5 py-3.5">Amount</th>
+                    <th className="px-5 py-3.5">Payment Method</th>
+                    <th className="px-5 py-3.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shopifyRowsInPeriod.map((o) => (
+                    <tr key={o.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 font-medium text-white">{o.order_number}</td>
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(o.order_date)}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{o.customer_name || '—'}</td>
+                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(o.total_amount)}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{o.payment_method || '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{o.financial_status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'courier-collections' && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SummaryCard label="Courier Collections Received (period)" value={formatCurrency(courierPaymentsTotalInPeriod)} tone="text-neon-green" />
+            <SummaryCard label="Payments" value={String(courierPaymentRowsInPeriod.length)} />
+          </div>
+          {courierPaymentRowsInPeriod.length === 0 ? (
+            <EmptyReportState />
+          ) : (
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Date</th>
+                    <th className="px-5 py-3.5">Courier</th>
+                    <th className="px-5 py-3.5">Amount</th>
+                    <th className="px-5 py-3.5">Type</th>
+                    <th className="px-5 py-3.5">Bank</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {courierPaymentRowsInPeriod.map((p) => (
+                    <tr key={p.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(p.payment_date)}</td>
+                      <td className="px-5 py-3.5 font-medium text-white">{courierNameById.get(p.courier_id) ?? '—'}</td>
+                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(p.amount)}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{PAYMENT_TYPE_LABELS[p.payment_type as PaymentType]}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{p.bank_account_id ? bankNameById.get(p.bank_account_id) ?? '—' : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'bank-summary' && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard label="Total Bank Balance (live)" value={formatCurrency(totalBankBalance)} />
+            {bankAccountsWithBalance.map((b) => (
+              <SummaryCard key={b.id} label={b.name} value={formatCurrency(b.balance)} tone="text-neon-purple" />
+            ))}
+          </div>
+          {bankTransactionsInPeriod.length === 0 ? (
+            <EmptyReportState />
+          ) : (
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Bank</th>
+                    <th className="px-5 py-3.5">Type</th>
+                    <th className="px-5 py-3.5">Amount</th>
+                    <th className="px-5 py-3.5">Date</th>
+                    <th className="px-5 py-3.5">Reference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankTransactionsInPeriod.map((t) => (
+                    <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 font-medium text-white">{bankNameById.get(t.bank_account_id) ?? '—'}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={t.type === 'credit' ? 'text-neon-green' : 'text-neon-red'}>{t.type === 'credit' ? 'Credit' : 'Debit'}</span>
+                      </td>
+                      <td className={`px-5 py-3.5 font-semibold ${t.type === 'credit' ? 'text-neon-green' : 'text-neon-red'}`}>
+                        {t.type === 'credit' ? '+' : '−'}
+                        {formatCurrency(t.amount)}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(t.date)}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{t.reference_type ? t.reference_type.replace('_', ' ') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'cash-ledger' && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard label="Opening Balance" value={formatCurrency(cashOpeningBalance)} />
+            <SummaryCard label="Cash In (period)" value={formatCurrency(cashInTotalInPeriod)} tone="text-neon-green" />
+            <SummaryCard label="Cash Out (period)" value={formatCurrency(cashOutTotalInPeriod)} tone="text-neon-red" />
+            <SummaryCard label="Net (period)" value={formatCurrency(cashInTotalInPeriod - cashOutTotalInPeriod)} />
+          </div>
+          {cashTransactionsInPeriod.length === 0 ? (
+            <EmptyReportState />
+          ) : (
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Date</th>
+                    <th className="px-5 py-3.5">Type</th>
+                    <th className="px-5 py-3.5">Category</th>
+                    <th className="px-5 py-3.5">Amount</th>
+                    <th className="px-5 py-3.5">Bank</th>
+                    <th className="px-5 py-3.5">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashTransactionsInPeriod.map((t) => (
+                    <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(t.date)}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={t.type === 'cash_in' ? 'text-neon-green' : 'text-neon-red'}>{t.type === 'cash_in' ? 'Cash In' : 'Cash Out'}</span>
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-300">{t.category}</td>
+                      <td className={`px-5 py-3.5 font-semibold ${t.type === 'cash_in' ? 'text-neon-green' : 'text-neon-red'}`}>
+                        {t.type === 'cash_in' ? '+' : '−'}
+                        {formatCurrency(t.amount)}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-400">{t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '—' : '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-500">{t.notes || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'monthly-collections' && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SummaryCard label="Total Collections (period)" value={formatCurrency(monthlyCollectionGrandTotal)} tone="text-neon-green" />
+            <SummaryCard label="Months" value={String(monthlyCollectionRows.length)} />
+          </div>
+          {monthlyCollectionRows.length === 0 ? (
+            <EmptyReportState />
+          ) : (
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3.5">Month</th>
+                    <th className="px-5 py-3.5">Shopify</th>
+                    <th className="px-5 py-3.5">Courier</th>
+                    <th className="px-5 py-3.5">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyCollectionRows.map((r) => (
+                    <tr key={r.month} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 font-medium text-white">{r.month}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{formatCurrency(r.shopify)}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{formatCurrency(r.courier)}</td>
+                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(r.total)}</td>
                     </tr>
                   ))}
                 </tbody>
