@@ -1,4 +1,20 @@
-import { Boxes, Factory, FileBarChart, HandCoins, HeartHandshake, History, LayoutDashboard, LogOut, Receipt, Users, Wallet } from 'lucide-react'
+import {
+  Banknote,
+  Boxes,
+  Factory,
+  FileBarChart,
+  HandCoins,
+  HeartHandshake,
+  History,
+  Landmark,
+  LayoutDashboard,
+  Layers,
+  LogOut,
+  Receipt,
+  Truck,
+  Users,
+  Wallet,
+} from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { classNames } from '@/lib/utils'
@@ -11,6 +27,10 @@ const NAV_ITEMS = [
   { to: '/salary', label: 'Salary', icon: Wallet },
   { to: '/advances', label: 'Advance', icon: HandCoins },
   { to: '/zakat', label: 'Zakat', icon: HeartHandshake },
+  { to: '/collections', label: 'Collections', icon: Layers },
+  { to: '/couriers', label: 'Couriers', icon: Truck },
+  { to: '/bank-accounts', label: 'Banks', icon: Landmark },
+  { to: '/cash', label: 'Cash', icon: Banknote },
   { to: '/reports', label: 'Reports', icon: FileBarChart },
   { to: '/activity-log', label: 'Activity', icon: History },
   { to: '/factory', label: 'Factory', icon: Factory },

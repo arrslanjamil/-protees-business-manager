@@ -421,6 +421,222 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['zakat_settings']['Insert']>
         Relationships: []
       }
+      couriers: {
+        Row: {
+          id: number
+          name: string
+          is_active: boolean
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          name: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['couriers']['Insert']>
+        Relationships: []
+      }
+      courier_expected_collections: {
+        Row: {
+          id: number
+          courier_id: number
+          amount: number
+          date: string
+          order_reference: string | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          courier_id: number
+          amount: number
+          date?: string
+          order_reference?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['courier_expected_collections']['Insert']>
+        Relationships: []
+      }
+      bank_accounts: {
+        Row: {
+          id: number
+          name: string
+          is_active: boolean
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          name: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['bank_accounts']['Insert']>
+        Relationships: []
+      }
+      courier_payments: {
+        Row: {
+          id: number
+          courier_id: number
+          amount: number
+          payment_date: string
+          payment_type: 'cash' | 'bank_transfer'
+          bank_account_id: number | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          courier_id: number
+          amount: number
+          payment_date?: string
+          payment_type: 'cash' | 'bank_transfer'
+          bank_account_id?: number | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['courier_payments']['Insert']>
+        Relationships: []
+      }
+      bank_transactions: {
+        Row: {
+          id: number
+          bank_account_id: number
+          type: 'credit' | 'debit'
+          amount: number
+          date: string
+          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | null
+          reference_id: number | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+        }
+        Insert: {
+          id?: number
+          bank_account_id: number
+          type: 'credit' | 'debit'
+          amount: number
+          date?: string
+          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | null
+          reference_id?: number | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['bank_transactions']['Insert']>
+        Relationships: []
+      }
+      cash_transactions: {
+        Row: {
+          id: number
+          type: 'cash_in' | 'cash_out'
+          category: string
+          amount: number
+          date: string
+          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | null
+          reference_id: number | null
+          bank_account_id: number | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+        }
+        Insert: {
+          id?: number
+          type: 'cash_in' | 'cash_out'
+          category: string
+          amount: number
+          date?: string
+          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | null
+          reference_id?: number | null
+          bank_account_id?: number | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['cash_transactions']['Insert']>
+        Relationships: []
+      }
+      cash_settings: {
+        Row: {
+          id: number
+          opening_balance: number
+          opening_date: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          opening_balance?: number
+          opening_date?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['cash_settings']['Insert']>
+        Relationships: []
+      }
+      shopify_orders: {
+        Row: {
+          id: number
+          shopify_order_id: string
+          shopify_transaction_id: string | null
+          order_number: string
+          order_date: string
+          customer_name: string | null
+          total_amount: number
+          payment_method: string | null
+          financial_status: string
+          imported_at: string
+        }
+        Insert: {
+          id?: number
+          shopify_order_id: string
+          shopify_transaction_id?: string | null
+          order_number: string
+          order_date: string
+          customer_name?: string | null
+          total_amount: number
+          payment_method?: string | null
+          financial_status: string
+          imported_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['shopify_orders']['Insert']>
+        Relationships: []
+      }
+      shopify_settings: {
+        Row: {
+          id: number
+          store_domain: string | null
+          last_synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          store_domain?: string | null
+          last_synced_at?: string | null
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['shopify_settings']['Insert']>
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
