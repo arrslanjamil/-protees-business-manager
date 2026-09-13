@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { useCollections } from '@/context/CollectionsContext'
+import { CategoryBarChart } from '@/components/dashboard/CategoryBarChart'
 import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
 import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
@@ -732,13 +733,8 @@ export function ReportsPage() {
           {expensesByCategory.length > 0 && (
             <div>
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Expenses by Category</h2>
-              <div className="card grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
-                {expensesByCategory.map(([cat, total]) => (
-                  <div key={cat} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate text-slate-400">{cat}</span>
-                    <span className="shrink-0 font-display font-semibold text-neon-red">{formatCurrency(total)}</span>
-                  </div>
-                ))}
+              <div className="card">
+                <CategoryBarChart data={expensesByCategory} color="#f87171" />
               </div>
             </div>
           )}
@@ -837,13 +833,8 @@ export function ReportsPage() {
             <SummaryCard label="Number of Entries" value={String(unitExpensesInPeriod.length)} />
           </div>
           {unitExpensesByCategory.length > 0 && (
-            <div className="card grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
-              {unitExpensesByCategory.map(([cat, total]) => (
-                <div key={cat} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate text-slate-400">{cat}</span>
-                  <span className="shrink-0 font-display font-semibold text-neon-purple">{formatCurrency(total)}</span>
-                </div>
-              ))}
+            <div className="card">
+              <CategoryBarChart data={unitExpensesByCategory} color="#a78bfa" />
             </div>
           )}
           {unitExpensesInPeriod.length === 0 ? (
