@@ -3,39 +3,50 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 
 export type WidgetId =
+  | 'total-money-out'
   | 'total-employees'
   | 'total-payroll'
   | 'salary-paid'
-  | 'salary-due'
   | 'outstanding-advances'
-  | 'advances-given'
   | 'total-expenses'
   | 'unit-expenses'
+  | 'total-collections'
+  | 'salary-due'
+  | 'advances-given'
   | 'khadim'
   | 'zakat-distributed'
 
-/** The 4 large top-row KPIs — the numbers an owner needs within 5 seconds. */
-export const TOP_KPI_IDS: WidgetId[] = ['total-employees', 'total-payroll', 'salary-paid', 'salary-due']
-
-/** Smaller, secondary KPIs shown below the top row. Collections figures
- * live in the dedicated Financial Summary card instead, to avoid
- * showing the same numbers twice. */
-export const SECONDARY_KPI_IDS: WidgetId[] = [
+/** Every KPI card on the dashboard, in one reorderable grid — this is
+ * also the priority order a fresh (or reset) layout starts with.
+ * Total Money Out always leads: see sanitizeOrder below. */
+export const KPI_CARD_IDS: WidgetId[] = [
+  'total-money-out',
+  'total-employees',
+  'total-payroll',
+  'salary-paid',
   'outstanding-advances',
-  'advances-given',
   'total-expenses',
   'unit-expenses',
+  'total-collections',
+  'salary-due',
+  'advances-given',
   'khadim',
   'zakat-distributed',
 ]
 
-export const DEFAULT_WIDGET_ORDER: WidgetId[] = [...TOP_KPI_IDS, ...SECONDARY_KPI_IDS]
+export const DEFAULT_WIDGET_ORDER: WidgetId[] = KPI_CARD_IDS
 
 function sanitizeOrder(saved: string[] | null | undefined): WidgetId[] {
   if (!saved || saved.length === 0) return DEFAULT_WIDGET_ORDER
   const valid = saved.filter((id): id is WidgetId => (DEFAULT_WIDGET_ORDER as string[]).includes(id))
   const missing = DEFAULT_WIDGET_ORDER.filter((id) => !valid.includes(id))
-  return [...valid, ...missing]
+  // Total Money Out is the headline KPI — it leads even for users who
+  // already have a saved layout from before this widget existed,
+  // instead of landing at the end like other newly-added widgets.
+  const withoutMoneyOut = valid.filter((id) => id !== 'total-money-out')
+  const leadsWithMoneyOut = valid.includes('total-money-out') ? valid : ['total-money-out' as WidgetId, ...withoutMoneyOut]
+  const stillMissing = missing.filter((id) => id !== 'total-money-out')
+  return [...leadsWithMoneyOut, ...stillMissing]
 }
 
 /** Loads and persists the current user's dashboard widget order in

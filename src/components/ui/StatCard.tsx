@@ -11,6 +11,10 @@ interface StatCardProps {
    * a compacted display string (e.g. "Rs 23.5K") so the precise amount is
    * still one hover away. */
   fullValue?: string
+  /** Makes the card an interactive drill-down trigger — renders as a
+   * button, highlights when `selected`, and shows a chevron affordance. */
+  onClick?: () => void
+  selected?: boolean
 }
 
 const accentMap = {
@@ -21,22 +25,38 @@ const accentMap = {
   amber: { icon: 'text-neon-amber bg-neon-amber/10', ring: '' },
 }
 
-export function StatCard({ label, value, icon: Icon, accent = 'cyan', hint, fullValue }: StatCardProps) {
+export function StatCard({ label, value, icon: Icon, accent = 'cyan', hint, fullValue, onClick, selected }: StatCardProps) {
   const styles = accentMap[accent]
-  return (
-    <div className={classNames('card group transition-all duration-300 hover:-translate-y-0.5', styles.ring)}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{label}</p>
-          <p className="mt-2 font-display text-2xl font-bold text-white" title={fullValue && fullValue !== value ? fullValue : undefined}>
-            {value}
-          </p>
-          {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
-        </div>
-        <div className={classNames('rounded-xl p-2.5', styles.icon)}>
-          <Icon size={20} />
-        </div>
+  const content = (
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{label}</p>
+        <p className="mt-2 font-display text-2xl font-bold text-white" title={fullValue && fullValue !== value ? fullValue : undefined}>
+          {value}
+        </p>
+        {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      </div>
+      <div className={classNames('rounded-xl p-2.5', styles.icon)}>
+        <Icon size={20} />
       </div>
     </div>
   )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={classNames(
+          'card group block w-full text-left transition-all duration-300 hover:-translate-y-0.5',
+          styles.ring,
+          selected && 'ring-2 ring-neon-cyan/60'
+        )}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <div className={classNames('card group transition-all duration-300 hover:-translate-y-0.5', styles.ring)}>{content}</div>
 }
