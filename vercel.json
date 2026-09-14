@@ -4,5 +4,10 @@
       "path": "/api/shopify-sync",
       "schedule": "0 6 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/shopify-sync.ts": {
+      "maxDuration": 60
+    }
+  }
 }
