@@ -13,6 +13,10 @@ import type {
   Courier,
   CourierCollection,
   CourierWithBalance,
+  Creditor,
+  CreditorBill,
+  CreditorPayment,
+  CreditorWithBalance,
   PaymentType,
   ShopifyOrder,
   ShopifySettings,
@@ -47,6 +51,34 @@ interface TransferCashToOfficeInput {
   bankAccountId: number
   amount: number
   date?: string
+  notes?: string
+}
+
+interface AddCreditorInput {
+  name: string
+  category?: string | null
+  contactPerson?: string | null
+  phone?: string | null
+  address?: string | null
+  notes?: string | null
+  openingBalance?: number
+}
+
+interface AddCreditorBillInput {
+  creditorId: number
+  billDate?: string
+  amount: number
+  description?: string
+  referenceNumber?: string
+  notes?: string
+}
+
+interface AddCreditorPaymentInput {
+  creditorId: number
+  amount: number
+  paymentDate?: string
+  paymentType: PaymentType
+  bankAccountId?: number | null
   notes?: string
 }
 
@@ -89,6 +121,12 @@ interface CollectionsContextValue {
   shopifyStores: ShopifyStore[]
   shopifySyncing: boolean
 
+  creditors: Creditor[]
+  creditorsWithBalance: CreditorWithBalance[]
+  creditorBills: CreditorBill[]
+  creditorPayments: CreditorPayment[]
+  totalOutstandingCreditors: number
+
   refreshAll: () => Promise<void>
   updateShopifyStoreDomain: (storeKey: string, domain: string) => Promise<void>
   syncShopifyNow: () => Promise<{ ok: boolean; message: string }>
@@ -105,6 +143,14 @@ interface CollectionsContextValue {
   updateCashOpeningBalance: (amount: number, date?: string) => Promise<void>
   transferCashToOffice: (input: TransferCashToOfficeInput) => Promise<void>
   deleteCashTransfer: (id: number) => Promise<void>
+
+  addCreditor: (input: AddCreditorInput) => Promise<Creditor>
+  updateCreditor: (id: number, input: AddCreditorInput) => Promise<void>
+  setCreditorActive: (id: number, isActive: boolean) => Promise<void>
+  addCreditorBill: (input: AddCreditorBillInput) => Promise<void>
+  deleteCreditorBill: (id: number) => Promise<void>
+  addCreditorPayment: (input: AddCreditorPaymentInput) => Promise<void>
+  deleteCreditorPayment: (id: number) => Promise<void>
 }
 
 const CollectionsContext = createContext<CollectionsContextValue | null>(null)
@@ -125,6 +171,9 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
   const [shopifySettings, setShopifySettings] = useState<ShopifySettings | null>(null)
   const [shopifyStores, setShopifyStores] = useState<ShopifyStore[]>([])
   const [shopifySyncing, setShopifySyncing] = useState(false)
+  const [creditors, setCreditors] = useState<Creditor[]>([])
+  const [creditorBills, setCreditorBills] = useState<CreditorBill[]>([])
+  const [creditorPayments, setCreditorPayments] = useState<CreditorPayment[]>([])
 
   const hasLoadedOnceRef = useRef(false)
 
@@ -136,7 +185,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [c, cc, ba, bt, ct, cf, cs, so, ss, sst] = await Promise.all([
+      const [c, cc, ba, bt, ct, cf, cs, so, ss, sst, cr, crb, crp] = await Promise.all([
         supabase.from('couriers').select('*').order('name'),
         supabase.from('courier_collections').select('*').order('invoice_date', { ascending: false }),
         supabase.from('bank_accounts').select('*').order('name'),
@@ -147,8 +196,11 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         supabase.from('shopify_orders').select('*').order('order_date', { ascending: false }),
         supabase.from('shopify_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('shopify_stores').select('*').order('store_key'),
+        supabase.from('creditors').select('*').order('name'),
+        supabase.from('creditor_bills').select('*').order('bill_date', { ascending: false }),
+        supabase.from('creditor_payments').select('*').order('payment_date', { ascending: false }),
       ])
-      const firstError = [c, cc, ba, bt, ct, cf, cs, so, ss, sst].find((r) => r.error)?.error
+      const firstError = [c, cc, ba, bt, ct, cf, cs, so, ss, sst, cr, crb, crp].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setCouriers(c.data ?? [])
@@ -161,6 +213,9 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
       setShopifyOrders(so.data ?? [])
       setShopifySettings(ss.data ?? null)
       setShopifyStores(sst.data ?? [])
+      setCreditors(cr.data ?? [])
+      setCreditorBills(crb.data ?? [])
+      setCreditorPayments(crp.data ?? [])
       hasLoadedOnceRef.current = true
     } catch (err) {
       const message =
@@ -221,6 +276,32 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     const cashOut = cashTransactions.filter((t) => t.type === 'cash_out').reduce((s, t) => s + Number(t.amount), 0)
     return opening + cashIn - cashOut
   }, [cashSettings, cashTransactions])
+
+  // --- Computed: Creditor outstanding balances ------------------------------
+  // Never stored — same ledger-derivation pattern as advances/couriers:
+  // opening balance + sum(bills) - sum(payments), recomputed live.
+  const creditorsWithBalance = useMemo<CreditorWithBalance[]>(
+    () =>
+      creditors.map((creditor) => {
+        const bills = creditorBills.filter((b) => b.creditor_id === creditor.id)
+        const payments = creditorPayments.filter((p) => p.creditor_id === creditor.id)
+        const totalBilled = bills.reduce((s, b) => s + Number(b.amount), 0)
+        const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0)
+        const lastActivityDate = [...bills.map((b) => b.bill_date), ...payments.map((p) => p.payment_date)].reduce<string | null>(
+          (latest, d) => (!latest || d > latest ? d : latest),
+          null
+        )
+        return {
+          ...creditor,
+          totalBilled,
+          totalPaid,
+          outstandingBalance: Number(creditor.opening_balance) + totalBilled - totalPaid,
+          lastActivityDate,
+        }
+      }),
+    [creditors, creditorBills, creditorPayments]
+  )
+  const totalOutstandingCreditors = creditorsWithBalance.reduce((s, c) => s + Math.max(0, c.outstandingBalance), 0)
 
   // --- Couriers (one-time payment configuration) ---------------------------------
   const addCourier: CollectionsContextValue['addCourier'] = async ({ name, paymentMethod, bankAccountId }) => {
@@ -376,6 +457,123 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  // --- Creditors & Supplier Ledger ------------------------------------------
+  const addCreditor: CollectionsContextValue['addCreditor'] = async ({ name, category, contactPerson, phone, address, notes, openingBalance }) => {
+    const { data, error: err } = await supabase
+      .from('creditors')
+      .insert({
+        name: name.trim(),
+        category: category ?? null,
+        contact_person: contactPerson ?? null,
+        phone: phone ?? null,
+        address: address ?? null,
+        notes: notes ?? null,
+        opening_balance: openingBalance ?? 0,
+      })
+      .select()
+      .single()
+    if (err) throw err
+    await refreshAll()
+    return data
+  }
+
+  const updateCreditor: CollectionsContextValue['updateCreditor'] = async (id, { name, category, contactPerson, phone, address, notes, openingBalance }) => {
+    const { error: err } = await supabase
+      .from('creditors')
+      .update({
+        name: name.trim(),
+        category: category ?? null,
+        contact_person: contactPerson ?? null,
+        phone: phone ?? null,
+        address: address ?? null,
+        notes: notes ?? null,
+        opening_balance: openingBalance ?? 0,
+      })
+      .eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
+  const setCreditorActive: CollectionsContextValue['setCreditorActive'] = async (id, isActive) => {
+    const { error: err } = await supabase.from('creditors').update({ is_active: isActive }).eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
+  /** A bill increases what the business owes — no cash/bank movement. */
+  const addCreditorBill: CollectionsContextValue['addCreditorBill'] = async ({ creditorId, billDate, amount, description, referenceNumber, notes }) => {
+    const { error: err } = await supabase.from('creditor_bills').insert({
+      creditor_id: creditorId,
+      bill_date: billDate ?? todayISO(),
+      amount,
+      description: description ?? null,
+      reference_number: referenceNumber ?? null,
+      notes: notes ?? null,
+    })
+    if (err) throw err
+    await refreshAll()
+  }
+
+  const deleteCreditorBill: CollectionsContextValue['deleteCreditorBill'] = async (id) => {
+    const { error: err } = await supabase.from('creditor_bills').delete().eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
+  /** A payment reduces what the business owes AND posts a matching
+   * cash-out (Office Cash) or bank debit — the chosen payment method is
+   * per-payment, not fixed on the creditor (unlike couriers, where WE
+   * receive money on a fixed configured channel; here WE choose how to
+   * pay each time). */
+  const addCreditorPayment: CollectionsContextValue['addCreditorPayment'] = async ({ creditorId, amount, paymentDate, paymentType, bankAccountId, notes }) => {
+    const date = paymentDate ?? todayISO()
+    const { data: payment, error: payErr } = await supabase
+      .from('creditor_payments')
+      .insert({
+        creditor_id: creditorId,
+        amount,
+        payment_date: date,
+        payment_type: paymentType,
+        bank_account_id: paymentType === 'bank_transfer' ? (bankAccountId ?? null) : null,
+        notes: notes ?? null,
+      })
+      .select()
+      .single()
+    if (payErr) throw payErr
+
+    if (paymentType === 'bank_transfer' && bankAccountId) {
+      const { error: bankErr } = await supabase.from('bank_transactions').insert({
+        bank_account_id: bankAccountId,
+        type: 'debit',
+        amount,
+        date,
+        reference_type: 'creditor_payment',
+        reference_id: payment.id,
+      })
+      if (bankErr) throw bankErr
+    } else {
+      const { error: cashErr } = await supabase.from('cash_transactions').insert({
+        type: 'cash_out',
+        category: 'Creditor Payment',
+        amount,
+        date,
+        reference_type: 'creditor_payment',
+        reference_id: payment.id,
+      })
+      if (cashErr) throw cashErr
+    }
+
+    await refreshAll()
+  }
+
+  const deleteCreditorPayment: CollectionsContextValue['deleteCreditorPayment'] = async (id) => {
+    await supabase.from('bank_transactions').delete().eq('reference_type', 'creditor_payment').eq('reference_id', id)
+    await supabase.from('cash_transactions').delete().eq('reference_type', 'creditor_payment').eq('reference_id', id)
+    const { error: err } = await supabase.from('creditor_payments').delete().eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
   // --- Shopify (multi-store) ---------------------------------------------------
   // Store domain is not secret — it can be edited from the client. Access
   // tokens are never stored here; they live only in server-only Vercel env
@@ -490,6 +688,11 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     shopifySettings,
     shopifyStores,
     shopifySyncing,
+    creditors,
+    creditorsWithBalance,
+    creditorBills,
+    creditorPayments,
+    totalOutstandingCreditors,
     refreshAll,
     updateShopifyStoreDomain,
     syncShopifyNow,
@@ -504,6 +707,13 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     updateCashOpeningBalance,
     transferCashToOffice,
     deleteCashTransfer,
+    addCreditor,
+    updateCreditor,
+    setCreditorActive,
+    addCreditorBill,
+    deleteCreditorBill,
+    addCreditorPayment,
+    deleteCreditorPayment,
   }
 
   return <CollectionsContext.Provider value={value}>{children}</CollectionsContext.Provider>

@@ -26,6 +26,38 @@ export type CashSettings = Database['public']['Tables']['cash_settings']['Row']
 export type ShopifyOrder = Database['public']['Tables']['shopify_orders']['Row']
 export type ShopifySettings = Database['public']['Tables']['shopify_settings']['Row']
 export type ShopifyStore = Database['public']['Tables']['shopify_stores']['Row']
+export type MasterDataType = Database['public']['Tables']['master_data_types']['Row']
+export type MasterDataItem = Database['public']['Tables']['master_data_items']['Row']
+export type Creditor = Database['public']['Tables']['creditors']['Row']
+export type CreditorBill = Database['public']['Tables']['creditor_bills']['Row']
+export type CreditorPayment = Database['public']['Tables']['creditor_payments']['Row']
+
+/** The fixed set of Master Data "slots" — the VALUES inside each are fully
+ * admin-managed (create/rename/archive from Settings), only the slot list
+ * itself lives in code. See migration_016_master_data.sql. */
+export const MASTER_DATA_TYPE_KEYS = [
+  'creditor_category',
+  'supplier_category',
+  'material_category',
+  'fabric_type',
+  'fabric_gsm',
+  'color',
+  'unit',
+  'payment_method',
+  'vendor_type',
+  'service_type',
+  'tag',
+  'label',
+  'status',
+] as const
+export type MasterDataTypeKey = (typeof MASTER_DATA_TYPE_KEYS)[number]
+
+export interface CreditorWithBalance extends Creditor {
+  totalBilled: number
+  totalPaid: number
+  outstandingBalance: number
+  lastActivityDate: string | null
+}
 
 export const SHOPIFY_STORE_KEYS = ['protees', 'little_peanuts'] as const
 export type ShopifyStoreKey = (typeof SHOPIFY_STORE_KEYS)[number]

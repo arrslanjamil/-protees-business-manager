@@ -5,10 +5,12 @@ import {
   HandCoins,
   HeartHandshake,
   History,
+  Landmark,
   LayoutDashboard,
   Layers,
   LogOut,
   Receipt,
+  Settings,
   Users,
   Wallet,
   Zap,
@@ -27,9 +29,11 @@ const NAV_ITEMS = [
   { to: '/advances', label: 'Advances', icon: HandCoins },
   { to: '/zakat', label: 'Zakat', icon: HeartHandshake },
   { to: '/collections', label: 'Collections', icon: Layers },
+  { to: '/creditors', label: 'Creditors', icon: Landmark },
   { to: '/reports', label: 'Reports', icon: FileBarChart },
   { to: '/activity-log', label: 'Activity Log', icon: History },
   { to: '/factory', label: 'Factory', icon: Factory },
+  { to: '/settings', label: 'Master Data', icon: Settings },
 ]
 
 export function Sidebar() {
