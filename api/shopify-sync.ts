@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { checkAuthorized, getSupabaseAdmin, normalizeDomain, SHOPIFY_API_VERSION, STORES } from './_shared.js'
+import { checkAuthorized, exchangeClientCredentials, getSupabaseAdmin, normalizeDomain, SHOPIFY_API_VERSION, STORES } from './_shared.js'
 
 interface ShopifyAddress {
   city?: string | null
@@ -19,18 +19,24 @@ interface ShopifyOrder {
   shipping_address?: ShopifyAddress | null
 }
 
-async function fetchPaidOrders(domain: string, token: string): Promise<ShopifyOrder[]> {
+async function fetchPaidOrders(domain: string, accessToken: string): Promise<ShopifyOrder[]> {
   const orders: ShopifyOrder[] = []
   let url: string | null = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&financial_status=paid&limit=250`
 
   while (url) {
     const requestUrl: string = url
-    const res: Response = await fetch(requestUrl, { headers: { 'X-Shopify-Access-Token': token } })
+    console.log(`[shopify-orders:${domain}] Orders request -> GET ${requestUrl}`)
+    const res: Response = await fetch(requestUrl, { headers: { 'X-Shopify-Access-Token': accessToken } })
+    const bodyText = await res.text()
+    console.log(`[shopify-orders:${domain}] Orders response status: ${res.status}`)
+
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`GET ${requestUrl} -> HTTP ${res.status}: ${body.slice(0, 500)}`)
+      console.error(`[shopify-orders:${domain}] Orders response body: ${bodyText.slice(0, 500)}`)
+      throw new Error(`GET ${requestUrl} -> HTTP ${res.status}: ${bodyText.slice(0, 500)}`)
     }
-    const json = (await res.json()) as { orders: ShopifyOrder[] }
+
+    const json = JSON.parse(bodyText) as { orders: ShopifyOrder[] }
+    console.log(`[shopify-orders:${domain}] Orders response: ${json.orders.length} order(s) on this page.`)
     orders.push(...json.orders)
 
     const link = res.headers.get('link')
@@ -86,16 +92,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   for (const store of STORES) {
     const rawDomain = process.env[store.domainEnv]
-    const rawToken = process.env[store.tokenEnv]
-    if (!rawDomain || !rawToken) continue // store not configured yet — skip silently
+    const clientId = process.env[store.clientIdEnv]?.trim()
+    const clientSecret = process.env[store.clientSecretEnv]?.trim()
+    if (!rawDomain || !clientId || !clientSecret) continue // store not configured yet — skip silently
     const domain = normalizeDomain(rawDomain)
-    // Defensive: a trailing newline/space from copy-paste makes Shopify
-    // reject an otherwise-correct token with the same generic "Invalid
-    // API key or access token" error as a genuinely wrong one.
-    const token = rawToken.trim()
 
     try {
-      const orders = await fetchPaidOrders(domain, token)
+      const exchange = await exchangeClientCredentials(domain, clientId, clientSecret)
+      if (!exchange.ok || !exchange.accessToken) {
+        throw new Error(exchange.error ?? 'Token exchange failed for an unknown reason.')
+      }
+
+      const orders = await fetchPaidOrders(domain, exchange.accessToken)
       const rows = orders.map((o) => mapOrder(o, store.key))
 
       if (rows.length > 0) {
@@ -118,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (storesSynced === 0 && errors.length === 0) {
-    res.status(200).json({ message: 'No Shopify stores are configured yet — add SHOPIFY_*_DOMAIN and SHOPIFY_*_TOKEN in Vercel.' })
+    res.status(200).json({ message: 'No Shopify stores are configured yet — add SHOPIFY_*_DOMAIN, SHOPIFY_*_CLIENT_ID and SHOPIFY_*_CLIENT_SECRET in Vercel.' })
     return
   }
 
