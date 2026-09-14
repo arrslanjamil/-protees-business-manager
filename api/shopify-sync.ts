@@ -19,31 +19,56 @@ interface ShopifyOrder {
   shipping_address?: ShopifyAddress | null
 }
 
-async function fetchPaidOrders(domain: string, accessToken: string): Promise<ShopifyOrder[]> {
+/** Start of the current UTC calendar month, as an ISO8601 string — used
+ * to scope every sync to "this month" via Shopify's own created_at_min
+ * filter (server-side, so we never pull more than we need) rather than
+ * fetching full history and filtering client-side. */
+function currentMonthStartISO(): string {
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+}
+
+// Hard ceiling regardless of date scoping — protects against an
+// unexpectedly large month or a pagination bug looping forever.
+const MAX_PAGES = 40
+
+async function fetchPaidOrders(domain: string, accessToken: string, createdAtMin: string): Promise<ShopifyOrder[]> {
   const orders: ShopifyOrder[] = []
-  let url: string | null = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&financial_status=paid&limit=250`
+  let url: string | null =
+    `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&financial_status=paid&limit=250&created_at_min=${encodeURIComponent(createdAtMin)}`
+  let page = 0
+
+  console.log(`[shopify-orders:${domain}] Starting sync — orders created at/after ${createdAtMin}, up to ${MAX_PAGES} pages of 250.`)
 
   while (url) {
+    page += 1
+    if (page > MAX_PAGES) {
+      console.error(`[shopify-orders:${domain}] Hit MAX_PAGES=${MAX_PAGES} safety cap (${orders.length} orders fetched so far) — stopping early.`)
+      break
+    }
+
     const requestUrl: string = url
-    console.log(`[shopify-orders:${domain}] Orders request -> GET ${requestUrl}`)
+    console.log(`[shopify-orders:${domain}] Page ${page} request -> GET ${requestUrl}`)
     const res: Response = await fetch(requestUrl, { headers: { 'X-Shopify-Access-Token': accessToken } })
     const bodyText = await res.text()
-    console.log(`[shopify-orders:${domain}] Orders response status: ${res.status}`)
+    console.log(`[shopify-orders:${domain}] Page ${page} response status: ${res.status}`)
 
     if (!res.ok) {
-      console.error(`[shopify-orders:${domain}] Orders response body: ${bodyText.slice(0, 500)}`)
+      console.error(`[shopify-orders:${domain}] Page ${page} response body: ${bodyText.slice(0, 500)}`)
       throw new Error(`GET ${requestUrl} -> HTTP ${res.status}: ${bodyText.slice(0, 500)}`)
     }
 
     const json = JSON.parse(bodyText) as { orders: ShopifyOrder[] }
-    console.log(`[shopify-orders:${domain}] Orders response: ${json.orders.length} order(s) on this page.`)
     orders.push(...json.orders)
+    console.log(`[shopify-orders:${domain}] Page ${page}: ${json.orders.length} order(s) this page, ${orders.length} total so far.`)
 
     const link = res.headers.get('link')
     const nextMatch = link?.match(/<([^>]+)>;\s*rel="next"/)
     url = nextMatch ? nextMatch[1] : null
+    console.log(`[shopify-orders:${domain}] Page ${page}: next page_info ${url ? 'present, continuing' : 'absent, done'}.`)
   }
 
+  console.log(`[shopify-orders:${domain}] Finished: ${orders.length} paid order(s) across ${page} page(s).`)
   return orders
 }
 
@@ -89,6 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let totalImported = 0
   let storesSynced = 0
   const errors: string[] = []
+  const perStoreCounts: string[] = []
 
   for (const store of STORES) {
     const rawDomain = process.env[store.domainEnv]
@@ -97,13 +123,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!rawDomain || !clientId || !clientSecret) continue // store not configured yet — skip silently
     const domain = normalizeDomain(rawDomain)
 
+    console.log(`[shopify-sync] Starting store "${store.key}" (${domain}).`)
+
     try {
       const exchange = await exchangeClientCredentials(domain, clientId, clientSecret)
       if (!exchange.ok || !exchange.accessToken) {
         throw new Error(exchange.error ?? 'Token exchange failed for an unknown reason.')
       }
 
-      const orders = await fetchPaidOrders(domain, exchange.accessToken)
+      const orders = await fetchPaidOrders(domain, exchange.accessToken, currentMonthStartISO())
       const rows = orders.map((o) => mapOrder(o, store.key))
 
       if (rows.length > 0) {
@@ -118,9 +146,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       totalImported += rows.length
       storesSynced += 1
+      perStoreCounts.push(`${store.key}: ${rows.length}`)
+      console.log(`[shopify-sync] Finished store "${store.key}": ${rows.length} order(s) imported.`)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown sync error.'
       errors.push(`${store.key}: ${message}`)
+      console.error(`[shopify-sync] Store "${store.key}" failed: ${message}`)
       await admin.from('shopify_stores').update({ is_connected: false, last_sync_error: message }).eq('store_key', store.key)
     }
   }
@@ -136,6 +167,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   res.status(200).json({
-    message: `Synced ${totalImported} paid order(s) from ${storesSynced} store(s).${errors.length ? ` Errors: ${errors.join(' | ')}` : ''}`,
+    message: `Synced ${totalImported} paid order(s) from ${storesSynced} store(s) this month (${perStoreCounts.join(', ')}).${errors.length ? ` Errors: ${errors.join(' | ')}` : ''}`,
   })
 }
