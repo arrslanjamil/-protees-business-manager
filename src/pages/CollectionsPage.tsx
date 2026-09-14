@@ -741,9 +741,13 @@ export function CollectionsPage() {
                 </div>
               </div>
               <p className="text-[11px] text-slate-500">
-                Admin API Access Token: set{' '}
+                Dev Dashboard app credentials: set{' '}
                 <code className="rounded bg-white/5 px-1 py-0.5 text-slate-300">
-                  SHOPIFY_{store.store_key.toUpperCase()}_TOKEN
+                  SHOPIFY_{store.store_key.toUpperCase()}_CLIENT_ID
+                </code>{' '}
+                and{' '}
+                <code className="rounded bg-white/5 px-1 py-0.5 text-slate-300">
+                  SHOPIFY_{store.store_key.toUpperCase()}_CLIENT_SECRET
                 </code>{' '}
                 in Vercel → Settings → Environment Variables, then redeploy.
               </p>
@@ -782,8 +786,14 @@ export function CollectionsPage() {
                     <p className="break-all text-slate-500">Request: {testResults[store.store_key].requestUrl}</p>
                   )}
                   <p className="text-slate-500">Status: {testResults[store.store_key].status ?? 'no response'}</p>
-                  {testResults[store.store_key].tokenPreview && (
-                    <p className="text-slate-500">Token used: {testResults[store.store_key].tokenPreview} — check this matches the right store and isn't duplicated across both.</p>
+                  {testResults[store.store_key].tokenExchange && (
+                    <div className="mt-2 space-y-1 border-t border-white/5 pt-2">
+                      <p className="font-medium text-slate-400">Token exchange (client_credentials):</p>
+                      <p className="break-all text-slate-500">Request: POST {testResults[store.store_key].tokenExchange?.requestUrl}</p>
+                      <p className="break-all text-slate-500">Body: {testResults[store.store_key].tokenExchange?.requestBody}</p>
+                      <p className="text-slate-500">Status: {testResults[store.store_key].tokenExchange?.status ?? 'no response'}</p>
+                      <p className="break-all text-slate-500">Response: {testResults[store.store_key].tokenExchange?.responseBody ?? '—'}</p>
+                    </div>
                   )}
                 </div>
               )}

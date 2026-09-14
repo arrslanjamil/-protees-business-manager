@@ -59,7 +59,12 @@ export interface ShopifyConnectionTestResult {
   shopName?: string | null
   shopDomain?: string | null
   paidOrderCount?: number | null
-  tokenPreview?: string | null
+  tokenExchange?: {
+    requestUrl: string
+    requestBody: string
+    status: number | null
+    responseBody: string | null
+  } | null
 }
 
 interface CollectionsContextValue {
