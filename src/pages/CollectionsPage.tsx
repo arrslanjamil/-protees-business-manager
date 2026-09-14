@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, Banknote, CheckCircle2, Landmark, Pencil, Plus, RefreshCw, Settings, ShoppingBag, Trash2, Truck, Wallet, XCircle } from 'lucide-react'
-import { useCollections } from '@/context/CollectionsContext'
+import { useCollections, type ShopifyConnectionTestResult } from '@/context/CollectionsContext'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { StatCard } from '@/components/ui/StatCard'
@@ -30,6 +30,7 @@ export function CollectionsPage() {
     transferCashToOffice,
     updateShopifyStoreDomain,
     syncShopifyNow,
+    testShopifyConnection,
   } = useCollections()
   const { showToast } = useToast()
 
@@ -258,6 +259,19 @@ export function CollectionsPage() {
   async function handleSyncNow() {
     const result = await syncShopifyNow()
     showToast(result.ok ? 'success' : 'error', result.message)
+  }
+
+  const [testingStoreKey, setTestingStoreKey] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, ShopifyConnectionTestResult>>({})
+
+  async function handleTestConnection(storeKey: string) {
+    setTestingStoreKey(storeKey)
+    try {
+      const result = await testShopifyConnection(storeKey)
+      setTestResults((prev) => ({ ...prev, [storeKey]: result }))
+    } finally {
+      setTestingStoreKey(null)
+    }
   }
 
   // Best-effort ~30-minute freshness whenever someone has this page open,
@@ -735,6 +749,41 @@ export function CollectionsPage() {
               </p>
               {store.last_sync_error && <p className="text-[11px] text-neon-red">Last error: {store.last_sync_error}</p>}
               {store.last_synced_at && <p className="text-[11px] text-slate-500">Last synced: {formatDate(store.last_synced_at)}</p>}
+
+              <button
+                type="button"
+                className="btn-secondary w-full"
+                onClick={() => handleTestConnection(store.store_key)}
+                disabled={testingStoreKey === store.store_key}
+              >
+                {testingStoreKey === store.store_key ? 'Testing…' : 'Test Connection'}
+              </button>
+
+              {testResults[store.store_key] && (
+                <div
+                  className={classNames(
+                    'space-y-1.5 rounded-lg border p-3 text-[11px]',
+                    testResults[store.store_key].ok ? 'border-neon-green/30 bg-neon-green/5' : 'border-neon-red/30 bg-neon-red/5'
+                  )}
+                >
+                  <p className={classNames('font-semibold', testResults[store.store_key].ok ? 'text-neon-green' : 'text-neon-red')}>
+                    {testResults[store.store_key].ok ? '✓ Connection successful' : '✗ Connection failed'}
+                  </p>
+                  {testResults[store.store_key].ok ? (
+                    <>
+                      <p className="text-slate-300">Shop: {testResults[store.store_key].shopName ?? '—'}</p>
+                      <p className="text-slate-300">Domain: {testResults[store.store_key].shopDomain ?? '—'}</p>
+                      <p className="text-slate-300">Paid orders available: {testResults[store.store_key].paidOrderCount ?? '—'}</p>
+                    </>
+                  ) : (
+                    <p className="break-words text-slate-300">{testResults[store.store_key].body ?? 'Unknown error.'}</p>
+                  )}
+                  {testResults[store.store_key].requestUrl && (
+                    <p className="break-all text-slate-500">Request: {testResults[store.store_key].requestUrl}</p>
+                  )}
+                  <p className="text-slate-500">Status: {testResults[store.store_key].status ?? 'no response'}</p>
+                </div>
+              )}
             </div>
           ))}
         </div>

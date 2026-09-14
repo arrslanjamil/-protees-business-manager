@@ -50,6 +50,17 @@ interface TransferCashToOfficeInput {
   notes?: string
 }
 
+export interface ShopifyConnectionTestResult {
+  ok: boolean
+  store: string
+  requestUrl: string | null
+  status: number | null
+  body?: string | null
+  shopName?: string | null
+  shopDomain?: string | null
+  paidOrderCount?: number | null
+}
+
 interface CollectionsContextValue {
   loading: boolean
   error: string | null
@@ -75,6 +86,7 @@ interface CollectionsContextValue {
   refreshAll: () => Promise<void>
   updateShopifyStoreDomain: (storeKey: string, domain: string) => Promise<void>
   syncShopifyNow: () => Promise<{ ok: boolean; message: string }>
+  testShopifyConnection: (storeKey: string) => Promise<ShopifyConnectionTestResult>
 
   addCourier: (input: AddCourierInput) => Promise<Courier>
   updateCourier: (id: number, input: AddCourierInput) => Promise<void>
@@ -383,14 +395,58 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
-      const body = await res.json().catch(() => ({}))
+      const rawBody = await res.text()
+      const body = (() => {
+        try {
+          return JSON.parse(rawBody)
+        } catch {
+          return null
+        }
+      })()
       await refreshAll()
-      if (!res.ok) return { ok: false, message: body?.error ?? `Sync failed (${res.status}).` }
+      if (!res.ok) {
+        // A non-JSON body means the request never reached our function at
+        // all (a platform/routing 404, an HTML error page, etc.) — surface
+        // that distinctly instead of a generic message, since it points to
+        // a deployment/domain issue rather than a Shopify credentials one.
+        const detail = body?.error ?? (rawBody ? rawBody.slice(0, 200) : `HTTP ${res.status} with an empty body`)
+        return { ok: false, message: `Sync failed (${res.status}): ${detail}` }
+      }
       return { ok: true, message: body?.message ?? 'Sync complete.' }
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : 'Sync failed.' }
     } finally {
       setShopifySyncing(false)
+    }
+  }
+
+  /** Calls /api/shopify-test-connection for one store — a lightweight
+   * GET /shop.json + paid-order count, returning the exact request URL,
+   * response status, and body either way. Used by the "Test Connection"
+   * button so a failure is never a guess. */
+  const testShopifyConnection: CollectionsContextValue['testShopifyConnection'] = async (storeKey) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) return { ok: false, store: storeKey, requestUrl: null, status: null, body: 'Not signed in.' }
+
+    try {
+      const res = await fetch(`/api/shopify-test-connection?store=${encodeURIComponent(storeKey)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const rawBody = await res.text()
+      try {
+        return JSON.parse(rawBody) as ShopifyConnectionTestResult
+      } catch {
+        return {
+          ok: false,
+          store: storeKey,
+          requestUrl: `/api/shopify-test-connection?store=${storeKey}`,
+          status: res.status,
+          body: rawBody ? rawBody.slice(0, 500) : `HTTP ${res.status} with an empty (non-JSON) body — the request likely never reached the function.`,
+        }
+      }
+    } catch (err) {
+      return { ok: false, store: storeKey, requestUrl: null, status: null, body: err instanceof Error ? err.message : 'Network error.' }
     }
   }
 
@@ -414,6 +470,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     refreshAll,
     updateShopifyStoreDomain,
     syncShopifyNow,
+    testShopifyConnection,
     addCourier,
     updateCourier,
     addCourierCollection,
