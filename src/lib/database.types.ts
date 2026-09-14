@@ -528,7 +528,7 @@ export interface Database {
           type: 'credit' | 'debit'
           amount: number
           date: string
-          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | null
+          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
           reference_id: number | null
           notes: string | null
           created_at: string
@@ -541,7 +541,7 @@ export interface Database {
           type: 'credit' | 'debit'
           amount: number
           date?: string
-          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | null
+          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
           reference_id?: number | null
           notes?: string | null
           created_at?: string
@@ -556,7 +556,7 @@ export interface Database {
           category: string
           amount: number
           date: string
-          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | null
+          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
           reference_id: number | null
           bank_account_id: number | null
           notes: string | null
@@ -570,7 +570,7 @@ export interface Database {
           category: string
           amount: number
           date?: string
-          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | null
+          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
           reference_id?: number | null
           bank_account_id?: number | null
           notes?: string | null
@@ -672,6 +672,138 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['shopify_stores']['Insert']>
+        Relationships: []
+      }
+      master_data_types: {
+        Row: {
+          key: string
+          label: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          key: string
+          label: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['master_data_types']['Insert']>
+        Relationships: []
+      }
+      master_data_items: {
+        Row: {
+          id: number
+          type_key: string
+          name: string
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          type_key: string
+          name: string
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['master_data_items']['Insert']>
+        Relationships: []
+      }
+      creditors: {
+        Row: {
+          id: number
+          name: string
+          category: string | null
+          contact_person: string | null
+          phone: string | null
+          address: string | null
+          notes: string | null
+          opening_balance: number
+          is_active: boolean
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          name: string
+          category?: string | null
+          contact_person?: string | null
+          phone?: string | null
+          address?: string | null
+          notes?: string | null
+          opening_balance?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['creditors']['Insert']>
+        Relationships: []
+      }
+      creditor_bills: {
+        Row: {
+          id: number
+          creditor_id: number
+          bill_date: string
+          amount: number
+          description: string | null
+          reference_number: string | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          creditor_id: number
+          bill_date?: string
+          amount: number
+          description?: string | null
+          reference_number?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['creditor_bills']['Insert']>
+        Relationships: []
+      }
+      creditor_payments: {
+        Row: {
+          id: number
+          creditor_id: number
+          amount: number
+          payment_date: string
+          payment_type: 'cash' | 'bank_transfer'
+          bank_account_id: number | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          creditor_id: number
+          amount: number
+          payment_date?: string
+          payment_type: 'cash' | 'bank_transfer'
+          bank_account_id?: number | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['creditor_payments']['Insert']>
         Relationships: []
       }
       profiles: {
