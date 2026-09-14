@@ -74,7 +74,8 @@ export function ReportsPage() {
     employeesWithBalance,
     supervisorsWithBalance,
   } = useData()
-  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings } = useCollections()
+  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings, cashBalance } =
+    useCollections()
 
   const [view, setView] = useState<ReportView>('overview')
   const [preset, setPreset] = useState<DateRangePreset>('month')
@@ -588,12 +589,28 @@ export function ReportsPage() {
   }, [shopifyOrders, courierCollections, start, end])
   const monthlyCollectionGrandTotal = monthlyCollectionRows.reduce((s, r) => s + r.total, 0)
 
+  // Month-End Summary — the full picture as of now: what came in this
+  // period (courier + Shopify collections, business expenses) alongside
+  // where the money currently sits (live bank + cash balances). Net Cash
+  // Position is the live total of every liquid account (banks + office
+  // cash) — not a period figure, since "position" means balance as of now.
+  const businessExpensesTotalInPeriod = useMemo(
+    () => expenses.filter((e) => e.expense_scope !== 'unit' && isWithinRange(e.date, start, end)).reduce((s, e) => s + Number(e.amount), 0),
+    [expenses, start, end]
+  )
+  const netCashPosition = totalBankBalance + cashBalance
+
   async function exportMonthlyCollections(format: 'pdf' | 'excel') {
     const filenameBase = `protees-monthly-collection-summary-${start}-to-${end}`
+    const summaryLine =
+      `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Courier Collections: ${formatCurrency(courierCollectionsTotalInPeriod)}` +
+      `  ·  Shopify Collections: ${formatCurrency(shopifyTotalInPeriod)}  ·  Total Expenses: ${formatCurrency(businessExpensesTotalInPeriod)}` +
+      `  ·  Bank Balance (live): ${formatCurrency(totalBankBalance)}  ·  Office Cash (live): ${formatCurrency(cashBalance)}` +
+      `  ·  Net Cash Position (live): ${formatCurrency(netCashPosition)}`
     if (format === 'pdf') {
       await exportReportPdf({
-        title: 'Monthly Collection Summary',
-        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
+        title: 'Month-End Summary',
+        subtitle: summaryLine,
         head: ['Month', 'Shopify', 'Courier', 'Total'],
         rows: monthlyCollectionRows.map((r) => [r.month, formatCurrency(r.shopify), formatCurrency(r.courier), formatCurrency(r.total)]),
         footer: ['Grand Total', '', '', formatCurrency(monthlyCollectionGrandTotal)],
@@ -601,7 +618,17 @@ export function ReportsPage() {
       })
     } else {
       await exportReportExcel({
-        rows: monthlyCollectionRows.map((r) => ({ Month: r.month, Shopify: r.shopify, Courier: r.courier, Total: r.total })),
+        rows: [
+          { Month: 'SUMMARY', Shopify: '', Courier: '', Total: '' },
+          { Month: 'Courier Collections (period)', Shopify: '', Courier: '', Total: courierCollectionsTotalInPeriod },
+          { Month: 'Shopify Collections (period)', Shopify: '', Courier: '', Total: shopifyTotalInPeriod },
+          { Month: 'Total Expenses (period)', Shopify: '', Courier: '', Total: businessExpensesTotalInPeriod },
+          { Month: 'Total Bank Balance (live)', Shopify: '', Courier: '', Total: totalBankBalance },
+          { Month: 'Office Cash Balance (live)', Shopify: '', Courier: '', Total: cashBalance },
+          { Month: 'Net Cash Position (live)', Shopify: '', Courier: '', Total: netCashPosition },
+          { Month: '', Shopify: '', Courier: '', Total: '' },
+          ...monthlyCollectionRows.map((r) => ({ Month: r.month, Shopify: r.shopify, Courier: r.courier, Total: r.total })),
+        ],
         sheetName: 'Monthly Collections',
         filename: `${filenameBase}.xlsx`,
       })
@@ -1123,6 +1150,23 @@ export function ReportsPage() {
 
       {view === 'monthly-collections' && (
         <>
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Month-End Summary</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <SummaryCard label="Courier Collections (period)" value={formatCurrency(courierCollectionsTotalInPeriod)} tone="text-neon-green" />
+              <SummaryCard label="Shopify Collections (period)" value={formatCurrency(shopifyTotalInPeriod)} tone="text-neon-purple" />
+              <SummaryCard label="Total Expenses (period)" value={formatCurrency(businessExpensesTotalInPeriod)} tone="text-neon-red" />
+              <SummaryCard label="Total Bank Balance (live)" value={formatCurrency(totalBankBalance)} />
+              <SummaryCard label="Office Cash Balance (live)" value={formatCurrency(cashBalance)} tone="text-neon-amber" />
+              <SummaryCard label="Net Cash Position (live)" value={formatCurrency(netCashPosition)} tone="text-neon-cyan" />
+            </div>
+            {bankAccountsWithBalance.length > 0 && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Bank-wise: {bankAccountsWithBalance.map((b) => `${b.name} ${formatCurrency(b.balance)}`).join(' · ')}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SummaryCard label="Total Collections (period)" value={formatCurrency(monthlyCollectionGrandTotal)} tone="text-neon-green" />
             <SummaryCard label="Months" value={String(monthlyCollectionRows.length)} />
