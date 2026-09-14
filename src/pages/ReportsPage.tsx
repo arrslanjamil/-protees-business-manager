@@ -3,7 +3,7 @@ import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { useCollections } from '@/context/CollectionsContext'
 import { CategoryBarChart } from '@/components/dashboard/CategoryBarChart'
-import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
+import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_PAYMENT_SOURCE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS, type ExpensePaymentSource } from '@/lib/types'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
 import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
 import { classNames, formatCurrency, formatDate, isWithinRange, presetDateRange, todayISO, type DateRangePreset } from '@/lib/utils'
@@ -81,6 +81,7 @@ export function ReportsPage() {
   const [preset, setPreset] = useState<DateRangePreset>('month')
   const [customStart, setCustomStart] = useState(todayISO())
   const [customEnd, setCustomEnd] = useState(todayISO())
+  const [unitExpenseSourceFilter, setUnitExpenseSourceFilter] = useState<'all' | ExpensePaymentSource>('all')
 
   const { start, end } = useMemo(() => presetDateRange(preset, customStart, customEnd), [preset, customStart, customEnd])
   const activeView = REPORT_VIEWS.find((v) => v.key === view)!
@@ -255,6 +256,16 @@ export function ReportsPage() {
     return Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1])
   }, [unitExpensesInPeriod])
   const unitExpensesTotal = unitExpensesInPeriod.reduce((s, e) => s + Number(e.amount), 0)
+  const unitExpensesCashTotal = unitExpensesInPeriod
+    .filter((e) => e.payment_source === 'cash')
+    .reduce((s, e) => s + Number(e.amount), 0)
+  const unitExpensesOnlineTotal = unitExpensesInPeriod
+    .filter((e) => e.payment_source === 'online')
+    .reduce((s, e) => s + Number(e.amount), 0)
+  const unitExpensesFiltered = useMemo(
+    () => unitExpensesInPeriod.filter((e) => unitExpenseSourceFilter === 'all' || e.payment_source === unitExpenseSourceFilter),
+    [unitExpensesInPeriod, unitExpenseSourceFilter]
+  )
 
   async function exportUnitExpenses(format: 'pdf' | 'excel') {
     const filenameBase = `protees-unit-expenses-${start}-to-${end}`
@@ -262,14 +273,28 @@ export function ReportsPage() {
       await exportReportPdf({
         title: 'Unit Expenses',
         subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
-        head: ['Date', 'Title', 'Category', 'Amount', 'Notes'],
-        rows: unitExpensesInPeriod.map((e) => [formatDate(e.date), e.title, e.category, formatCurrency(e.amount), e.notes ?? '']),
-        footer: ['', '', 'Total', formatCurrency(unitExpensesTotal), ''],
+        head: ['Date', 'Title', 'Category', 'Payment Source', 'Amount', 'Notes'],
+        rows: unitExpensesFiltered.map((e) => [
+          formatDate(e.date),
+          e.title,
+          e.category,
+          EXPENSE_PAYMENT_SOURCE_LABELS[e.payment_source],
+          formatCurrency(e.amount),
+          e.notes ?? '',
+        ]),
+        footer: ['', '', '', 'Total', formatCurrency(unitExpensesFiltered.reduce((s, e) => s + Number(e.amount), 0)), ''],
         filename: `${filenameBase}.pdf`,
       })
     } else {
       await exportReportExcel({
-        rows: unitExpensesInPeriod.map((e) => ({ Date: e.date, Title: e.title, Category: e.category, Amount: e.amount, Notes: e.notes ?? '' })),
+        rows: unitExpensesFiltered.map((e) => ({
+          Date: e.date,
+          Title: e.title,
+          Category: e.category,
+          'Payment Source': EXPENSE_PAYMENT_SOURCE_LABELS[e.payment_source],
+          Amount: e.amount,
+          Notes: e.notes ?? '',
+        })),
         sheetName: 'Unit Expenses',
         filename: `${filenameBase}.xlsx`,
       })
@@ -598,6 +623,13 @@ export function ReportsPage() {
     () => expenses.filter((e) => e.expense_scope !== 'unit' && isWithinRange(e.date, start, end)).reduce((s, e) => s + Number(e.amount), 0),
     [expenses, start, end]
   )
+  const expensesInPeriodAllScopes = useMemo(() => expenses.filter((e) => isWithinRange(e.date, start, end)), [expenses, start, end])
+  const cashExpensesTotalInPeriod = expensesInPeriodAllScopes
+    .filter((e) => e.payment_source === 'cash')
+    .reduce((s, e) => s + Number(e.amount), 0)
+  const onlineExpensesTotalInPeriod = expensesInPeriodAllScopes
+    .filter((e) => e.payment_source === 'online')
+    .reduce((s, e) => s + Number(e.amount), 0)
   const netCashPosition = totalBankBalance + cashBalance
 
   async function exportMonthlyCollections(format: 'pdf' | 'excel') {
@@ -605,6 +637,7 @@ export function ReportsPage() {
     const summaryLine =
       `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Courier Collections: ${formatCurrency(courierCollectionsTotalInPeriod)}` +
       `  ·  Shopify Collections: ${formatCurrency(shopifyTotalInPeriod)}  ·  Total Expenses: ${formatCurrency(businessExpensesTotalInPeriod)}` +
+      `  ·  Cash Expenses: ${formatCurrency(cashExpensesTotalInPeriod)}  ·  Online/Bank Expenses: ${formatCurrency(onlineExpensesTotalInPeriod)}` +
       `  ·  Bank Balance (live): ${formatCurrency(totalBankBalance)}  ·  Office Cash (live): ${formatCurrency(cashBalance)}` +
       `  ·  Net Cash Position (live): ${formatCurrency(netCashPosition)}`
     if (format === 'pdf') {
@@ -623,6 +656,8 @@ export function ReportsPage() {
           { Month: 'Courier Collections (period)', Shopify: '', Courier: '', Total: courierCollectionsTotalInPeriod },
           { Month: 'Shopify Collections (period)', Shopify: '', Courier: '', Total: shopifyTotalInPeriod },
           { Month: 'Total Expenses (period)', Shopify: '', Courier: '', Total: businessExpensesTotalInPeriod },
+          { Month: 'Cash Expenses (period, all scopes)', Shopify: '', Courier: '', Total: cashExpensesTotalInPeriod },
+          { Month: 'Online/Bank Expenses (period, all scopes)', Shopify: '', Courier: '', Total: onlineExpensesTotalInPeriod },
           { Month: 'Total Bank Balance (live)', Shopify: '', Courier: '', Total: totalBankBalance },
           { Month: 'Office Cash Balance (live)', Shopify: '', Courier: '', Total: cashBalance },
           { Month: 'Net Cash Position (live)', Shopify: '', Courier: '', Total: netCashPosition },
@@ -867,8 +902,10 @@ export function ReportsPage() {
 
       {view === 'unit-expenses' && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard label="Total Unit Expenses" value={formatCurrency(unitExpensesTotal)} tone="text-neon-purple" />
+            <SummaryCard label="Cash Expenses" value={formatCurrency(unitExpensesCashTotal)} tone="text-neon-cyan" />
+            <SummaryCard label="Online / Bank Expenses" value={formatCurrency(unitExpensesOnlineTotal)} />
             <SummaryCard label="Number of Entries" value={String(unitExpensesInPeriod.length)} />
           </div>
           {unitExpensesByCategory.length > 0 && (
@@ -876,7 +913,25 @@ export function ReportsPage() {
               <CategoryBarChart data={unitExpensesByCategory} color="#a78bfa" />
             </div>
           )}
-          {unitExpensesInPeriod.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Payment Source:</span>
+            {(['all', 'cash', 'online'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setUnitExpenseSourceFilter(f)}
+                className={classNames(
+                  'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
+                  unitExpenseSourceFilter === f
+                    ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple'
+                    : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                )}
+              >
+                {f === 'all' ? 'All' : EXPENSE_PAYMENT_SOURCE_LABELS[f]}
+              </button>
+            ))}
+          </div>
+          {unitExpensesFiltered.length === 0 ? (
             <EmptyReportState />
           ) : (
             <div className="card overflow-x-auto p-0">
@@ -886,16 +941,18 @@ export function ReportsPage() {
                     <th className="px-5 py-3.5">Date</th>
                     <th className="px-5 py-3.5">Title</th>
                     <th className="px-5 py-3.5">Category</th>
+                    <th className="px-5 py-3.5">Payment Source</th>
                     <th className="px-5 py-3.5">Amount</th>
                     <th className="px-5 py-3.5">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {unitExpensesInPeriod.map((e) => (
+                  {unitExpensesFiltered.map((e) => (
                     <tr key={e.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                       <td className="px-5 py-3.5 text-slate-500">{formatDate(e.date)}</td>
                       <td className="px-5 py-3.5 font-medium text-white">{e.title}</td>
                       <td className="px-5 py-3.5 text-slate-400">{e.category}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{EXPENSE_PAYMENT_SOURCE_LABELS[e.payment_source]}</td>
                       <td className="px-5 py-3.5 text-slate-200">{formatCurrency(e.amount)}</td>
                       <td className="px-5 py-3.5 text-slate-500">{e.notes || '—'}</td>
                     </tr>
@@ -1165,6 +1222,10 @@ export function ReportsPage() {
                 Bank-wise: {bankAccountsWithBalance.map((b) => `${b.name} ${formatCurrency(b.balance)}`).join(' · ')}
               </p>
             )}
+            <p className="mt-1 text-[11px] text-slate-500">
+              Expenses by source (period, all scopes): Cash {formatCurrency(cashExpensesTotalInPeriod)} · Online/Bank{' '}
+              {formatCurrency(onlineExpensesTotalInPeriod)}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -145,6 +145,15 @@ export function DashboardPage() {
   const totalExpenses = periodBusinessExpenses.reduce((s, e) => s + Number(e.amount), 0)
   const unitExpensesTotal = periodUnitExpenses.reduce((s, e) => s + Number(e.amount), 0)
 
+  // Payment Source breakdown — across every expense (business + unit) in
+  // the period, since "how was it paid" cuts across the business/unit split.
+  const totalCashExpenses = periodExpensesList
+    .filter((e) => e.payment_source === 'cash')
+    .reduce((s, e) => s + Number(e.amount), 0)
+  const totalOnlineExpenses = periodExpensesList
+    .filter((e) => e.payment_source === 'online')
+    .reduce((s, e) => s + Number(e.amount), 0)
+
   // Regular Payroll is scoped to employee_group='regular' — Unit Employees'
   // salaries count toward Unit Payroll/Unit Cost instead (see Unit Payroll
   // report and the Protees Unit page's Unit Overview card).
@@ -860,6 +869,8 @@ export function DashboardPage() {
           <StatCard label="Office Cash Balance" value={formatCurrencyCompact(cashBalance)} fullValue={formatCurrency(cashBalance)} icon={Wallet} accent="amber" hint="Live balance" />
           <StatCard label="Total Bank Balance" value={formatCurrencyCompact(totalBankBalance)} fullValue={formatCurrency(totalBankBalance)} icon={Receipt} accent="cyan" hint="Live balance" />
           <StatCard label="Total Unit Cost" value={formatCurrencyCompact(totalUnitCost)} fullValue={formatCurrency(totalUnitCost)} icon={Receipt} accent="green" hint="Selected period" />
+          <StatCard label="Total Cash Expenses" value={formatCurrencyCompact(totalCashExpenses)} fullValue={formatCurrency(totalCashExpenses)} icon={Wallet} accent="red" hint="Office Cash · Selected period" />
+          <StatCard label="Total Online Expenses" value={formatCurrencyCompact(totalOnlineExpenses)} fullValue={formatCurrency(totalOnlineExpenses)} icon={Receipt} accent="purple" hint="Online / Bank · Selected period" />
         </div>
       </div>
 
