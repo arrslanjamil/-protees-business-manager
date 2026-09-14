@@ -86,9 +86,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   for (const store of STORES) {
     const rawDomain = process.env[store.domainEnv]
-    const token = process.env[store.tokenEnv]
-    if (!rawDomain || !token) continue // store not configured yet — skip silently
+    const rawToken = process.env[store.tokenEnv]
+    if (!rawDomain || !rawToken) continue // store not configured yet — skip silently
     const domain = normalizeDomain(rawDomain)
+    // Defensive: a trailing newline/space from copy-paste makes Shopify
+    // reject an otherwise-correct token with the same generic "Invalid
+    // API key or access token" error as a genuinely wrong one.
+    const token = rawToken.trim()
 
     try {
       const orders = await fetchPaidOrders(domain, token)

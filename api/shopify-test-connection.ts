@@ -25,8 +25,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const rawDomain = process.env[store.domainEnv]
-  const token = process.env[store.tokenEnv]
-  if (!rawDomain || !token) {
+  const rawToken = process.env[store.tokenEnv]
+  if (!rawDomain || !rawToken) {
     res.status(200).json({
       ok: false,
       store: storeKey,
@@ -38,14 +38,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const domain = normalizeDomain(rawDomain)
+  const token = rawToken.trim()
   const shopUrl = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/shop.json`
+  // Masked, never the real secret — just enough to confirm in Vercel that
+  // the right token landed in the right variable (e.g. two stores don't
+  // end up with an identical or swapped value) without exposing it.
+  const tokenPreview = `${token.slice(0, 6)}…${token.slice(-4)} (${token.length} chars)`
 
   try {
     const shopRes = await fetch(shopUrl, { headers: { 'X-Shopify-Access-Token': token } })
     const bodyText = await shopRes.text()
 
     if (!shopRes.ok) {
-      res.status(200).json({ ok: false, store: storeKey, requestUrl: shopUrl, status: shopRes.status, body: bodyText.slice(0, 1000) })
+      res.status(200).json({ ok: false, store: storeKey, requestUrl: shopUrl, status: shopRes.status, body: bodyText.slice(0, 1000), tokenPreview })
       return
     }
 
@@ -64,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       shopName: shopJson.shop?.name ?? null,
       shopDomain: shopJson.shop?.myshopify_domain ?? null,
       paidOrderCount,
+      tokenPreview,
     })
   } catch (err) {
     res.status(200).json({
@@ -72,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       requestUrl: shopUrl,
       status: null,
       body: err instanceof Error ? err.message : 'Network error calling Shopify.',
+      tokenPreview,
     })
   }
 }
