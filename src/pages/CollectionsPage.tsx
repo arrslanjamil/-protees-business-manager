@@ -782,6 +782,9 @@ export function CollectionsPage() {
                     <p className="break-all text-slate-500">Request: {testResults[store.store_key].requestUrl}</p>
                   )}
                   <p className="text-slate-500">Status: {testResults[store.store_key].status ?? 'no response'}</p>
+                  {testResults[store.store_key].tokenPreview && (
+                    <p className="text-slate-500">Token used: {testResults[store.store_key].tokenPreview} — check this matches the right store and isn't duplicated across both.</p>
+                  )}
                 </div>
               )}
             </div>
