@@ -147,6 +147,7 @@ interface CollectionsContextValue {
   addCreditor: (input: AddCreditorInput) => Promise<Creditor>
   updateCreditor: (id: number, input: AddCreditorInput) => Promise<void>
   setCreditorActive: (id: number, isActive: boolean) => Promise<void>
+  deleteCreditor: (id: number) => Promise<void>
   addCreditorBill: (input: AddCreditorBillInput) => Promise<void>
   deleteCreditorBill: (id: number) => Promise<void>
   addCreditorPayment: (input: AddCreditorPaymentInput) => Promise<void>
@@ -500,6 +501,17 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  /** Only allowed with no ledger history — creditor_bills/payments cascade
+   * on delete at the DB level, which would silently orphan their posted
+   * cash/bank entries. Archive is the right move once there's real history. */
+  const deleteCreditor: CollectionsContextValue['deleteCreditor'] = async (id) => {
+    const hasHistory = creditorBills.some((b) => b.creditor_id === id) || creditorPayments.some((p) => p.creditor_id === id)
+    if (hasHistory) throw new Error('Delete every bill and payment first, or archive this creditor instead.')
+    const { error: err } = await supabase.from('creditors').delete().eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
   /** A bill increases what the business owes — no cash/bank movement. */
   const addCreditorBill: CollectionsContextValue['addCreditorBill'] = async ({ creditorId, billDate, amount, description, referenceNumber, notes }) => {
     const { error: err } = await supabase.from('creditor_bills').insert({
@@ -710,6 +722,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     addCreditor,
     updateCreditor,
     setCreditorActive,
+    deleteCreditor,
     addCreditorBill,
     deleteCreditorBill,
     addCreditorPayment,

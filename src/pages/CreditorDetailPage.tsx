@@ -31,6 +31,7 @@ export function CreditorDetailPage() {
     bankAccountsWithBalance,
     updateCreditor,
     setCreditorActive,
+    deleteCreditor,
     addCreditorBill,
     deleteCreditorBill,
     addCreditorPayment,
@@ -205,6 +206,16 @@ export function CreditorDetailPage() {
     else await deleteCreditorPayment(row.deleteId)
   }
 
+  async function handleDeleteCreditor() {
+    if (!confirm(`Permanently delete "${creditor!.name}"? Only possible with no bills or payments on record.`)) return
+    try {
+      await deleteCreditor(creditor!.id)
+      navigate('/creditors')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete.')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <button className="text-sm font-medium text-slate-400 hover:text-white" onClick={() => navigate('/creditors')}>
@@ -243,6 +254,11 @@ export function CreditorDetailPage() {
           <button className="btn-primary" onClick={openPaymentModal}>
             <Plus size={15} /> Record Payment
           </button>
+          {bills.length === 0 && payments.length === 0 && creditor.opening_balance === 0 && (
+            <button className="rounded-xl p-2.5 text-slate-500 hover:bg-neon-red/10 hover:text-neon-red" onClick={handleDeleteCreditor} title="Delete permanently">
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       </div>
 
