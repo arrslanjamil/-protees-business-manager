@@ -64,6 +64,17 @@ export const EXPENSE_SCOPE_LABELS: Record<ExpenseScope, string> = {
   unit: 'Unit Expense',
 }
 
+/** Where an expense's money actually came from — distinct from the
+ * courier PaymentType below. Only 'cash' expenses reduce the Office Cash
+ * balance; 'online' expenses are recorded and reportable but never touch
+ * the cash ledger. */
+export type ExpensePaymentSource = 'cash' | 'online'
+
+export const EXPENSE_PAYMENT_SOURCE_LABELS: Record<ExpensePaymentSource, string> = {
+  cash: 'Office Cash',
+  online: 'Online / Bank',
+}
+
 export type PaymentType = 'cash' | 'bank_transfer'
 
 export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {

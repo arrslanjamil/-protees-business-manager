@@ -97,6 +97,7 @@ export interface Database {
           date: string
           notes: string | null
           expense_scope: 'business' | 'unit'
+          payment_source: 'cash' | 'online'
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -112,6 +113,7 @@ export interface Database {
           date?: string
           notes?: string | null
           expense_scope?: 'business' | 'unit'
+          payment_source?: 'cash' | 'online'
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['expenses']['Insert']>
