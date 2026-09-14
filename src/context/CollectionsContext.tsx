@@ -409,7 +409,8 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         // all (a platform/routing 404, an HTML error page, etc.) — surface
         // that distinctly instead of a generic message, since it points to
         // a deployment/domain issue rather than a Shopify credentials one.
-        const detail = body?.error ?? (rawBody ? rawBody.slice(0, 200) : `HTTP ${res.status} with an empty body`)
+        const base = body?.error ?? (rawBody ? rawBody.slice(0, 200) : `HTTP ${res.status} with an empty body`)
+        const detail = body?.reason ? `${base} — ${body.reason}` : base
         return { ok: false, message: `Sync failed (${res.status}): ${detail}` }
       }
       return { ok: true, message: body?.message ?? 'Sync complete.' }
@@ -434,9 +435,14 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       })
       const rawBody = await res.text()
+      let parsed: Record<string, unknown> | null = null
       try {
-        return JSON.parse(rawBody) as ShopifyConnectionTestResult
+        parsed = JSON.parse(rawBody)
       } catch {
+        parsed = null
+      }
+
+      if (!parsed) {
         return {
           ok: false,
           store: storeKey,
@@ -445,6 +451,17 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
           body: rawBody ? rawBody.slice(0, 500) : `HTTP ${res.status} with an empty (non-JSON) body — the request likely never reached the function.`,
         }
       }
+
+      // The endpoint's own 401/405 responses ({ error, reason }) don't
+      // match ShopifyConnectionTestResult's shape (no `ok`/`store` field)
+      // — normalize so the reason is never silently dropped.
+      if (typeof parsed.ok !== 'boolean') {
+        const base = typeof parsed.error === 'string' ? parsed.error : `HTTP ${res.status}`
+        const reason = typeof parsed.reason === 'string' ? ` — ${parsed.reason}` : ''
+        return { ok: false, store: storeKey, requestUrl: `/api/shopify-test-connection?store=${storeKey}`, status: res.status, body: `${base}${reason}` }
+      }
+
+      return parsed as unknown as ShopifyConnectionTestResult
     } catch (err) {
       return { ok: false, store: storeKey, requestUrl: null, status: null, body: err instanceof Error ? err.message : 'Network error.' }
     }
