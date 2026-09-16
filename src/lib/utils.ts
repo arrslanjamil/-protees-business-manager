@@ -32,6 +32,13 @@ export function formatDate(date: string | Date): string {
   })
 }
 
+/** Date + time, for timestamptz columns (created_at) where the exact
+ * moment matters — e.g. "11 Sep 2026, 3:45 PM". */
+export function formatDateTime(date: string | Date): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  return `${formatDate(d)}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+}
+
 /** Formats a Date's LOCAL calendar date as YYYY-MM-DD. Unlike
  * `.toISOString()`, this never rolls over to the adjacent day for
  * timezones ahead of UTC (e.g. Pakistan, UTC+5) — `.toISOString()`

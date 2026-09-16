@@ -22,6 +22,7 @@ export interface Database {
           employee_type: 'monthly' | 'contract'
           rate_per_piece: number | null
           employee_group: 'regular' | 'unit'
+          is_active: boolean
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -37,6 +38,7 @@ export interface Database {
           employee_type?: 'monthly' | 'contract'
           rate_per_piece?: number | null
           employee_group?: 'regular' | 'unit'
+          is_active?: boolean
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['employees']['Insert']>
@@ -69,6 +71,7 @@ export interface Database {
           amount: number
           payment_date: string
           notes: string | null
+          payment_method: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -83,6 +86,7 @@ export interface Database {
           amount: number
           payment_date?: string
           notes?: string | null
+          payment_method?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['advances']['Insert']>
@@ -152,6 +156,7 @@ export interface Database {
           notes: string | null
           pieces_completed: number | null
           rate_per_piece: number | null
+          payment_method: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -172,6 +177,7 @@ export interface Database {
           notes?: string | null
           pieces_completed?: number | null
           rate_per_piece?: number | null
+          payment_method?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['salary_payments']['Insert']>

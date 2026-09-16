@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Plus, Trash2, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
+import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { MONTH_NAMES } from '@/lib/types'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
@@ -11,6 +13,7 @@ const now = new Date()
 
 export function SalaryPage() {
   const { employeesWithBalance, salaryPayments, recordSalaryPayment, deleteSalaryPayment, suggestedDeduction, balanceFor } = useData()
+  const { itemsFor, addItem } = useMasterData()
   const [modalOpen, setModalOpen] = useState(false)
   const [employeeName, setEmployeeName] = useState('')
   const [baseAmount, setBaseAmount] = useState('')
@@ -20,9 +23,15 @@ export function SalaryPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [paymentDate, setPaymentDate] = useState(todayISO())
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const paymentMethodNames = itemsFor('payment_method').map((i) => i.name)
+  // Only active employees can be picked for a NEW payment — historical
+  // payments to someone since marked inactive stay untouched below.
+  const activeEmployees = useMemo(() => employeesWithBalance.filter((e) => e.is_active), [employeesWithBalance])
 
   const selectedEmployee = employeesWithBalance.find((e) => e.name === employeeName)
   const isContract = selectedEmployee?.employee_type === 'contract'
@@ -42,6 +51,7 @@ export function SalaryPage() {
     setMonth(now.getMonth() + 1)
     setYear(now.getFullYear())
     setPaymentDate(todayISO())
+    setPaymentMethod('')
     setNotes('')
     setError(null)
     setModalOpen(true)
@@ -102,6 +112,10 @@ export function SalaryPage() {
       setError(`Deduction can't exceed the outstanding advance balance (${formatCurrency(currentBalance)}).`)
       return
     }
+    if (!paymentMethod) {
+      setError('Select a payment method.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -116,6 +130,7 @@ export function SalaryPage() {
         notes: notes.trim() || undefined,
         piecesCompleted: isContract ? pieces : null,
         ratePerPiece: isContract ? ratePerPiece : null,
+        paymentMethod,
       })
       setModalOpen(false)
     } catch (err) {
@@ -155,8 +170,9 @@ export function SalaryPage() {
                 <th className="px-5 py-3.5">Overtime</th>
                 <th className="px-5 py-3.5">Deduction</th>
                 <th className="px-5 py-3.5">Net Paid</th>
+                <th className="px-5 py-3.5">Method</th>
                 <th className="px-5 py-3.5">Date</th>
-                <th className="px-5 py-3.5">Created By</th>
+                <th className="px-5 py-3.5">Added By</th>
                 <th className="px-5 py-3.5" />
               </tr>
             </thead>
@@ -190,6 +206,7 @@ export function SalaryPage() {
                     )}
                   </td>
                   <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(p.net_amount)}</td>
+                  <td className="px-5 py-3.5">{p.payment_method ? <Badge color="slate">{p.payment_method}</Badge> : <span className="text-slate-600">—</span>}</td>
                   <td className="px-5 py-3.5 text-slate-500">{formatDate(p.payment_date)}</td>
                   <td className="px-5 py-3.5 text-slate-500">{p.created_by_username ?? '—'}</td>
                   <td className="px-5 py-3.5 text-right">
@@ -213,7 +230,7 @@ export function SalaryPage() {
             <label className="label-field">Employee</label>
             <select className="input-field" value={employeeName} onChange={(e) => handleEmployeeChange(e.target.value)}>
               <option value="">Select employee…</option>
-              {employeesWithBalance.map((emp) => (
+              {activeEmployees.map((emp) => (
                 <option key={emp.id} value={emp.name}>
                   {emp.name}
                 </option>
@@ -317,6 +334,13 @@ export function SalaryPage() {
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
             </div>
           </div>
+          <CategoryPicker
+            label="Payment Method"
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+            categories={paymentMethodNames}
+            onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
+          />
 
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">

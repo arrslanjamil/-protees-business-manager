@@ -1,28 +1,40 @@
 import { useMemo, useState } from 'react'
 import { HandCoins, Plus, Search, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
+import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { DEPARTMENT_LABELS, type Department } from '@/lib/types'
 import { advanceWarningLevel, classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 export function AdvancesPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, addAdvance, deleteAdvance } = useData()
+  const { itemsFor, addItem } = useMasterData()
   const [modalOpen, setModalOpen] = useState(false)
   const [department, setDepartment] = useState<Department>('cutting_department')
   const [name, setName] = useState('')
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(todayISO())
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const paymentMethodNames = itemsFor('payment_method').map((i) => i.name)
+
+  // Outstanding Balances shows every active person, plus any inactive
+  // person who still has a real balance to settle — inactive staff with
+  // nothing owed just drop off, per the "no longer in staff statistics"
+  // rule, but a real debt is never hidden just because someone left.
   const people = useMemo(
     () => [
-      ...employeesWithBalance.map((e) => ({ name: e.name, department: 'cutting_department' as Department, payAmount: Number(e.salary), advanceBalance: e.advanceBalance })),
+      ...employeesWithBalance
+        .filter((e) => e.is_active || e.advanceBalance !== 0)
+        .map((e) => ({ name: e.name, department: 'cutting_department' as Department, payAmount: Number(e.salary), advanceBalance: e.advanceBalance })),
       ...supervisorsWithBalance.map((s) => ({ name: s.name, department: 'protees_unit' as Department, payAmount: 0, advanceBalance: s.advanceBalance })),
     ],
     [employeesWithBalance, supervisorsWithBalance]
@@ -33,7 +45,10 @@ export function AdvancesPage() {
     [advances]
   )
 
-  const nameOptions = department === 'cutting_department' ? employeesWithBalance : supervisorsWithBalance
+  // Only active people can receive a NEW advance — historical advances to
+  // someone since marked inactive remain untouched in Advance History.
+  const activeEmployeesWithBalance = useMemo(() => employeesWithBalance.filter((e) => e.is_active), [employeesWithBalance])
+  const nameOptions = department === 'cutting_department' ? activeEmployeesWithBalance : supervisorsWithBalance
 
   const filteredNameOptions = useMemo(() => {
     const q = employeeSearch.trim().toLowerCase()
@@ -49,6 +64,7 @@ export function AdvancesPage() {
     setEmployeeSearch('')
     setAmount('')
     setPaymentDate(todayISO())
+    setPaymentMethod('')
     setNotes('')
     setError(null)
     setModalOpen(true)
@@ -75,10 +91,14 @@ export function AdvancesPage() {
       setError('Enter a valid amount.')
       return
     }
+    if (!paymentMethod) {
+      setError('Select a payment method.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      await addAdvance({ name, department, amount: amt, paymentDate, notes: notes.trim() || undefined })
+      await addAdvance({ name, department, amount: amt, paymentDate, notes: notes.trim() || undefined, paymentMethod })
       setModalOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record advance.')
@@ -156,9 +176,10 @@ export function AdvancesPage() {
                   <th className="px-5 py-3.5">Name</th>
                   <th className="px-5 py-3.5">Department</th>
                   <th className="px-5 py-3.5">Amount</th>
+                  <th className="px-5 py-3.5">Method</th>
                   <th className="px-5 py-3.5">Notes</th>
                   <th className="px-5 py-3.5">Date</th>
-                  <th className="px-5 py-3.5">Created By</th>
+                  <th className="px-5 py-3.5">Added By</th>
                   <th className="px-5 py-3.5" />
                 </tr>
               </thead>
@@ -170,6 +191,7 @@ export function AdvancesPage() {
                       <Badge color={adv.department === 'cutting_department' ? 'cyan' : 'purple'}>{DEPARTMENT_LABELS[adv.department]}</Badge>
                     </td>
                     <td className="px-5 py-3.5 text-neon-amber">{formatCurrency(adv.amount)}</td>
+                    <td className="px-5 py-3.5">{adv.payment_method ? <Badge color="slate">{adv.payment_method}</Badge> : <span className="text-slate-600">—</span>}</td>
                     <td className="px-5 py-3.5 text-slate-400">{adv.notes || '—'}</td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDate(adv.payment_date)}</td>
                     <td className="px-5 py-3.5 text-slate-500">{adv.created_by_username ?? '—'}</td>
@@ -265,6 +287,13 @@ export function AdvancesPage() {
               <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
             </div>
           </div>
+          <CategoryPicker
+            label="Payment Method"
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+            categories={paymentMethodNames}
+            onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
+          />
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />

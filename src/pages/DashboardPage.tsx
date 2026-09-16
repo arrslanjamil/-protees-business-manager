@@ -207,8 +207,14 @@ export function DashboardPage() {
   const periodTotalCollections = periodShopifyCollections + periodCourierCollections
   const totalBankBalance = useMemo(() => bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0), [bankAccountsWithBalance])
 
+  // --- Active/Inactive staff — inactive employees are excluded from payroll,
+  // roster counts, and payroll projections, but keep their full advance/
+  // salary history intact everywhere it's shown (see EmployeesPage).
+  const activeEmployees = useMemo(() => employeesWithBalance.filter((e) => e.is_active), [employeesWithBalance])
+  const inactiveEmployeeCount = employeesWithBalance.length - activeEmployees.length
+
   // --- Payroll (Regular employees only) -------------------------------------
-  const regularEmployees = useMemo(() => employeesWithBalance.filter((e) => e.employee_group !== 'unit'), [employeesWithBalance])
+  const regularEmployees = useMemo(() => activeEmployees.filter((e) => e.employee_group !== 'unit'), [activeEmployees])
   const monthlyEmployees = useMemo(() => regularEmployees.filter((e) => e.employee_type === 'monthly'), [regularEmployees])
   const totalMonthlyPayroll = monthlyEmployees.reduce((s, e) => s + Number(e.salary), 0)
   const contractPeriodPayments = useMemo(
@@ -252,10 +258,10 @@ export function DashboardPage() {
     totalDistributedSinceOpening: zakatTotalDistributedSinceOpening,
   })
 
-  // --- Expected Salary By Employee (all employees, both groups shown) -------
+  // --- Expected Salary By Employee (active employees, both groups shown) ---
   const expectedSalaryRows = useMemo<ExpectedSalaryRow[]>(
     () =>
-      employeesWithBalance.map((emp) => {
+      activeEmployees.map((emp) => {
         const group = emp.employee_group === 'unit' ? 'Unit' : 'Regular'
         if (emp.employee_type === 'monthly') {
           return { id: emp.id, name: emp.name, type: 'Monthly', group, expectedLabel: formatCurrency(emp.salary), expectedAmount: Number(emp.salary) }
@@ -275,7 +281,7 @@ export function DashboardPage() {
         }
         return { id: emp.id, name: emp.name, type: 'Contract', group, expectedLabel: 'No pieces entered', expectedAmount: 0 }
       }),
-    [employeesWithBalance, periodSalaryList]
+    [activeEmployees, periodSalaryList]
   )
 
   // --- Top Expense Categories (business expenses only, matching Total Expenses) --
@@ -301,13 +307,27 @@ export function DashboardPage() {
   // =========================================================================
   const employeeDrillRows = useMemo<EmployeeDrillRow[]>(
     () =>
-      employeesWithBalance.map((e) => ({
+      activeEmployees.map((e) => ({
         id: e.id,
         name: e.name,
         type: e.employee_type === 'monthly' ? 'Monthly' : 'Contract',
         group: e.employee_group === 'unit' ? 'Unit' : 'Regular',
         salary: Number(e.salary),
       })),
+    [activeEmployees]
+  )
+
+  const inactiveEmployeeDrillRows = useMemo<EmployeeDrillRow[]>(
+    () =>
+      employeesWithBalance
+        .filter((e) => !e.is_active)
+        .map((e) => ({
+          id: e.id,
+          name: e.name,
+          type: e.employee_type === 'monthly' ? 'Monthly' : 'Contract',
+          group: e.employee_group === 'unit' ? 'Unit' : 'Regular',
+          salary: Number(e.salary),
+        })),
     [employeesWithBalance]
   )
 
@@ -455,12 +475,24 @@ export function DashboardPage() {
       case 'total-employees':
         return (
           <StatCard
-            label="Total Employees"
-            value={String(employeesWithBalance.length)}
+            label="Active Employees"
+            value={String(activeEmployees.length)}
             icon={Users}
             accent="cyan"
             hint="Live roster"
             onClick={() => toggleCard('total-employees')}
+            selected={isSelected}
+          />
+        )
+      case 'inactive-employees':
+        return (
+          <StatCard
+            label="Inactive Employees"
+            value={String(inactiveEmployeeCount)}
+            icon={Users}
+            accent="red"
+            hint="Excluded from payroll"
+            onClick={() => toggleCard('inactive-employees')}
             selected={isSelected}
           />
         )
@@ -640,14 +672,27 @@ export function DashboardPage() {
         )
       case 'total-employees':
         return (
-          <DrillDownPanel title="Total Employees" subtitle="Live roster — not date-filtered" onClose={() => setExpandedId(null)}>
+          <DrillDownPanel title="Active Employees" subtitle="Live roster — not date-filtered" onClose={() => setExpandedId(null)}>
             <DataTable
               columns={employeeDrillColumns}
               rows={employeeDrillRows}
               getRowId={(r) => r.id}
               searchPlaceholder="Search employees…"
               searchFn={(r, q) => r.name.toLowerCase().includes(q)}
-              emptyMessage="No employees yet."
+              emptyMessage="No active employees."
+            />
+          </DrillDownPanel>
+        )
+      case 'inactive-employees':
+        return (
+          <DrillDownPanel title="Inactive Employees" subtitle="Excluded from payroll — history intact" onClose={() => setExpandedId(null)}>
+            <DataTable
+              columns={employeeDrillColumns}
+              rows={inactiveEmployeeDrillRows}
+              getRowId={(r) => r.id}
+              searchPlaceholder="Search employees…"
+              searchFn={(r, q) => r.name.toLowerCase().includes(q)}
+              emptyMessage="No inactive employees."
             />
           </DrillDownPanel>
         )

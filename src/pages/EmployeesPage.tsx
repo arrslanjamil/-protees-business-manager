@@ -4,10 +4,13 @@ import { useData } from '@/context/DataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
 import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, type Employee, type EmployeeGroup, type EmployeeType } from '@/lib/types'
 import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+
+type StatusFilter = 'all' | 'active' | 'inactive'
 
 const emptyForm = {
   name: '',
@@ -19,8 +22,9 @@ const emptyForm = {
 }
 
 export function EmployeesPage() {
-  const { employeesWithBalance, addEmployee, updateEmployee, deleteEmployee } = useData()
+  const { employeesWithBalance, addEmployee, updateEmployee, deleteEmployee, setEmployeeActive } = useData()
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [form, setForm] = useState(emptyForm)
@@ -32,11 +36,17 @@ export function EmployeesPage() {
     setExpandedId((prev) => (prev === id ? null : id))
   }
 
+  const activeCount = useMemo(() => employeesWithBalance.filter((e) => e.is_active).length, [employeesWithBalance])
+  const inactiveCount = employeesWithBalance.length - activeCount
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return employeesWithBalance
-    return employeesWithBalance.filter((e) => e.name.toLowerCase().includes(q))
-  }, [employeesWithBalance, search])
+    return employeesWithBalance
+      .filter((e) => (q ? e.name.toLowerCase().includes(q) : true))
+      .filter((e) => (statusFilter === 'all' ? true : statusFilter === 'active' ? e.is_active : !e.is_active))
+      // Active employees always first; inactive move to the bottom.
+      .sort((a, b) => Number(b.is_active) - Number(a.is_active))
+  }, [employeesWithBalance, search, statusFilter])
 
   function openCreate() {
     setEditing(null)
@@ -110,26 +120,52 @@ export function EmployeesPage() {
     await deleteEmployee(emp.id)
   }
 
+  async function handleToggleActive(emp: Employee, next: boolean) {
+    await setEmployeeActive(emp.id, next)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Employees</h1>
-          <p className="mt-1 text-sm text-slate-400">Manage your team, salaries, and advance exposure.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            Manage your team, salaries, and advance exposure. <span className="text-neon-green">{activeCount} active</span> ·{' '}
+            <span className="text-neon-red">{inactiveCount} inactive</span>
+          </p>
         </div>
         <button className="btn-primary" onClick={openCreate}>
           <Plus size={16} /> Add Employee
         </button>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-        <input
-          className="input-field pl-10"
-          placeholder="Search by name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative max-w-sm flex-1">
+          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            className="input-field pl-10"
+            placeholder="Search by name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(['all', 'active', 'inactive'] as StatusFilter[]).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setStatusFilter(f)}
+              className={classNames(
+                'rounded-xl border px-3.5 py-2 text-xs font-semibold capitalize transition',
+                statusFilter === f
+                  ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                  : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+              )}
+            >
+              {f === 'all' ? 'All Staff' : f === 'active' ? 'Active Staff' : 'Inactive Staff'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -152,7 +188,8 @@ export function EmployeesPage() {
                 }}
                 className={classNames(
                   'card group flex cursor-pointer flex-col transition-colors',
-                  isExpanded && 'md:col-span-2 xl:col-span-3 border-neon-cyan/30'
+                  isExpanded && 'md:col-span-2 xl:col-span-3 border-neon-cyan/30',
+                  !emp.is_active && '!border-neon-red/30 !bg-neon-red/[0.04]'
                 )}
               >
                 <div className="flex items-start justify-between">
@@ -168,6 +205,7 @@ export function EmployeesPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-white">{emp.name}</p>
+                        <Badge color={emp.is_active ? 'green' : 'red'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge>
                         <Badge color={emp.employee_type === 'contract' ? 'purple' : 'cyan'}>
                           {EMPLOYEE_TYPE_LABELS[emp.employee_type]}
                         </Badge>
@@ -181,7 +219,7 @@ export function EmployeesPage() {
                       <p className="mt-0.5 text-[11px] text-slate-600">Added by {emp.created_by_username ?? '—'}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
                       <button
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white"
@@ -201,6 +239,13 @@ export function EmployeesPage() {
                       >
                         <Trash2 size={15} />
                       </button>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ToggleSwitch
+                        checked={emp.is_active}
+                        onChange={(next) => handleToggleActive(emp, next)}
+                        label={emp.is_active ? `Mark ${emp.name} inactive` : `Mark ${emp.name} active`}
+                      />
                     </div>
                     <ChevronDown
                       size={16}
