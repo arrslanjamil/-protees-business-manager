@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
+import { BankLogo } from '@/components/collections/BankLogo'
 import { PAYMENT_TYPE_LABELS, SHOPIFY_STORE_KEYS, type Courier, type PaymentType } from '@/lib/types'
 import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
@@ -355,7 +356,14 @@ export function CollectionsPage() {
           {bankAccountsWithBalance.length > 0 && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {bankAccountsWithBalance.map((b) => (
-                <StatCard key={b.id} label={b.name} value={formatCurrency(b.balance)} icon={Landmark} accent="purple" hint="Bank balance" />
+                <div key={b.id} className="card flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{b.name}</p>
+                    <p className="mt-2 font-display text-2xl font-bold text-white">{formatCurrency(b.balance)}</p>
+                    <p className="mt-1 text-xs text-slate-500">Bank balance</p>
+                  </div>
+                  <BankLogo name={b.name} />
+                </div>
               ))}
             </div>
           )}
