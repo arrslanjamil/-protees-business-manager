@@ -1,17 +1,58 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, Banknote, CheckCircle2, Landmark, Pencil, Plus, RefreshCw, Settings, ShoppingBag, Trash2, Truck, Wallet, XCircle } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  Banknote,
+  CheckCircle2,
+  ChevronRight,
+  Landmark,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Settings,
+  ShoppingBag,
+  Truck,
+  Wallet,
+  XCircle,
+} from 'lucide-react'
 import { useCollections, type ShopifyConnectionTestResult } from '@/context/CollectionsContext'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
+import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 import { BankLogo } from '@/components/collections/BankLogo'
-import { PAYMENT_TYPE_LABELS, SHOPIFY_STORE_KEYS, type Courier, type PaymentType } from '@/lib/types'
+import { CollectionsDetailPanel, type CollectionsDetailRow } from '@/components/collections/CollectionsDetailPanel'
+import { PAYMENT_TYPE_LABELS, type Courier, type PaymentType } from '@/lib/types'
 import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
-type CollectionsTab = 'courier' | 'shopify'
-type StoreFilter = 'all' | (typeof SHOPIFY_STORE_KEYS)[number]
+type DetailSelection =
+  | { kind: 'total-collections' }
+  | { kind: 'courier-collections' }
+  | { kind: 'shopify-collections' }
+  | { kind: 'office-cash' }
+  | { kind: 'total-bank' }
+  | { kind: 'courier'; id: number }
+  | { kind: 'bank'; id: number }
+  | { kind: 'shopify-store'; key: string }
+
+function selectionKey(s: DetailSelection | null): string | null {
+  if (!s) return null
+  if (s.kind === 'courier') return `courier-${s.id}`
+  if (s.kind === 'bank') return `bank-${s.id}`
+  if (s.kind === 'shopify-store') return `store-${s.key}`
+  return s.kind
+}
+
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+}
 
 export function CollectionsPage() {
   const {
@@ -19,6 +60,8 @@ export function CollectionsPage() {
     couriersWithBalance,
     courierCollections,
     bankAccountsWithBalance,
+    bankTransactions,
+    cashTransactions,
     cashBalance,
     shopifyOrders,
     shopifyStores,
@@ -34,9 +77,6 @@ export function CollectionsPage() {
     testShopifyConnection,
   } = useCollections()
   const { showToast } = useToast()
-
-  const [tab, setTab] = useState<CollectionsTab>('courier')
-  const [storeFilter, setStoreFilter] = useState<StoreFilter>('all')
 
   const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
   const [customStart, setCustomStart] = useState<string>(() => dashboardDateRange('15d').start)
@@ -57,23 +97,186 @@ export function CollectionsPage() {
   const totalBankBalance = useMemo(() => bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0), [bankAccountsWithBalance])
 
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
-  const sortedCollections = useMemo(
-    () => [...periodCourierCollections].sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()),
-    [periodCourierCollections]
-  )
-
+  const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
   const storeNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
-  const proteesCollectionsTotal = periodShopifyOrders.filter((o) => o.store_key === 'protees').reduce((s, o) => s + Number(o.total_amount), 0)
-  const littlePeanutsCollectionsTotal = periodShopifyOrders.filter((o) => o.store_key === 'little_peanuts').reduce((s, o) => s + Number(o.total_amount), 0)
 
-  const filteredShopifyOrders = useMemo(
-    () => (storeFilter === 'all' ? periodShopifyOrders : periodShopifyOrders.filter((o) => o.store_key === storeFilter)),
-    [periodShopifyOrders, storeFilter]
-  )
-  const recentShopifyOrders = useMemo(
-    () => [...filteredShopifyOrders].sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()),
-    [filteredShopifyOrders]
-  )
+  // --- Detail panel selection --------------------------------------------------
+  const [selection, setSelection] = useState<DetailSelection | null>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
+
+  function toggleSelection(next: DetailSelection) {
+    setSelection((prev) => (selectionKey(prev) === selectionKey(next) ? null : next))
+  }
+
+  useEffect(() => {
+    if (selection) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selection])
+
+  async function handleDeleteCollection(id: number) {
+    if (!confirm('Delete this collection? The linked bank/cash entry will also be removed.')) return
+    await deleteCourierCollection(id)
+  }
+
+  const detail = useMemo(() => {
+    if (!selection) return null
+    const periodLabel = `Period: ${formatDate(start)} – ${formatDate(end)}`
+
+    const courierRow = (c: (typeof courierCollections)[number]): CollectionsDetailRow => ({
+      id: `cc-${c.id}`,
+      date: c.invoice_date,
+      type: 'Courier',
+      typeColor: 'green',
+      source: courierNameById.get(c.courier_id) ?? 'Unknown Courier',
+      amount: Number(c.amount),
+      amountKind: 'neutral',
+      addedBy: c.created_by_username ?? '—',
+      notes: c.notes || c.invoice_number || '',
+      onDelete: () => handleDeleteCollection(c.id),
+    })
+    const shopifyRow = (o: (typeof shopifyOrders)[number]): CollectionsDetailRow => ({
+      id: `so-${o.id}`,
+      date: o.order_date,
+      type: 'Shopify',
+      typeColor: 'purple',
+      source: o.store_key ? storeNameByKey.get(o.store_key) ?? o.store_key : 'Shopify',
+      amount: Number(o.total_amount),
+      amountKind: 'neutral',
+      addedBy: 'Shopify Sync',
+      notes: [o.order_number, o.customer_name].filter(Boolean).join(' · '),
+    })
+    const cashRow = (t: (typeof cashTransactions)[number]): CollectionsDetailRow => ({
+      id: `ct-${t.id}`,
+      date: t.date,
+      type: t.type === 'cash_in' ? 'Cash In' : 'Cash Out',
+      typeColor: t.type === 'cash_in' ? 'green' : 'red',
+      source: t.category,
+      amount: Number(t.amount),
+      amountKind: t.type === 'cash_in' ? 'in' : 'out',
+      addedBy: t.created_by_username ?? '—',
+      notes: t.notes || '',
+    })
+    const bankRow = (t: (typeof bankTransactions)[number]): CollectionsDetailRow => ({
+      id: `bt-${t.id}`,
+      date: t.date,
+      type: t.type === 'credit' ? 'Credit' : 'Debit',
+      typeColor: t.type === 'credit' ? 'green' : 'red',
+      source: `${bankNameById.get(t.bank_account_id) ?? 'Bank'}${t.reference_type ? ` · ${t.reference_type.replace(/_/g, ' ')}` : ''}`,
+      amount: Number(t.amount),
+      amountKind: t.type === 'credit' ? 'in' : 'out',
+      addedBy: t.created_by_username ?? '—',
+      notes: t.notes || '',
+    })
+
+    switch (selection.kind) {
+      case 'total-collections': {
+        const rows = [...periodCourierCollections.map(courierRow), ...periodShopifyOrders.map(shopifyRow)].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        )
+        return {
+          title: 'Total Collections',
+          subtitle: `${periodLabel} · ${formatCurrency(totalCollections)} total`,
+          rows,
+          filenameBase: `protees-total-collections-${start}-to-${end}`,
+          emptyMessage: 'No collections in this period.',
+        }
+      }
+      case 'courier-collections': {
+        const rows = [...periodCourierCollections].sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()).map(courierRow)
+        return {
+          title: 'Courier Collections',
+          subtitle: `${periodLabel} · ${formatCurrency(courierCollectionsTotal)} total`,
+          rows,
+          filenameBase: `protees-courier-collections-${start}-to-${end}`,
+          emptyMessage: 'No courier collections in this period.',
+        }
+      }
+      case 'shopify-collections': {
+        const rows = [...periodShopifyOrders].sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()).map(shopifyRow)
+        return {
+          title: 'Shopify Collections',
+          subtitle: `${periodLabel} · ${formatCurrency(shopifyCollectionsTotal)} total`,
+          rows,
+          filenameBase: `protees-shopify-collections-${start}-to-${end}`,
+          emptyMessage: 'No Shopify orders in this period.',
+        }
+      }
+      case 'office-cash': {
+        const rows = [...cashTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(cashRow)
+        return {
+          title: 'Office Cash',
+          subtitle: `Complete cash ledger · Live balance: ${formatCurrency(cashBalance)}`,
+          rows,
+          filenameBase: 'protees-office-cash-ledger',
+          emptyMessage: 'No cash transactions yet.',
+        }
+      }
+      case 'total-bank': {
+        const rows = [...bankTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(bankRow)
+        return {
+          title: 'Total Bank Balance',
+          subtitle: `All bank transactions · Live balance: ${formatCurrency(totalBankBalance)}`,
+          rows,
+          filenameBase: 'protees-bank-transactions',
+          emptyMessage: 'No bank transactions yet.',
+        }
+      }
+      case 'bank': {
+        const bank = bankAccountsWithBalance.find((b) => b.id === selection.id)
+        const rows = bankTransactions
+          .filter((t) => t.bank_account_id === selection.id)
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .map(bankRow)
+        return {
+          title: bank?.name ?? 'Bank Account',
+          subtitle: `Transaction history · Current balance: ${formatCurrency(bank?.balance ?? 0)}`,
+          rows,
+          filenameBase: `protees-bank-${(bank?.name ?? 'account').toLowerCase().replace(/\s+/g, '-')}`,
+          emptyMessage: 'No transactions on this account yet.',
+        }
+      }
+      case 'courier': {
+        const courier = couriersWithBalance.find((c) => c.id === selection.id)
+        const rows = courierCollections
+          .filter((c) => c.courier_id === selection.id)
+          .sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime())
+          .map(courierRow)
+        return {
+          title: courier?.name ?? 'Courier',
+          subtitle: `Collection history · Total collected: ${formatCurrency(courier?.totalCollected ?? 0)}`,
+          rows,
+          filenameBase: `protees-courier-${(courier?.name ?? 'account').toLowerCase().replace(/\s+/g, '-')}`,
+          emptyMessage: 'No collections recorded for this courier yet.',
+        }
+      }
+      case 'shopify-store': {
+        const store = shopifyStores.find((s) => s.store_key === selection.key)
+        const rows = shopifyOrders
+          .filter((o) => o.store_key === selection.key)
+          .sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime())
+          .map(shopifyRow)
+        const total = rows.reduce((s, r) => s + r.amount, 0)
+        return {
+          title: store?.display_name ?? 'Shopify Store',
+          subtitle: `Order history · Total collected: ${formatCurrency(total)}`,
+          rows,
+          filenameBase: `protees-shopify-${(store?.display_name ?? 'store').toLowerCase().replace(/\s+/g, '-')}`,
+          emptyMessage: 'No orders synced for this store yet.',
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selection,
+    periodCourierCollections,
+    periodShopifyOrders,
+    cashTransactions,
+    bankTransactions,
+    courierCollections,
+    shopifyOrders,
+    bankAccountsWithBalance,
+    couriersWithBalance,
+    shopifyStores,
+  ])
 
   // --- Manage Couriers (Settings) ---------------------------------------------
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -196,11 +399,6 @@ export function CollectionsPage() {
     }
   }
 
-  async function handleDeleteCollection(id: number) {
-    if (!confirm('Delete this collection? The linked bank/cash entry will also be removed.')) return
-    await deleteCourierCollection(id)
-  }
-
   // --- Transfer Cash to Office modal ------------------------------------------
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferBankId, setTransferBankId] = useState<number | ''>('')
@@ -290,6 +488,8 @@ export function CollectionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopifyStores])
 
+  const courierAccountsTotal = couriersWithBalance.reduce((s, c) => s + c.totalCollected, 0)
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -297,9 +497,14 @@ export function CollectionsPage() {
           <h1 className="font-display text-2xl font-bold text-white">Collections</h1>
           <p className="mt-1 text-sm text-slate-400">Courier and Shopify collections, bank balances, and office cash — all in one place.</p>
         </div>
-        <button className="btn-secondary" onClick={openSettings}>
-          <Settings size={16} /> Manage Couriers
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={openTransferModal} disabled={bankAccountsWithBalance.length === 0}>
+            <ArrowRightLeft size={16} /> Transfer Cash
+          </button>
+          <button className="btn-primary" onClick={openCollectionModal} disabled={couriers.length === 0}>
+            <Plus size={16} /> Add Collection
+          </button>
+        </div>
       </div>
 
       <DateRangeFilter
@@ -313,221 +518,221 @@ export function CollectionsPage() {
         rangeEnd={end}
       />
 
+      {/* --- Top summary: 5 premium, equal-size, clickable cards --- */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Total Collections" value={formatCurrency(totalCollections)} icon={Wallet} accent="cyan" hint="Selected period" />
-        <StatCard label="Courier Collections" value={formatCurrency(courierCollectionsTotal)} icon={Truck} accent="green" hint="Selected period" />
-        <StatCard label="Shopify Collections" value={formatCurrency(shopifyCollectionsTotal)} icon={ShoppingBag} accent="purple" hint="Selected period" />
-        <StatCard label="Office Cash Balance" value={formatCurrency(cashBalance)} icon={Banknote} accent="amber" hint="Live balance" />
-        <StatCard label="Total Bank Balance" value={formatCurrency(totalBankBalance)} icon={Landmark} accent="cyan" hint="Live balance" />
+        <StatCard
+          label="Total Collections"
+          value={formatCurrency(totalCollections)}
+          icon={Wallet}
+          accent="cyan"
+          hint="Selected period"
+          onClick={() => toggleSelection({ kind: 'total-collections' })}
+          selected={selectionKey(selection) === 'total-collections'}
+        />
+        <StatCard
+          label="Courier Collections"
+          value={formatCurrency(courierCollectionsTotal)}
+          icon={Truck}
+          accent="green"
+          hint="Selected period"
+          onClick={() => toggleSelection({ kind: 'courier-collections' })}
+          selected={selectionKey(selection) === 'courier-collections'}
+        />
+        <StatCard
+          label="Shopify Collections"
+          value={formatCurrency(shopifyCollectionsTotal)}
+          icon={ShoppingBag}
+          accent="purple"
+          hint="Selected period"
+          onClick={() => toggleSelection({ kind: 'shopify-collections' })}
+          selected={selectionKey(selection) === 'shopify-collections'}
+        />
+        <StatCard
+          label="Office Cash Balance"
+          value={formatCurrency(cashBalance)}
+          icon={Banknote}
+          accent="amber"
+          hint="Live balance"
+          onClick={() => toggleSelection({ kind: 'office-cash' })}
+          selected={selectionKey(selection) === 'office-cash'}
+        />
+        <StatCard
+          label="Total Bank Balance"
+          value={formatCurrency(totalBankBalance)}
+          icon={Landmark}
+          accent="cyan"
+          hint="Live balance"
+          onClick={() => toggleSelection({ kind: 'total-bank' })}
+          selected={selectionKey(selection) === 'total-bank'}
+        />
       </div>
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => setTab('courier')}
-          className={classNames(
-            'rounded-xl border px-4 py-2.5 text-sm font-semibold transition',
-            tab === 'courier' ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-          )}
-        >
-          Courier Collections
-        </button>
-        <button
-          onClick={() => setTab('shopify')}
-          className={classNames(
-            'rounded-xl border px-4 py-2.5 text-sm font-semibold transition',
-            tab === 'shopify' ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-          )}
-        >
-          Shopify Collections
-        </button>
-      </div>
-
-      {tab === 'courier' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-2">
-            <button className="btn-primary" onClick={openCollectionModal} disabled={couriers.length === 0}>
-              <Plus size={16} /> Add Collection
-            </button>
-            <button className="btn-secondary" onClick={openTransferModal} disabled={bankAccountsWithBalance.length === 0}>
-              <ArrowRightLeft size={16} /> Transfer Cash to Office
-            </button>
-          </div>
-
-          {bankAccountsWithBalance.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {bankAccountsWithBalance.map((b) => (
-                <div key={b.id} className="card flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{b.name}</p>
-                    <p className="mt-2 font-display text-2xl font-bold text-white">{formatCurrency(b.balance)}</p>
-                    <p className="mt-1 text-xs text-slate-500">Bank balance</p>
-                  </div>
-                  <BankLogo name={b.name} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Courier Balances</h2>
-            {couriersWithBalance.length === 0 ? (
-              <EmptyState
-                icon={Truck}
-                title="No couriers configured yet"
-                description="Use Manage Couriers to set up how each courier pays — bank transfer or cash — then start recording collections."
-                action={
-                  <button className="btn-primary" onClick={openSettings}>
-                    <Plus size={16} /> Manage Couriers
-                  </button>
-                }
-              />
-            ) : (
-              <div className="card overflow-x-auto p-0">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
-                      <th className="px-5 py-3.5">Courier</th>
-                      <th className="px-5 py-3.5">Pays Via</th>
-                      <th className="px-5 py-3.5">Total Collected</th>
-                      <th className="px-5 py-3.5">Collections</th>
-                      <th className="px-5 py-3.5">Last Collection</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {couriersWithBalance.map((c) => (
-                      <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                        <td className="px-5 py-3.5 font-medium text-white">{c.name}</td>
-                        <td className="px-5 py-3.5 text-slate-400">
-                          {c.payment_method === 'bank_transfer' ? c.bankAccountName ?? 'Bank Transfer' : 'Cash'}
-                        </td>
-                        <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(c.totalCollected)}</td>
-                        <td className="px-5 py-3.5 text-slate-300">{c.collectionCount}</td>
-                        <td className="px-5 py-3.5 text-slate-500">{c.lastCollectionDate ? formatDate(c.lastCollectionDate) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Recent Collections</h2>
-            {sortedCollections.length === 0 ? (
-              <EmptyState icon={Wallet} title="No collections in this period" description="Recorded courier collections will show up here." />
-            ) : (
-              <div className="card overflow-x-auto p-0">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
-                      <th className="px-5 py-3.5">Date</th>
-                      <th className="px-5 py-3.5">Courier</th>
-                      <th className="px-5 py-3.5">Invoice #</th>
-                      <th className="px-5 py-3.5">Amount</th>
-                      <th className="px-5 py-3.5">Notes</th>
-                      <th className="px-5 py-3.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedCollections.map((c) => (
-                      <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                        <td className="px-5 py-3.5 text-slate-500">{formatDate(c.invoice_date)}</td>
-                        <td className="px-5 py-3.5 font-medium text-white">{courierNameById.get(c.courier_id) ?? '—'}</td>
-                        <td className="px-5 py-3.5 text-slate-400">{c.invoice_number || '—'}</td>
-                        <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(c.amount)}</td>
-                        <td className="px-5 py-3.5 text-slate-500">{c.notes || '—'}</td>
-                        <td className="px-5 py-3.5 text-right">
-                          <button className="rounded-lg p-1.5 text-slate-500 hover:bg-neon-red/10 hover:text-neon-red" onClick={() => handleDeleteCollection(c.id)}>
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+      {/* --- Detail panel: opens below whatever card/row was clicked --- */}
+      {detail && (
+        <div ref={detailRef}>
+          <CollectionsDetailPanel
+            title={detail.title}
+            subtitle={detail.subtitle}
+            rows={detail.rows}
+            onClose={() => setSelection(null)}
+            filenameBase={detail.filenameBase}
+            emptyMessage={detail.emptyMessage}
+          />
         </div>
       )}
 
-      {tab === 'shopify' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-2">
-            <button className="btn-primary" onClick={handleSyncNow} disabled={shopifySyncing}>
-              <RefreshCw size={16} className={shopifySyncing ? 'animate-spin' : undefined} /> {shopifySyncing ? 'Syncing…' : 'Sync Now'}
-            </button>
-            <button className="btn-secondary" onClick={openStoresModal}>
-              <Settings size={16} /> Manage Stores
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Total Shopify Collections" value={formatCurrency(shopifyCollectionsTotal)} icon={ShoppingBag} accent="purple" hint="Selected period" />
-            <StatCard label="Protees Collections" value={formatCurrency(proteesCollectionsTotal)} icon={ShoppingBag} accent="cyan" hint="Selected period" />
-            <StatCard label="Little Peanuts Collections" value={formatCurrency(littlePeanutsCollectionsTotal)} icon={ShoppingBag} accent="green" hint="Selected period" />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {(['all', ...SHOPIFY_STORE_KEYS] as StoreFilter[]).map((key) => (
+      {/* --- Courier Accounts --- */}
+      <CollapsibleSection
+        title="Courier Accounts"
+        summary={`${couriersWithBalance.length} couriers · ${formatCurrency(courierAccountsTotal)}`}
+        defaultOpen
+        headerAction={
+          <button className="btn-secondary text-xs" onClick={openSettings}>
+            <Settings size={14} /> Manage
+          </button>
+        }
+      >
+        {couriersWithBalance.length === 0 ? (
+          <EmptyState
+            icon={Truck}
+            title="No couriers configured yet"
+            description="Use Manage to set up how each courier pays — bank transfer or cash — then start recording collections."
+            action={
+              <button className="btn-primary" onClick={openSettings}>
+                <Plus size={16} /> Manage Couriers
+              </button>
+            }
+          />
+        ) : (
+          <div className="divide-y divide-white/5">
+            {couriersWithBalance.map((c) => (
               <button
-                key={key}
-                onClick={() => setStoreFilter(key)}
+                key={c.id}
+                type="button"
+                onClick={() => toggleSelection({ kind: 'courier', id: c.id })}
                 className={classNames(
-                  'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
-                  storeFilter === key ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  '-mx-2 flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.03]',
+                  selectionKey(selection) === `courier-${c.id}` && 'bg-white/[0.04]'
                 )}
               >
-                {key === 'all' ? 'All Stores' : storeNameByKey.get(key) ?? key}
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-green/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
+                    {initials(c.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{c.name}</p>
+                    <p className="text-xs text-slate-500">{c.payment_method === 'bank_transfer' ? c.bankAccountName ?? 'Bank Transfer' : 'Cash'}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="text-right">
+                    <p className="font-display text-sm font-semibold text-white">{formatCurrency(c.totalCollected)}</p>
+                    <p className="text-[11px] text-slate-500">{c.collectionCount} collections</p>
+                  </div>
+                  <ChevronRight size={16} className="text-slate-600" />
+                </div>
               </button>
             ))}
           </div>
+        )}
+      </CollapsibleSection>
 
-          {recentShopifyOrders.length === 0 ? (
-            <EmptyState
-              icon={ShoppingBag}
-              title="No Shopify orders imported yet"
-              description="Configure your stores below and hit Sync Now — paid orders from both stores will appear here automatically."
-              action={
-                <button className="btn-primary" onClick={openStoresModal}>
-                  <Settings size={16} /> Manage Stores
+      {/* --- Bank Accounts --- */}
+      <CollapsibleSection title="Bank Accounts" summary={`${bankAccountsWithBalance.length} banks · ${formatCurrency(totalBankBalance)}`} defaultOpen>
+        {bankAccountsWithBalance.length === 0 ? (
+          <EmptyState icon={Landmark} title="No bank accounts yet" description="Add one from Manage Couriers, or when giving a courier a bank payment method." />
+        ) : (
+          <div className="divide-y divide-white/5">
+            {bankAccountsWithBalance.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => toggleSelection({ kind: 'bank', id: b.id })}
+                className={classNames(
+                  '-mx-2 flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.03]',
+                  selectionKey(selection) === `bank-${b.id}` && 'bg-white/[0.04]'
+                )}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <BankLogo name={b.name} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{b.name}</p>
+                    <p className="text-xs text-slate-500">Current Balance</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <p className="font-display text-sm font-semibold text-white">{formatCurrency(b.balance)}</p>
+                  <ChevronRight size={16} className="text-slate-600" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
+
+      {/* --- Shopify Stores --- */}
+      <CollapsibleSection
+        title="Shopify Stores"
+        summary={`${shopifyStores.length} stores · ${formatCurrency(shopifyCollectionsTotal)} this period`}
+        headerAction={
+          <div className="flex gap-2">
+            <button className="btn-secondary text-xs" onClick={handleSyncNow} disabled={shopifySyncing}>
+              <RefreshCw size={14} className={shopifySyncing ? 'animate-spin' : undefined} /> {shopifySyncing ? 'Syncing…' : 'Sync Now'}
+            </button>
+            <button className="btn-secondary text-xs" onClick={openStoresModal}>
+              <Settings size={14} /> Manage
+            </button>
+          </div>
+        }
+      >
+        {shopifyStores.length === 0 ? (
+          <EmptyState icon={ShoppingBag} title="No Shopify stores yet" description="Configure a store's domain from Manage, then hit Sync Now." />
+        ) : (
+          <div className="divide-y divide-white/5">
+            {shopifyStores.map((store) => {
+              const storeTotal = periodShopifyOrders.filter((o) => o.store_key === store.store_key).reduce((s, o) => s + Number(o.total_amount), 0)
+              return (
+                <button
+                  key={store.store_key}
+                  type="button"
+                  onClick={() => toggleSelection({ kind: 'shopify-store', key: store.store_key })}
+                  className={classNames(
+                    '-mx-2 flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.03]',
+                    selectionKey(selection) === `store-${store.store_key}` && 'bg-white/[0.04]'
+                  )}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
+                      {initials(store.display_name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-white">{store.display_name}</p>
+                      <p className="flex items-center gap-1 text-xs text-slate-500">
+                        {store.is_connected ? (
+                          <>
+                            <CheckCircle2 size={11} className="text-neon-green" /> Connected
+                          </>
+                        ) : (
+                          <>
+                            <XCircle size={11} /> Not Connected
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="text-right">
+                      <p className="font-display text-sm font-semibold text-white">{formatCurrency(storeTotal)}</p>
+                      <p className="text-[11px] text-slate-500">Selected period</p>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-600" />
+                  </div>
                 </button>
-              }
-            />
-          ) : (
-            <div className="card overflow-x-auto p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
-                    <th className="px-5 py-3.5">Store</th>
-                    <th className="px-5 py-3.5">Order ID</th>
-                    <th className="px-5 py-3.5">Order #</th>
-                    <th className="px-5 py-3.5">Customer</th>
-                    <th className="px-5 py-3.5">Phone</th>
-                    <th className="px-5 py-3.5">Date</th>
-                    <th className="px-5 py-3.5">Payment Method</th>
-                    <th className="px-5 py-3.5">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentShopifyOrders.map((o) => (
-                    <tr key={o.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                      <td className="px-5 py-3.5 text-slate-400">{o.store_key ? storeNameByKey.get(o.store_key) ?? o.store_key : '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-500">{o.shopify_order_id}</td>
-                      <td className="px-5 py-3.5 font-medium text-white">{o.order_number}</td>
-                      <td className="px-5 py-3.5 text-slate-300">{o.customer_name || '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{o.customer_phone || '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-500">{formatDate(o.order_date)}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{o.payment_method || '—'}</td>
-                      <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(o.total_amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </CollapsibleSection>
 
       {/* --- Manage Couriers (Settings) --- */}
       <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Manage Couriers" subtitle="Configure how each courier pays — done once, then every collection auto-routes." maxWidth="max-w-2xl">
