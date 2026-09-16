@@ -7,9 +7,11 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 interface TransactionRow {
   id: string
   date: string
-  type: 'Advance' | 'Payment'
+  type: 'Advance' | 'Salary Payment'
   amount: number
   note: string | null
+  addedBy: string | null
+  paymentMethod: string | null
 }
 
 export function EmployeeTransactionHistory({ employeeName }: { employeeName: string }) {
@@ -19,12 +21,28 @@ export function EmployeeTransactionHistory({ employeeName }: { employeeName: str
     const out: TransactionRow[] = []
     for (const a of advances) {
       if (a.employee_name === employeeName && a.department === 'cutting_department') {
-        out.push({ id: `adv-${a.id}`, date: a.payment_date, type: 'Advance', amount: Number(a.amount), note: a.notes })
+        out.push({
+          id: `adv-${a.id}`,
+          date: a.payment_date,
+          type: 'Advance',
+          amount: Number(a.amount),
+          note: a.notes,
+          addedBy: a.created_by_username,
+          paymentMethod: a.payment_method,
+        })
       }
     }
     for (const p of salaryPayments) {
       if (p.employee_name === employeeName) {
-        out.push({ id: `sal-${p.id}`, date: p.payment_date, type: 'Payment', amount: Number(p.net_amount), note: p.notes })
+        out.push({
+          id: `sal-${p.id}`,
+          date: p.payment_date,
+          type: 'Salary Payment',
+          amount: Number(p.net_amount),
+          note: p.notes,
+          addedBy: p.created_by_username,
+          paymentMethod: p.payment_method,
+        })
       }
     }
     return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -40,32 +58,37 @@ export function EmployeeTransactionHistory({ employeeName }: { employeeName: str
   }
 
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-white/5">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-white/5 bg-white/[0.02] text-left text-xs uppercase tracking-wider text-slate-500">
-            <th className="px-4 py-2.5">Date</th>
-            <th className="px-4 py-2.5">Type</th>
-            <th className="px-4 py-2.5">Amount</th>
-            <th className="px-4 py-2.5">Note</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-b border-white/5 last:border-0">
-              <td className="px-4 py-2.5 text-slate-400">{formatDate(r.date)}</td>
-              <td className="px-4 py-2.5">
-                <Badge color={r.type === 'Advance' ? 'red' : 'green'}>{r.type}</Badge>
-              </td>
-              <td className={`px-4 py-2.5 font-medium ${r.type === 'Advance' ? 'text-neon-red' : 'text-neon-green'}`}>
-                {r.type === 'Advance' ? '-' : '+'}
-                {formatCurrency(r.amount)}
-              </td>
-              <td className="px-4 py-2.5 text-slate-500">{r.note || '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+      {rows.map((r) => (
+        <div
+          key={r.id}
+          className={`rounded-xl border-l-4 bg-white/[0.02] p-3.5 ${r.type === 'Advance' ? 'border-l-neon-red/60' : 'border-l-neon-green/60'}`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <Badge color={r.type === 'Advance' ? 'red' : 'green'}>{r.type}</Badge>
+            <span className={`font-display text-sm font-bold ${r.type === 'Advance' ? 'text-neon-red' : 'text-neon-green'}`}>
+              {r.type === 'Advance' ? '-' : '+'}
+              {formatCurrency(r.amount)}
+            </span>
+          </div>
+          <div className="mt-2.5 space-y-1 text-xs text-slate-400">
+            <p>
+              <span className="text-slate-500">Added By:</span> <span className="text-slate-300">{r.addedBy ?? '—'}</span>
+            </p>
+            <p>
+              <span className="text-slate-500">Method:</span> <span className="text-slate-300">{r.paymentMethod ?? '—'}</span>
+            </p>
+            <p>
+              <span className="text-slate-500">Date:</span> <span className="text-slate-300">{formatDate(r.date)}</span>
+            </p>
+            {r.note && (
+              <p>
+                <span className="text-slate-500">Note:</span> <span className="text-slate-300">{r.note}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

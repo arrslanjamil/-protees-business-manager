@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext'
 export type WidgetId =
   | 'total-money-out'
   | 'total-employees'
+  | 'inactive-employees'
   | 'total-payroll'
   | 'salary-paid'
   | 'outstanding-advances'
@@ -22,6 +23,7 @@ export type WidgetId =
 export const KPI_CARD_IDS: WidgetId[] = [
   'total-money-out',
   'total-employees',
+  'inactive-employees',
   'total-payroll',
   'salary-paid',
   'outstanding-advances',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, History } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { AuditLogEntry, AuditAction } from '@/lib/types'
@@ -34,6 +34,20 @@ function formatDateTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+/** A plain-English summary for the one change type this page calls out
+ * specially — an employee's Active/Inactive status — e.g. "Arslan marked
+ * Ali Mughal as Inactive on 15 Sep 2026". Every other change still has
+ * its full before/after JSON one click away. */
+function describeEmployeeStatusChange(entry: AuditLogEntry): string | null {
+  if (entry.table_name !== 'employees' || entry.action !== 'update') return null
+  const wasActive = entry.old_data?.is_active
+  const isActive = entry.new_data?.is_active
+  if (typeof wasActive !== 'boolean' || typeof isActive !== 'boolean' || wasActive === isActive) return null
+  const name = (entry.new_data?.name as string | undefined) ?? `#${entry.record_id}`
+  const who = entry.performed_by_username ?? 'Someone'
+  return `${who} marked ${name} as ${isActive ? 'Active' : 'Inactive'} on ${formatDateTime(entry.performed_at)}`
 }
 
 export function ActivityLogPage() {
@@ -145,15 +159,19 @@ export function ActivityLogPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
-                <>
-                  <tr key={entry.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+              {entries.map((entry) => {
+                const statusChangeSummary = describeEmployeeStatusChange(entry)
+                return (
+                <Fragment key={entry.id}>
+                  <tr className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                     <td className="px-5 py-3.5 font-medium text-white">{entry.performed_by_username ?? '—'}</td>
                     <td className="px-5 py-3.5">
                       <Badge color={ACTION_BADGE_COLOR[entry.action]}>{AUDIT_ACTION_LABELS[entry.action]}</Badge>
                     </td>
                     <td className="px-5 py-3.5 text-slate-300">{TABLE_LABELS[entry.table_name] ?? entry.table_name}</td>
-                    <td className="px-5 py-3.5 text-slate-500">#{entry.record_id}</td>
+                    <td className="px-5 py-3.5 text-slate-500">
+                      {statusChangeSummary ? <span className="text-neon-amber">{statusChangeSummary}</span> : `#${entry.record_id}`}
+                    </td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDateTime(entry.performed_at)}</td>
                     <td className="px-5 py-3.5 text-right">
                       <button
@@ -192,8 +210,9 @@ export function ActivityLogPage() {
                       </td>
                     </tr>
                   )}
-                </>
-              ))}
+                </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

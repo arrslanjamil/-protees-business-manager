@@ -60,6 +60,7 @@ interface RecordSalaryInput {
   notes?: string
   piecesCompleted?: number | null
   ratePerPiece?: number | null
+  paymentMethod?: string
 }
 
 interface RecordUnitPaymentInput {
@@ -124,12 +125,13 @@ interface DataContextValue {
     }>
   ) => Promise<void>
   deleteEmployee: (id: number) => Promise<void>
+  setEmployeeActive: (id: number, isActive: boolean) => Promise<void>
 
   addSupervisor: (input: { name: string }) => Promise<void>
   updateSupervisor: (id: number, input: { name: string }) => Promise<void>
   deleteSupervisor: (id: number) => Promise<void>
 
-  addAdvance: (input: { name: string; department: Department; amount: number; paymentDate?: string; notes?: string }) => Promise<void>
+  addAdvance: (input: { name: string; department: Department; amount: number; paymentDate?: string; notes?: string; paymentMethod?: string }) => Promise<void>
   deleteAdvance: (id: number) => Promise<void>
 
   recordSalaryPayment: (input: RecordSalaryInput) => Promise<void>
@@ -442,6 +444,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  /** Not a delete — an inactive employee keeps every advance/salary
+   * record and audit entry, and is simply excluded from payroll,
+   * roster counts, and new-transaction pickers by the app. Who changed
+   * it and when is already captured by the employees audit trigger. */
+  const setEmployeeActive: DataContextValue['setEmployeeActive'] = async (id, isActive) => {
+    const { error: err } = await supabase.from('employees').update({ is_active: isActive }).eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
   // --- Supervisors (Protees Unit) ----------------------------------------------
   const addSupervisor: DataContextValue['addSupervisor'] = async ({ name }) => {
     const { error: err } = await supabase.from('supervisors').insert({ name })
@@ -460,13 +472,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Advances ----------------------------------------------------------------
-  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes }) => {
+  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod }) => {
     const { error: err } = await supabase.from('advances').insert({
       employee_name: name,
       department,
       amount,
       payment_date: paymentDate ?? todayISO(),
       notes: notes ?? null,
+      payment_method: paymentMethod ?? null,
     })
     if (err) throw err
     await refreshAll()
@@ -489,6 +502,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     notes,
     piecesCompleted,
     ratePerPiece,
+    paymentMethod,
   }) => {
     const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount)
     const date = paymentDate ?? todayISO()
@@ -507,6 +521,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         notes: notes ?? null,
         pieces_completed: piecesCompleted ?? null,
         rate_per_piece: ratePerPiece ?? null,
+        payment_method: paymentMethod ?? null,
       })
       .select()
       .single()
@@ -759,6 +774,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addEmployee,
     updateEmployee,
     deleteEmployee,
+    setEmployeeActive,
     addSupervisor,
     updateSupervisor,
     deleteSupervisor,
