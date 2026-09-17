@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Plus, Trash2, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { MONTH_NAMES } from '@/lib/types'
+import { isCashPaymentMethod, MONTH_NAMES } from '@/lib/types'
 import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const now = new Date()
 
 export function SalaryPage() {
   const { employeesWithBalance, salaryPayments, recordSalaryPayment, deleteSalaryPayment, suggestedDeduction, balanceFor } = useData()
+  const { cashBalance } = useCollections()
   const { itemsFor, addItem } = useMasterData()
   const [modalOpen, setModalOpen] = useState(false)
   const [employeeName, setEmployeeName] = useState('')
@@ -23,7 +25,9 @@ export function SalaryPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [paymentDate, setPaymentDate] = useState(todayISO())
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('Cash')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const [allowNegativeCash, setAllowNegativeCash] = useState(false)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +55,9 @@ export function SalaryPage() {
     setMonth(now.getMonth() + 1)
     setYear(now.getFullYear())
     setPaymentDate(todayISO())
-    setPaymentMethod('')
+    setPaymentMethod('Cash')
+    setReferenceNumber('')
+    setAllowNegativeCash(false)
     setNotes('')
     setError(null)
     setModalOpen(true)
@@ -85,6 +91,9 @@ export function SalaryPage() {
   const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
   const net = Math.max(0, base + overtime - ded)
+  const isCash = isCashPaymentMethod(paymentMethod)
+  const projectedCashBalance = cashBalance - net
+  const wouldGoNegative = isCash && net > 0 && projectedCashBalance < 0
 
   async function handleSave() {
     if (!employeeName) {
@@ -116,6 +125,10 @@ export function SalaryPage() {
       setError('Select a payment method.')
       return
     }
+    if (!isCash && !referenceNumber.trim()) {
+      setError('Enter a transaction reference for a non-cash payment.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -131,6 +144,8 @@ export function SalaryPage() {
         piecesCompleted: isContract ? pieces : null,
         ratePerPiece: isContract ? ratePerPiece : null,
         paymentMethod,
+        referenceNumber: isCash ? undefined : referenceNumber.trim(),
+        allowNegativeCash,
       })
       setModalOpen(false)
     } catch (err) {
@@ -206,7 +221,10 @@ export function SalaryPage() {
                     )}
                   </td>
                   <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(p.net_amount)}</td>
-                  <td className="px-5 py-3.5">{p.payment_method ? <Badge color="slate">{p.payment_method}</Badge> : <span className="text-slate-600">—</span>}</td>
+                  <td className="px-5 py-3.5">
+                    {p.payment_method ? <Badge color="slate">{p.payment_method}</Badge> : <span className="text-slate-600">—</span>}
+                    {p.reference_number && <p className="mt-0.5 text-[11px] text-slate-500">Ref: {p.reference_number}</p>}
+                  </td>
                   <td className="px-5 py-3.5 text-slate-500">{formatDate(p.payment_date)}</td>
                   <td className="px-5 py-3.5 text-slate-500">{p.created_by_username ?? '—'}</td>
                   <td className="px-5 py-3.5 text-right">
@@ -341,13 +359,36 @@ export function SalaryPage() {
             categories={paymentMethodNames}
             onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
           />
+          {isCash ? (
+            <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
+          ) : (
+            <div>
+              <label className="label-field">Transaction Reference</label>
+              <input
+                className="input-field"
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+                placeholder="e.g. Bank transfer ID, Easypaisa TID"
+              />
+            </div>
+          )}
+
+          {wouldGoNegative && (
+            <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
+              <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).</p>
+              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={allowNegativeCash} onChange={(e) => setAllowNegativeCash(e.target.checked)} />
+                Allow negative Office Cash balance and save anyway
+              </label>
+            </div>
+          )}
 
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
               Cancel
             </button>
-            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>
+            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
               {saving ? 'Saving…' : 'Record Payment'}
             </button>
           </div>

@@ -23,6 +23,7 @@ export interface Database {
           rate_per_piece: number | null
           employee_group: 'regular' | 'unit'
           is_active: boolean
+          starting_salary: number
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -39,9 +40,43 @@ export interface Database {
           rate_per_piece?: number | null
           employee_group?: 'regular' | 'unit'
           is_active?: boolean
+          starting_salary?: number
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['employees']['Insert']>
+        Relationships: []
+      }
+      salary_increments: {
+        Row: {
+          id: number
+          employee_id: number
+          increment_date: string
+          previous_salary: number
+          increment_type: 'fixed' | 'percentage'
+          increment_value: number
+          increment_amount: number
+          new_salary: number
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          employee_id: number
+          increment_date?: string
+          previous_salary: number
+          increment_type: 'fixed' | 'percentage'
+          increment_value: number
+          increment_amount: number
+          new_salary: number
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['salary_increments']['Insert']>
         Relationships: []
       }
       supervisors: {
@@ -72,6 +107,7 @@ export interface Database {
           payment_date: string
           notes: string | null
           payment_method: string | null
+          reference_number: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -87,6 +123,7 @@ export interface Database {
           payment_date?: string
           notes?: string | null
           payment_method?: string | null
+          reference_number?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['advances']['Insert']>
@@ -157,6 +194,7 @@ export interface Database {
           pieces_completed: number | null
           rate_per_piece: number | null
           payment_method: string | null
+          reference_number: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -178,6 +216,7 @@ export interface Database {
           pieces_completed?: number | null
           rate_per_piece?: number | null
           payment_method?: string | null
+          reference_number?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['salary_payments']['Insert']>
@@ -562,7 +601,7 @@ export interface Database {
           category: string
           amount: number
           date: string
-          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
+          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'advance' | 'salary_payment' | null
           reference_id: number | null
           bank_account_id: number | null
           notes: string | null
@@ -576,7 +615,7 @@ export interface Database {
           category: string
           amount: number
           date?: string
-          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
+          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'advance' | 'salary_payment' | null
           reference_id?: number | null
           bank_account_id?: number | null
           notes?: string | null

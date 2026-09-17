@@ -5,6 +5,7 @@ export type Employee = Database['public']['Tables']['employees']['Row']
 export type Supervisor = Database['public']['Tables']['supervisors']['Row']
 export type Advance = Database['public']['Tables']['advances']['Row']
 export type SalaryPayment = Database['public']['Tables']['salary_payments']['Row']
+export type SalaryIncrement = Database['public']['Tables']['salary_increments']['Row']
 export type UnitPayment = Database['public']['Tables']['unit_payments']['Row']
 export type AdvanceDeduction = Database['public']['Tables']['advance_deductions']['Row']
 export type Expense = Database['public']['Tables']['expenses']['Row']
@@ -87,6 +88,23 @@ export type EmployeeGroup = 'regular' | 'unit'
 export const EMPLOYEE_GROUP_LABELS: Record<EmployeeGroup, string> = {
   regular: 'Regular Employee',
   unit: 'Unit Employee',
+}
+
+export type IncrementType = 'fixed' | 'percentage'
+
+export const INCREMENT_TYPE_LABELS: Record<IncrementType, string> = {
+  fixed: 'Fixed Amount',
+  percentage: 'Percentage',
+}
+
+/** How an advance/salary payment's payment_method affects the Office Cash
+ * ledger: paid as 'Cash' posts a linked cash-out and reduces the live
+ * balance shown elsewhere in the app; any other method (Bank Transfer,
+ * Easypaisa, ...) is assumed to bypass Office Cash and requires a
+ * reference number instead. Matches the exact string seeded into the
+ * 'payment_method' Master Data type (migration_016). */
+export function isCashPaymentMethod(method: string | null | undefined): boolean {
+  return (method ?? '').trim().toLowerCase() === 'cash'
 }
 
 export type ExpenseScope = 'business' | 'unit'

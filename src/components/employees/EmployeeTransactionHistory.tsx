@@ -7,15 +7,15 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 interface TransactionRow {
   id: string
   date: string
-  type: 'Advance' | 'Salary Payment'
+  type: 'Advance' | 'Salary Payment' | 'Increment'
   amount: number
   note: string | null
   addedBy: string | null
   paymentMethod: string | null
 }
 
-export function EmployeeTransactionHistory({ employeeName }: { employeeName: string }) {
-  const { advances, salaryPayments } = useData()
+export function EmployeeTransactionHistory({ employeeId, employeeName }: { employeeId: number; employeeName: string }) {
+  const { advances, salaryPayments, salaryIncrements } = useData()
 
   const rows = useMemo<TransactionRow[]>(() => {
     const out: TransactionRow[] = []
@@ -45,8 +45,21 @@ export function EmployeeTransactionHistory({ employeeName }: { employeeName: str
         })
       }
     }
+    for (const inc of salaryIncrements) {
+      if (inc.employee_id === employeeId) {
+        out.push({
+          id: `inc-${inc.id}`,
+          date: inc.increment_date,
+          type: 'Increment',
+          amount: Number(inc.increment_amount),
+          note: inc.notes,
+          addedBy: inc.created_by_username,
+          paymentMethod: null,
+        })
+      }
+    }
     return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [advances, salaryPayments, employeeName])
+  }, [advances, salaryPayments, salaryIncrements, employeeId, employeeName])
 
   if (rows.length === 0) {
     return (
@@ -57,38 +70,46 @@ export function EmployeeTransactionHistory({ employeeName }: { employeeName: str
     )
   }
 
+  const accent: Record<TransactionRow['type'], { border: string; text: string; badge: 'red' | 'green' | 'cyan'; sign: string }> = {
+    Advance: { border: 'border-l-neon-red/60', text: 'text-neon-red', badge: 'red', sign: '-' },
+    'Salary Payment': { border: 'border-l-neon-green/60', text: 'text-neon-green', badge: 'green', sign: '+' },
+    Increment: { border: 'border-l-neon-cyan/60', text: 'text-neon-cyan', badge: 'cyan', sign: '+' },
+  }
+
   return (
     <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-      {rows.map((r) => (
-        <div
-          key={r.id}
-          className={`rounded-xl border-l-4 bg-white/[0.02] p-3.5 ${r.type === 'Advance' ? 'border-l-neon-red/60' : 'border-l-neon-green/60'}`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <Badge color={r.type === 'Advance' ? 'red' : 'green'}>{r.type}</Badge>
-            <span className={`font-display text-sm font-bold ${r.type === 'Advance' ? 'text-neon-red' : 'text-neon-green'}`}>
-              {r.type === 'Advance' ? '-' : '+'}
-              {formatCurrency(r.amount)}
-            </span>
-          </div>
-          <div className="mt-2.5 space-y-1 text-xs text-slate-400">
-            <p>
-              <span className="text-slate-500">Added By:</span> <span className="text-slate-300">{r.addedBy ?? '—'}</span>
-            </p>
-            <p>
-              <span className="text-slate-500">Method:</span> <span className="text-slate-300">{r.paymentMethod ?? '—'}</span>
-            </p>
-            <p>
-              <span className="text-slate-500">Date:</span> <span className="text-slate-300">{formatDate(r.date)}</span>
-            </p>
-            {r.note && (
+      {rows.map((r) => {
+        const a = accent[r.type]
+        return (
+          <div key={r.id} className={`rounded-xl border-l-4 bg-white/[0.02] p-3.5 ${a.border}`}>
+            <div className="flex items-center justify-between gap-2">
+              <Badge color={a.badge}>{r.type}</Badge>
+              <span className={`font-display text-sm font-bold ${a.text}`}>
+                {a.sign}
+                {formatCurrency(r.amount)}
+              </span>
+            </div>
+            <div className="mt-2.5 space-y-1 text-xs text-slate-400">
               <p>
-                <span className="text-slate-500">Note:</span> <span className="text-slate-300">{r.note}</span>
+                <span className="text-slate-500">Added By:</span> <span className="text-slate-300">{r.addedBy ?? '—'}</span>
               </p>
-            )}
+              {r.paymentMethod && (
+                <p>
+                  <span className="text-slate-500">Method:</span> <span className="text-slate-300">{r.paymentMethod}</span>
+                </p>
+              )}
+              <p>
+                <span className="text-slate-500">Date:</span> <span className="text-slate-300">{formatDate(r.date)}</span>
+              </p>
+              {r.note && (
+                <p>
+                  <span className="text-slate-500">Note:</span> <span className="text-slate-300">{r.note}</span>
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
