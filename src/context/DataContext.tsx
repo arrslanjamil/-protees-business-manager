@@ -21,8 +21,10 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseScope,
+  IncrementType,
   KhadimTransaction,
   KhadimTransactionType,
+  SalaryIncrement,
   SalaryPayment,
   Supervisor,
   SupervisorWithBalance,
@@ -31,7 +33,7 @@ import type {
   ZakatSettings,
   ZakatTransaction,
 } from '@/lib/types'
-import { sortExpenseCategoryNames, type ExpensePaymentSource } from '@/lib/types'
+import { isCashPaymentMethod, sortExpenseCategoryNames, type ExpensePaymentSource } from '@/lib/types'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { useCollections } from '@/context/CollectionsContext'
 
@@ -61,6 +63,22 @@ interface RecordSalaryInput {
   piecesCompleted?: number | null
   ratePerPiece?: number | null
   paymentMethod?: string
+  /** Required when paymentMethod isn't 'Cash' — how to trace the payment
+   * outside the app (bank transfer ID, Easypaisa TID, ...). */
+  referenceNumber?: string
+  /** Explicit acknowledgement to let a cash payment push Office Cash
+   * negative — same override pattern as expenses. */
+  allowNegativeCash?: boolean
+}
+
+interface AddSalaryIncrementInput {
+  employeeId: number
+  incrementType: IncrementType
+  /** Raw number the admin entered — Rs for 'fixed', a percentage number
+   * (e.g. 10 for 10%) for 'percentage'. */
+  incrementValue: number
+  incrementDate?: string
+  notes?: string
 }
 
 interface RecordUnitPaymentInput {
@@ -87,6 +105,7 @@ interface DataContextValue {
   supervisors: Supervisor[]
   advances: Advance[]
   salaryPayments: SalaryPayment[]
+  salaryIncrements: SalaryIncrement[]
   unitPayments: UnitPayment[]
   advanceDeductions: AdvanceDeduction[]
   expenses: Expense[]
@@ -131,11 +150,22 @@ interface DataContextValue {
   updateSupervisor: (id: number, input: { name: string }) => Promise<void>
   deleteSupervisor: (id: number) => Promise<void>
 
-  addAdvance: (input: { name: string; department: Department; amount: number; paymentDate?: string; notes?: string; paymentMethod?: string }) => Promise<void>
+  addAdvance: (input: {
+    name: string
+    department: Department
+    amount: number
+    paymentDate?: string
+    notes?: string
+    paymentMethod?: string
+    referenceNumber?: string
+    allowNegativeCash?: boolean
+  }) => Promise<void>
   deleteAdvance: (id: number) => Promise<void>
 
   recordSalaryPayment: (input: RecordSalaryInput) => Promise<void>
   deleteSalaryPayment: (id: number) => Promise<void>
+
+  addSalaryIncrement: (input: AddSalaryIncrementInput) => Promise<void>
 
   recordUnitPayment: (input: RecordUnitPaymentInput) => Promise<void>
   deleteUnitPayment: (id: number) => Promise<void>
@@ -171,6 +201,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [supervisors, setSupervisors] = useState<Supervisor[]>([])
   const [advances, setAdvances] = useState<Advance[]>([])
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([])
+  const [salaryIncrements, setSalaryIncrements] = useState<SalaryIncrement[]>([])
   const [unitPayments, setUnitPayments] = useState<UnitPayment[]>([])
   const [advanceDeductions, setAdvanceDeductions] = useState<AdvanceDeduction[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -196,12 +227,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [u, e, sup, a, sp, up, ad, ex, kh, ec, zt, zs] = await Promise.all([
+      const [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs] = await Promise.all([
         supabase.from('units').select('*').order('name'),
         supabase.from('employees').select('*').order('created_at', { ascending: false }),
         supabase.from('supervisors').select('*').order('created_at', { ascending: false }),
         supabase.from('advances').select('*').order('payment_date', { ascending: true }),
         supabase.from('salary_payments').select('*').order('payment_date', { ascending: false }),
+        supabase.from('salary_increments').select('*').order('increment_date', { ascending: false }),
         supabase.from('unit_payments').select('*').order('payment_date', { ascending: false }),
         supabase.from('advance_deductions').select('*').order('date', { ascending: true }),
         supabase.from('expenses').select('*').order('date', { ascending: false }),
@@ -210,7 +242,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         supabase.from('zakat_transactions').select('*').order('date', { ascending: false }),
         supabase.from('zakat_settings').select('*').eq('id', 1).maybeSingle(),
       ])
-      const firstError = [u, e, sup, a, sp, up, ad, ex, kh, ec, zt, zs].find((r) => r.error)?.error
+      const firstError = [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setUnits(u.data ?? [])
@@ -218,6 +250,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setSupervisors(sup.data ?? [])
       setAdvances(a.data ?? [])
       setSalaryPayments(sp.data ?? [])
+      setSalaryIncrements(si.data ?? [])
       setUnitPayments(up.data ?? [])
       setAdvanceDeductions(ad.data ?? [])
       setExpenses(ex.data ?? [])
@@ -415,6 +448,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       employee_type: employeeType ?? 'monthly',
       rate_per_piece: ratePerPiece ?? null,
       employee_group: employeeGroup ?? 'regular',
+      // The permanent "hired at" snapshot the Salary History timeline
+      // starts from — distinct from `salary`, which moves with increments.
+      starting_salary: salary,
     })
     if (err) throw err
     await refreshAll()
@@ -454,6 +490,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  /** Applies a raise: snapshots the before/after in salary_increments AND
+   * moves the employee's live `salary` forward — the same "snapshot the
+   * inputs, then move the live total" split used for advance_deductions.
+   * Increments are never edited or deleted once applied; a correction is
+   * a new increment, same as any real payroll system. */
+  const addSalaryIncrement: DataContextValue['addSalaryIncrement'] = async ({ employeeId, incrementType, incrementValue, incrementDate, notes }) => {
+    const employee = employees.find((e) => e.id === employeeId)
+    if (!employee) throw new Error('Employee not found.')
+    if (incrementValue <= 0) throw new Error('Enter a valid increment amount.')
+
+    const previousSalary = Number(employee.salary)
+    const incrementAmount = incrementType === 'percentage' ? Math.round((previousSalary * incrementValue) / 100) : incrementValue
+    const newSalary = previousSalary + incrementAmount
+
+    const { error: incErr } = await supabase.from('salary_increments').insert({
+      employee_id: employeeId,
+      increment_date: incrementDate ?? todayISO(),
+      previous_salary: previousSalary,
+      increment_type: incrementType,
+      increment_value: incrementValue,
+      increment_amount: incrementAmount,
+      new_salary: newSalary,
+      notes: notes ?? null,
+    })
+    if (incErr) throw incErr
+
+    const { error: empErr } = await supabase.from('employees').update({ salary: newSalary }).eq('id', employeeId)
+    if (empErr) throw empErr
+
+    await refreshAll()
+  }
+
   // --- Supervisors (Protees Unit) ----------------------------------------------
   const addSupervisor: DataContextValue['addSupervisor'] = async ({ name }) => {
     const { error: err } = await supabase.from('supervisors').insert({ name })
@@ -472,25 +540,57 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Advances ----------------------------------------------------------------
-  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod }) => {
-    const { error: err } = await supabase.from('advances').insert({
-      employee_name: name,
-      department,
-      amount,
-      payment_date: paymentDate ?? todayISO(),
-      notes: notes ?? null,
-      payment_method: paymentMethod ?? null,
-    })
+  // A 'Cash' advance is real money leaving the office, so it now posts a
+  // linked cash_transactions cash-out the same way a cash expense does —
+  // previously advances never touched the cash ledger at all. Any other
+  // payment method is assumed to bypass Office Cash and carries a
+  // reference number instead.
+  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod, referenceNumber, allowNegativeCash }) => {
+    const isCash = isCashPaymentMethod(paymentMethod)
+    if (isCash && !allowNegativeCash && amount > cashBalance) {
+      throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
+    }
+    const date = paymentDate ?? todayISO()
+    const { data: advance, error: err } = await supabase
+      .from('advances')
+      .insert({
+        employee_name: name,
+        department,
+        amount,
+        payment_date: date,
+        notes: notes ?? null,
+        payment_method: paymentMethod ?? null,
+        reference_number: isCash ? null : referenceNumber ?? null,
+      })
+      .select()
+      .single()
     if (err) throw err
+
+    if (isCash) {
+      const { error: cashErr } = await supabase.from('cash_transactions').insert({
+        type: 'cash_out',
+        category: `Advance — ${name}`,
+        amount,
+        date,
+        reference_type: 'advance',
+        reference_id: advance.id,
+      })
+      if (cashErr) console.error('Failed to post linked cash-out for advance:', cashErr.message)
+    }
+
     await refreshAll()
   }
   const deleteAdvance: DataContextValue['deleteAdvance'] = async (id) => {
+    await supabase.from('cash_transactions').delete().eq('reference_type', 'advance').eq('reference_id', id)
     const { error: err } = await supabase.from('advances').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
   }
 
   // --- Salary payments (monthly) -------------------------------------------
+  // Same cash-ledger integration as Advances above: 'Cash' posts a linked
+  // cash-out for the net amount actually paid; anything else requires a
+  // reference number and never touches Office Cash.
   const recordSalaryPayment: DataContextValue['recordSalaryPayment'] = async ({
     employeeName,
     baseAmount,
@@ -503,9 +603,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     piecesCompleted,
     ratePerPiece,
     paymentMethod,
+    referenceNumber,
+    allowNegativeCash,
   }) => {
     const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount)
     const date = paymentDate ?? todayISO()
+    const isCash = isCashPaymentMethod(paymentMethod)
+
+    if (isCash && !allowNegativeCash && netAmount > cashBalance) {
+      throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
+    }
 
     const { data: payment, error: payErr } = await supabase
       .from('salary_payments')
@@ -522,6 +629,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         pieces_completed: piecesCompleted ?? null,
         rate_per_piece: ratePerPiece ?? null,
         payment_method: paymentMethod ?? null,
+        reference_number: isCash ? null : referenceNumber ?? null,
       })
       .select()
       .single()
@@ -535,10 +643,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       salaryPaymentId: payment.id,
     })
 
+    if (isCash && netAmount > 0) {
+      const { error: cashErr } = await supabase.from('cash_transactions').insert({
+        type: 'cash_out',
+        category: `Salary — ${employeeName}`,
+        amount: netAmount,
+        date,
+        reference_type: 'salary_payment',
+        reference_id: payment.id,
+      })
+      if (cashErr) console.error('Failed to post linked cash-out for salary payment:', cashErr.message)
+    }
+
     await refreshAll()
   }
 
   const deleteSalaryPayment: DataContextValue['deleteSalaryPayment'] = async (id) => {
+    await supabase.from('cash_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
     const { error: err } = await supabase.from('salary_payments').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
@@ -755,6 +876,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     supervisors,
     advances,
     salaryPayments,
+    salaryIncrements,
     unitPayments,
     advanceDeductions,
     expenses,
@@ -782,6 +904,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteAdvance,
     recordSalaryPayment,
     deleteSalaryPayment,
+    addSalaryIncrement,
     recordUnitPayment,
     deleteUnitPayment,
     addExpense,

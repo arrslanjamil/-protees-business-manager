@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react'
 import { HandCoins, Plus, Search, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { DEPARTMENT_LABELS, type Department } from '@/lib/types'
+import { DEPARTMENT_LABELS, isCashPaymentMethod, type Department } from '@/lib/types'
 import { advanceWarningLevel, classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 export function AdvancesPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, addAdvance, deleteAdvance } = useData()
+  const { cashBalance } = useCollections()
   const { itemsFor, addItem } = useMasterData()
   const [modalOpen, setModalOpen] = useState(false)
   const [department, setDepartment] = useState<Department>('cutting_department')
@@ -19,10 +21,17 @@ export function AdvancesPage() {
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(todayISO())
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('Cash')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const [allowNegativeCash, setAllowNegativeCash] = useState(false)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const isCash = isCashPaymentMethod(paymentMethod)
+  const amountNum = Number(amount) || 0
+  const projectedCashBalance = cashBalance - amountNum
+  const wouldGoNegative = isCash && amountNum > 0 && projectedCashBalance < 0
 
   const paymentMethodNames = itemsFor('payment_method').map((i) => i.name)
 
@@ -64,7 +73,9 @@ export function AdvancesPage() {
     setEmployeeSearch('')
     setAmount('')
     setPaymentDate(todayISO())
-    setPaymentMethod('')
+    setPaymentMethod('Cash')
+    setReferenceNumber('')
+    setAllowNegativeCash(false)
     setNotes('')
     setError(null)
     setModalOpen(true)
@@ -95,10 +106,23 @@ export function AdvancesPage() {
       setError('Select a payment method.')
       return
     }
+    if (!isCash && !referenceNumber.trim()) {
+      setError('Enter a transaction reference for a non-cash payment.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      await addAdvance({ name, department, amount: amt, paymentDate, notes: notes.trim() || undefined, paymentMethod })
+      await addAdvance({
+        name,
+        department,
+        amount: amt,
+        paymentDate,
+        notes: notes.trim() || undefined,
+        paymentMethod,
+        referenceNumber: isCash ? undefined : referenceNumber.trim(),
+        allowNegativeCash,
+      })
       setModalOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record advance.')
@@ -191,7 +215,10 @@ export function AdvancesPage() {
                       <Badge color={adv.department === 'cutting_department' ? 'cyan' : 'purple'}>{DEPARTMENT_LABELS[adv.department]}</Badge>
                     </td>
                     <td className="px-5 py-3.5 text-neon-amber">{formatCurrency(adv.amount)}</td>
-                    <td className="px-5 py-3.5">{adv.payment_method ? <Badge color="slate">{adv.payment_method}</Badge> : <span className="text-slate-600">—</span>}</td>
+                    <td className="px-5 py-3.5">
+                      {adv.payment_method ? <Badge color="slate">{adv.payment_method}</Badge> : <span className="text-slate-600">—</span>}
+                      {adv.reference_number && <p className="mt-0.5 text-[11px] text-slate-500">Ref: {adv.reference_number}</p>}
+                    </td>
                     <td className="px-5 py-3.5 text-slate-400">{adv.notes || '—'}</td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDate(adv.payment_date)}</td>
                     <td className="px-5 py-3.5 text-slate-500">{adv.created_by_username ?? '—'}</td>
@@ -294,16 +321,38 @@ export function AdvancesPage() {
             categories={paymentMethodNames}
             onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
           />
+          {isCash ? (
+            <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
+          ) : (
+            <div>
+              <label className="label-field">Transaction Reference</label>
+              <input
+                className="input-field"
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+                placeholder="e.g. Bank transfer ID, Easypaisa TID"
+              />
+            </div>
+          )}
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />
           </div>
+          {wouldGoNegative && (
+            <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
+              <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).</p>
+              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={allowNegativeCash} onChange={(e) => setAllowNegativeCash(e.target.checked)} />
+                Allow negative Office Cash balance and save anyway
+              </label>
+            </div>
+          )}
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
               Cancel
             </button>
-            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>
+            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
               {saving ? 'Saving…' : 'Give Advance'}
             </button>
           </div>
