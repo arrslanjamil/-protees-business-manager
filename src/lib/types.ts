@@ -111,6 +111,16 @@ export function isCashPaymentMethod(method: string | null | undefined): boolean 
   return (method ?? '').trim().toLowerCase() === 'cash'
 }
 
+/** Salary payments use a fixed Cash/Online toggle (not the free-form
+ * 'payment_method' Master Data list Advances/Expenses use) — Cash deducts
+ * from Office Cash, Online deducts from a chosen bank account. */
+export const SALARY_PAYMENT_METHODS = ['Cash', 'Online'] as const
+export type SalaryPaymentMethod = (typeof SALARY_PAYMENT_METHODS)[number]
+export const SALARY_PAYMENT_METHOD_LABELS: Record<SalaryPaymentMethod, string> = {
+  Cash: 'Cash',
+  Online: 'Online',
+}
+
 export type ExpenseScope = 'business' | 'unit'
 
 export const EXPENSE_SCOPE_LABELS: Record<ExpenseScope, string> = {

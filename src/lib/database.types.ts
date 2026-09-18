@@ -208,6 +208,7 @@ export interface Database {
           absent_deduction: number
           late_deduction: number
           leave_deduction: number
+          bank_account_id: number | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -235,6 +236,7 @@ export interface Database {
           absent_deduction?: number
           late_deduction?: number
           leave_deduction?: number
+          bank_account_id?: number | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['salary_payments']['Insert']>
@@ -708,7 +710,7 @@ export interface Database {
           type: 'credit' | 'debit'
           amount: number
           date: string
-          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
+          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'salary_payment' | null
           reference_id: number | null
           notes: string | null
           created_at: string
@@ -721,7 +723,7 @@ export interface Database {
           type: 'credit' | 'debit'
           amount: number
           date?: string
-          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | null
+          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'salary_payment' | null
           reference_id?: number | null
           notes?: string | null
           created_at?: string

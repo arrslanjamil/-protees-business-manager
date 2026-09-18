@@ -62,9 +62,15 @@ interface RecordSalaryInput {
   notes?: string
   piecesCompleted?: number | null
   ratePerPiece?: number | null
+  /** 'Cash' (default) deducts from Office Cash; 'Online' deducts from
+   * bankAccountId instead — see SalaryPage's payment method toggle. */
   paymentMethod?: string
-  /** Required when paymentMethod isn't 'Cash' — how to trace the payment
-   * outside the app (bank transfer ID, Easypaisa TID, ...). */
+  /** Required when paymentMethod is 'Online' — which bank account the net
+   * amount is deducted from. */
+  bankAccountId?: number | null
+  /** Optional manual trace (bank transfer ID, Easypaisa TID, ...) —
+   * no longer required now that Online payments link to a real bank
+   * transaction, but still useful for reconciliation notes. */
   referenceNumber?: string
   /** Explicit acknowledgement to let a cash payment push Office Cash
    * negative — same override pattern as expenses. */
@@ -627,9 +633,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Salary payments (monthly) -------------------------------------------
-  // Same cash-ledger integration as Advances above: 'Cash' posts a linked
-  // cash-out for the net amount actually paid; anything else requires a
-  // reference number and never touches Office Cash.
+  // Payment method drives where the net amount actually comes from: 'Cash'
+  // (the default — see SalaryPage) posts a linked Office Cash cash-out;
+  // 'Online' posts a linked debit against the selected bank account instead.
   // overtimeAmount is added to net exactly as before — the caller (see
   // SalaryPage) decides what to pass: the computed Rs amount when
   // "Include Overtime In Salary" is checked, 0 otherwise. overtimeHours is
@@ -646,6 +652,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     piecesCompleted,
     ratePerPiece,
     paymentMethod,
+    bankAccountId,
     referenceNumber,
     allowNegativeCash,
     overtimeHours,
@@ -657,10 +664,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const attendanceDeduction = (absentDeduction ?? 0) + (lateDeduction ?? 0) + (leaveDeduction ?? 0)
     const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount - attendanceDeduction)
     const date = paymentDate ?? todayISO()
-    const isCash = isCashPaymentMethod(paymentMethod)
+    const method = paymentMethod ?? 'Cash'
+    const isCash = isCashPaymentMethod(method)
 
     if (isCash && !allowNegativeCash && netAmount > cashBalance) {
       throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
+    }
+    if (!isCash && !bankAccountId) {
+      throw new Error('Select a bank account for an Online salary payment.')
     }
 
     const { data: payment, error: payErr } = await supabase
@@ -677,7 +688,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         notes: notes ?? null,
         pieces_completed: piecesCompleted ?? null,
         rate_per_piece: ratePerPiece ?? null,
-        payment_method: paymentMethod ?? null,
+        payment_method: method,
+        bank_account_id: isCash ? null : bankAccountId,
         reference_number: isCash ? null : referenceNumber ?? null,
         overtime_hours: overtimeHours ?? null,
         overtime_included: overtimeIncluded ?? false,
@@ -697,16 +709,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
       salaryPaymentId: payment.id,
     })
 
-    if (isCash && netAmount > 0) {
-      const { error: cashErr } = await supabase.from('cash_transactions').insert({
-        type: 'cash_out',
-        category: `Salary — ${employeeName}`,
-        amount: netAmount,
-        date,
-        reference_type: 'salary_payment',
-        reference_id: payment.id,
-      })
-      if (cashErr) console.error('Failed to post linked cash-out for salary payment:', cashErr.message)
+    if (netAmount > 0) {
+      if (isCash) {
+        const { error: cashErr } = await supabase.from('cash_transactions').insert({
+          type: 'cash_out',
+          category: `Salary — ${employeeName}`,
+          amount: netAmount,
+          date,
+          reference_type: 'salary_payment',
+          reference_id: payment.id,
+        })
+        if (cashErr) console.error('Failed to post linked cash-out for salary payment:', cashErr.message)
+      } else if (bankAccountId) {
+        const { error: bankErr } = await supabase.from('bank_transactions').insert({
+          bank_account_id: bankAccountId,
+          type: 'debit',
+          amount: netAmount,
+          date,
+          reference_type: 'salary_payment',
+          reference_id: payment.id,
+          notes: `Salary — ${employeeName}`,
+        })
+        if (bankErr) console.error('Failed to post linked bank debit for salary payment:', bankErr.message)
+      }
     }
 
     await refreshAll()
@@ -714,6 +739,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteSalaryPayment: DataContextValue['deleteSalaryPayment'] = async (id) => {
     await supabase.from('cash_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
+    await supabase.from('bank_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
     const { error: err } = await supabase.from('salary_payments').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
