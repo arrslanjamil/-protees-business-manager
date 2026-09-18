@@ -548,6 +548,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const previousSalary = Number(employee.salary)
     const incrementAmount = incrementType === 'percentage' ? Math.round((previousSalary * incrementValue) / 100) : incrementValue
     const newSalary = previousSalary + incrementAmount
+    // Always recorded, even for a 'fixed' Rs raise — so the timeline can
+    // always show "how much, and what % that was" regardless of how the
+    // raise was entered (see migration_023_salary_increment_percentage.sql).
+    const incrementPercentage = incrementType === 'percentage' ? incrementValue : previousSalary > 0 ? Math.round((incrementAmount / previousSalary) * 10000) / 100 : 0
 
     const { error: incErr } = await supabase.from('salary_increments').insert({
       employee_id: employeeId,
@@ -556,6 +560,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       increment_type: incrementType,
       increment_value: incrementValue,
       increment_amount: incrementAmount,
+      increment_percentage: incrementPercentage,
       new_salary: newSalary,
       notes: notes ?? null,
     })

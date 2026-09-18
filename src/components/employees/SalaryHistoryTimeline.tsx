@@ -9,6 +9,9 @@ interface TimelineEntry {
   label: string
   previousSalary: number | null
   amount: number | null
+  /** Always present for an increment (even one entered as a fixed Rs
+   * amount) — see migration_023_salary_increment_percentage.sql. */
+  percentage: number | null
   newSalary: number
   detail: string | null
   addedBy: string | null
@@ -35,6 +38,7 @@ export function SalaryHistoryTimeline({ employee }: { employee: Employee }) {
         label: 'Joined Salary',
         previousSalary: null,
         amount: null,
+        percentage: null,
         newSalary: Number(employee.starting_salary),
         detail: null,
         addedBy: null,
@@ -42,17 +46,21 @@ export function SalaryHistoryTimeline({ employee }: { employee: Employee }) {
       },
     ]
     increments.forEach((inc, idx) => {
+      const percentage =
+        inc.increment_percentage != null
+          ? Number(inc.increment_percentage)
+          : inc.increment_type === 'percentage'
+            ? Number(inc.increment_value)
+            : null
       out.push({
         id: `inc-${inc.id}`,
         date: inc.increment_date,
         label: `Increment #${idx + 1}`,
         previousSalary: Number(inc.previous_salary),
         amount: Number(inc.increment_amount),
+        percentage,
         newSalary: Number(inc.new_salary),
-        detail:
-          inc.increment_type === 'percentage'
-            ? `${INCREMENT_TYPE_LABELS.percentage} · ${inc.increment_value}%`
-            : INCREMENT_TYPE_LABELS.fixed,
+        detail: INCREMENT_TYPE_LABELS[inc.increment_type],
         addedBy: inc.created_by_username,
         notes: inc.notes,
       })
@@ -86,13 +94,14 @@ export function SalaryHistoryTimeline({ employee }: { employee: Employee }) {
                 {entry.amount != null && (
                   <span>
                     Increment: <span className="font-medium text-neon-green">+{formatCurrency(entry.amount)}</span>
-                    {entry.detail && <span className="text-slate-500"> ({entry.detail})</span>}
+                    {entry.percentage != null && <span className="font-medium text-neon-green"> (+{entry.percentage}%)</span>}
+                    {entry.detail && <span className="text-slate-500"> · {entry.detail}</span>}
                   </span>
                 )}
                 <span>
                   New Salary: <span className="font-medium text-white">{formatCurrency(entry.newSalary)}</span>
                 </span>
-                {entry.addedBy && <span>Applied By: {entry.addedBy}</span>}
+                {entry.addedBy && <span>Updated By: {entry.addedBy}</span>}
               </div>
               {entry.notes && <p className="mt-1 text-xs text-slate-500">{entry.notes}</p>}
             </div>

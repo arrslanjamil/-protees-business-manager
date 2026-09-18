@@ -168,6 +168,8 @@ export function EmployeesPage() {
   const incrementPreviousSalary = Number(incrementEmployee?.salary ?? 0)
   const incrementAmountPreview = incrementType === 'percentage' ? Math.round((incrementPreviousSalary * incrementValueNum) / 100) : incrementValueNum
   const incrementNewSalaryPreview = incrementPreviousSalary + incrementAmountPreview
+  const incrementPercentagePreview =
+    incrementType === 'percentage' ? incrementValueNum : incrementPreviousSalary > 0 ? Math.round((incrementAmountPreview / incrementPreviousSalary) * 10000) / 100 : 0
 
   async function handleSaveIncrement() {
     if (!incrementEmployee) return
@@ -573,7 +575,9 @@ export function EmployeesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <span>Increment</span>
-                <span className="text-neon-green">+{formatCurrency(incrementAmountPreview)}</span>
+                <span className="text-neon-green">
+                  +{formatCurrency(incrementAmountPreview)} (+{incrementPercentagePreview}%)
+                </span>
               </div>
               <div className="flex items-center justify-between border-t border-white/5 pt-1.5 font-semibold">
                 <span className="text-slate-300">New Salary</span>

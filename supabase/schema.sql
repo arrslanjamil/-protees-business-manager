@@ -1844,3 +1844,8 @@ alter table salary_payments add column if not exists bank_account_id bigint refe
 alter table bank_transactions drop constraint if exists bank_transactions_reference_type_check;
 alter table bank_transactions add constraint bank_transactions_reference_type_check
   check (reference_type in ('courier_payment', 'cash_withdrawal', 'manual', 'courier_collection', 'cash_transfer', 'creditor_payment', 'salary_payment'));
+
+-- Employee Increment History: increment_percentage always populated, not
+-- only when the raise was entered as a percentage (see
+-- migration_023_salary_increment_percentage.sql).
+alter table salary_increments add column if not exists increment_percentage numeric(6,2);

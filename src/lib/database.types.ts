@@ -63,6 +63,7 @@ export interface Database {
           increment_type: 'fixed' | 'percentage'
           increment_value: number
           increment_amount: number
+          increment_percentage: number | null
           new_salary: number
           notes: string | null
           created_at: string
@@ -80,6 +81,7 @@ export interface Database {
           increment_type: 'fixed' | 'percentage'
           increment_value: number
           increment_amount: number
+          increment_percentage?: number | null
           new_salary: number
           notes?: string | null
           created_at?: string
