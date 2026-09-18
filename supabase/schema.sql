@@ -1836,3 +1836,11 @@ alter table shopify_orders add column if not exists customer_phone text;
 alter table shopify_orders add column if not exists customer_city text;
 
 create index if not exists idx_shopify_orders_store on shopify_orders(store_key);
+
+-- Salary payments: Online payment method deducts from a specific bank
+-- account (see migration_022_salary_bank_payment.sql).
+alter table salary_payments add column if not exists bank_account_id bigint references bank_accounts(id);
+
+alter table bank_transactions drop constraint if exists bank_transactions_reference_type_check;
+alter table bank_transactions add constraint bank_transactions_reference_type_check
+  check (reference_type in ('courier_payment', 'cash_withdrawal', 'manual', 'courier_collection', 'cash_transfer', 'creditor_payment', 'salary_payment'));

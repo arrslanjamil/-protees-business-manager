@@ -2,22 +2,19 @@ import { useMemo, useState } from 'react'
 import { Plus, Trash2, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { useCollections } from '@/context/CollectionsContext'
-import { useMasterData } from '@/context/MasterDataContext'
 import { useAttendance } from '@/context/AttendanceContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
-import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { isCashPaymentMethod, MONTH_NAMES } from '@/lib/types'
+import { isCashPaymentMethod, MONTH_NAMES, type SalaryPaymentMethod, SALARY_PAYMENT_METHODS, SALARY_PAYMENT_METHOD_LABELS } from '@/lib/types'
 import { computePayrollDeductions, formatHours, summarizeAttendance } from '@/lib/attendance'
-import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const now = new Date()
 
 export function SalaryPage() {
   const { employeesWithBalance, salaryPayments, recordSalaryPayment, deleteSalaryPayment, suggestedDeduction, balanceFor } = useData()
-  const { cashBalance } = useCollections()
-  const { itemsFor, addItem } = useMasterData()
+  const { cashBalance, bankAccountsWithBalance } = useCollections()
   const { attendance, attendanceSettings } = useAttendance()
   const [modalOpen, setModalOpen] = useState(false)
   const [employeeName, setEmployeeName] = useState('')
@@ -29,14 +26,14 @@ export function SalaryPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [paymentDate, setPaymentDate] = useState(todayISO())
-  const [paymentMethod, setPaymentMethod] = useState('Cash')
+  const [paymentMethod, setPaymentMethod] = useState<SalaryPaymentMethod>('Cash')
+  const [bankAccountId, setBankAccountId] = useState<number | ''>('')
   const [referenceNumber, setReferenceNumber] = useState('')
   const [allowNegativeCash, setAllowNegativeCash] = useState(false)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const paymentMethodNames = itemsFor('payment_method').map((i) => i.name)
   // Only active employees can be picked for a NEW payment — historical
   // payments to someone since marked inactive stay untouched below.
   const activeEmployees = useMemo(() => employeesWithBalance.filter((e) => e.is_active), [employeesWithBalance])
@@ -49,6 +46,7 @@ export function SalaryPage() {
     () => [...salaryPayments].sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
     [salaryPayments]
   )
+  const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
 
   // --- Attendance for the selected employee + pay period ----------------------
   const daysInMonth = new Date(year, month, 0).getDate()
@@ -84,6 +82,7 @@ export function SalaryPage() {
     setYear(now.getFullYear())
     setPaymentDate(todayISO())
     setPaymentMethod('Cash')
+    setBankAccountId('')
     setReferenceNumber('')
     setAllowNegativeCash(false)
     setNotes('')
@@ -153,12 +152,8 @@ export function SalaryPage() {
       setError(`Deduction can't exceed the outstanding advance balance (${formatCurrency(currentBalance)}).`)
       return
     }
-    if (!paymentMethod) {
-      setError('Select a payment method.')
-      return
-    }
-    if (!isCash && !referenceNumber.trim()) {
-      setError('Enter a transaction reference for a non-cash payment.')
+    if (!isCash && !bankAccountId) {
+      setError('Select a bank account for an Online payment.')
       return
     }
     setSaving(true)
@@ -176,7 +171,8 @@ export function SalaryPage() {
         piecesCompleted: isContract ? pieces : null,
         ratePerPiece: isContract ? ratePerPiece : null,
         paymentMethod,
-        referenceNumber: isCash ? undefined : referenceNumber.trim(),
+        bankAccountId: isCash ? null : Number(bankAccountId),
+        referenceNumber: isCash ? undefined : referenceNumber.trim() || undefined,
         allowNegativeCash,
         overtimeHours: isContract ? null : attendanceSummary.totalOvertimeHours || null,
         overtimeIncluded: isContract ? overtime > 0 : includeOvertime,
@@ -278,6 +274,9 @@ export function SalaryPage() {
                     <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(p.net_amount)}</td>
                     <td className="px-5 py-3.5">
                       {p.payment_method ? <Badge color="slate">{p.payment_method}</Badge> : <span className="text-slate-600">—</span>}
+                      {p.bank_account_id != null && (
+                        <p className="mt-0.5 text-[11px] text-slate-500">{bankNameById.get(p.bank_account_id) ?? 'Bank'}</p>
+                      )}
                       {p.reference_number && <p className="mt-0.5 text-[11px] text-slate-500">Ref: {p.reference_number}</p>}
                     </td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDate(p.payment_date)}</td>
@@ -471,24 +470,52 @@ export function SalaryPage() {
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
             </div>
           </div>
-          <CategoryPicker
-            label="Payment Method"
-            value={paymentMethod}
-            onChange={setPaymentMethod}
-            categories={paymentMethodNames}
-            onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
-          />
+          <div>
+            <label className="label-field">Payment Method</label>
+            <div className="grid grid-cols-2 gap-2">
+              {SALARY_PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod(m)
+                    if (m === 'Online' && !bankAccountId) setBankAccountId(bankAccountsWithBalance[0]?.id ?? '')
+                  }}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
+                    paymentMethod === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {SALARY_PAYMENT_METHOD_LABELS[m]}
+                </button>
+              ))}
+            </div>
+          </div>
           {isCash ? (
             <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
           ) : (
-            <div>
-              <label className="label-field">Transaction Reference</label>
-              <input
-                className="input-field"
-                value={referenceNumber}
-                onChange={(e) => setReferenceNumber(e.target.value)}
-                placeholder="e.g. Bank transfer ID, Easypaisa TID"
-              />
+            <div className="space-y-4">
+              <div>
+                <label className="label-field">Bank Account</label>
+                <select className="input-field" value={bankAccountId} onChange={(e) => setBankAccountId(Number(e.target.value))}>
+                  {bankAccountsWithBalance.length === 0 && <option value="">No bank accounts yet — add one from Collections</option>}
+                  {bankAccountsWithBalance.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({formatCurrency(b.balance)})
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-[11px] text-slate-500">Deducted from this bank account immediately.</p>
+              </div>
+              <div>
+                <label className="label-field">Transaction Reference (optional)</label>
+                <input
+                  className="input-field"
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  placeholder="e.g. Bank transfer ID, Easypaisa TID"
+                />
+              </div>
             </div>
           )}
 
