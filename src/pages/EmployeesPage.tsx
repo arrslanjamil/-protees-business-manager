@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { CalendarDays, ChevronDown, Pencil, Plus, Search, Trash2, TrendingUp, Users } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
+import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
 import { SalaryHistoryTimeline } from '@/components/employees/SalaryHistoryTimeline'
 import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, INCREMENT_TYPE_LABELS, type Employee, type EmployeeGroup, type EmployeeType, type IncrementType } from '@/lib/types'
@@ -21,10 +23,16 @@ const emptyForm = {
   employeeType: 'monthly' as EmployeeType,
   ratePerPiece: '',
   employeeGroup: 'regular' as EmployeeGroup,
+  employeeCode: '',
+  department: '',
+  salaryDate: '',
+  machineUserId: '',
 }
 
 export function EmployeesPage() {
   const { employeesWithBalance, addEmployee, updateEmployee, deleteEmployee, setEmployeeActive, addSalaryIncrement } = useData()
+  const { itemsFor, addItem } = useMasterData()
+  const departmentNames = itemsFor('department').map((i) => i.name)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [modalOpen, setModalOpen] = useState(false)
@@ -68,6 +76,10 @@ export function EmployeesPage() {
       employeeType: emp.employee_type,
       ratePerPiece: emp.rate_per_piece != null ? String(emp.rate_per_piece) : '',
       employeeGroup: emp.employee_group,
+      employeeCode: emp.employee_code ?? '',
+      department: emp.department ?? '',
+      salaryDate: emp.salary_date != null ? String(emp.salary_date) : '',
+      machineUserId: emp.machine_user_id ?? '',
     })
     setError(null)
     setModalOpen(true)
@@ -105,6 +117,10 @@ export function EmployeesPage() {
         employeeType: form.employeeType,
         ratePerPiece,
         employeeGroup: form.employeeGroup,
+        employeeCode: form.employeeCode.trim() || null,
+        department: form.department || null,
+        salaryDate: form.salaryDate ? Number(form.salaryDate) : null,
+        machineUserId: form.machineUserId.trim() || null,
       }
       if (editing) {
         await updateEmployee(editing.id, payload)
@@ -452,6 +468,49 @@ export function EmployeesPage() {
                 onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-field">Employee ID (optional)</label>
+              <input
+                className="input-field"
+                value={form.employeeCode}
+                onChange={(e) => setForm({ ...form, employeeCode: e.target.value })}
+                placeholder="e.g. EMP-014"
+              />
+            </div>
+            <div>
+              <label className="label-field">Salary Date</label>
+              <select className="input-field" value={form.salaryDate} onChange={(e) => setForm({ ...form, salaryDate: e.target.value })}>
+                <option value="">Not set</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                    {d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'} of month
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <CategoryPicker
+            label="Department"
+            value={form.department}
+            onChange={(v) => setForm({ ...form, department: v })}
+            categories={departmentNames}
+            onAddCategory={(n) => addItem('department', n).then(() => {})}
+          />
+
+          <div>
+            <label className="label-field">ZKTeco Machine User ID (optional)</label>
+            <input
+              className="input-field"
+              value={form.machineUserId}
+              onChange={(e) => setForm({ ...form, machineUserId: e.target.value })}
+              placeholder="The fingerprint enrollment ID on the K40"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">Matches attendance punches from the K40 to this employee — leave blank if not enrolled yet.</p>
           </div>
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">

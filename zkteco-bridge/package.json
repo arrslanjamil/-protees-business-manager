@@ -1,0 +1,17 @@
+{
+  "name": "protees-zkteco-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs on a PC on the office LAN, reads punches off the ZKTeco K40 over TCP, and pushes them into Supabase for Protees Business Manager. Never runs on Vercel.",
+  "type": "commonjs",
+  "main": "sync.js",
+  "scripts": {
+    "sync": "node sync.js",
+    "watch": "node watch.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5",
+    "node-zklib": "^1.0.2"
+  }
+}

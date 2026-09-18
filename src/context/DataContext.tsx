@@ -69,6 +69,14 @@ interface RecordSalaryInput {
   /** Explicit acknowledgement to let a cash payment push Office Cash
    * negative — same override pattern as expenses. */
   allowNegativeCash?: boolean
+  /** Attendance-derived figures snapshotted at payment time (see
+   * src/lib/attendance.ts). overtimeAmount already carries the Rs amount
+   * to add — only actually added to net if overtimeIncluded is true. */
+  overtimeHours?: number | null
+  overtimeIncluded?: boolean
+  absentDeduction?: number
+  lateDeduction?: number
+  leaveDeduction?: number
 }
 
 interface AddSalaryIncrementInput {
@@ -131,6 +139,10 @@ interface DataContextValue {
     employeeType?: EmployeeType
     ratePerPiece?: number | null
     employeeGroup?: EmployeeGroup
+    employeeCode?: string | null
+    department?: string | null
+    salaryDate?: number | null
+    machineUserId?: string | null
   }) => Promise<void>
   updateEmployee: (
     id: number,
@@ -141,6 +153,10 @@ interface DataContextValue {
       employeeType: EmployeeType
       ratePerPiece: number | null
       employeeGroup: EmployeeGroup
+      employeeCode: string | null
+      department: string | null
+      salaryDate: number | null
+      machineUserId: string | null
     }>
   ) => Promise<void>
   deleteEmployee: (id: number) => Promise<void>
@@ -440,7 +456,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Employees -----------------------------------------------------------
-  const addEmployee: DataContextValue['addEmployee'] = async ({ name, salary, joinDate, employeeType, ratePerPiece, employeeGroup }) => {
+  const addEmployee: DataContextValue['addEmployee'] = async ({
+    name,
+    salary,
+    joinDate,
+    employeeType,
+    ratePerPiece,
+    employeeGroup,
+    employeeCode,
+    department,
+    salaryDate,
+    machineUserId,
+  }) => {
     const { error: err } = await supabase.from('employees').insert({
       name,
       salary,
@@ -451,6 +478,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // The permanent "hired at" snapshot the Salary History timeline
       // starts from — distinct from `salary`, which moves with increments.
       starting_salary: salary,
+      employee_code: employeeCode ?? null,
+      department: department ?? null,
+      salary_date: salaryDate ?? null,
+      machine_user_id: machineUserId ?? null,
     })
     if (err) throw err
     await refreshAll()
@@ -463,6 +494,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       employee_type?: EmployeeType
       rate_per_piece?: number | null
       employee_group?: EmployeeGroup
+      employee_code?: string | null
+      department?: string | null
+      salary_date?: number | null
+      machine_user_id?: string | null
     } = {}
     if (input.name !== undefined) payload.name = input.name
     if (input.salary !== undefined) payload.salary = input.salary
@@ -470,6 +505,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (input.employeeType !== undefined) payload.employee_type = input.employeeType
     if (input.ratePerPiece !== undefined) payload.rate_per_piece = input.ratePerPiece
     if (input.employeeGroup !== undefined) payload.employee_group = input.employeeGroup
+    if (input.employeeCode !== undefined) payload.employee_code = input.employeeCode
+    if (input.department !== undefined) payload.department = input.department
+    if (input.salaryDate !== undefined) payload.salary_date = input.salaryDate
+    if (input.machineUserId !== undefined) payload.machine_user_id = input.machineUserId
     const { error: err } = await supabase.from('employees').update(payload).eq('id', id)
     if (err) throw err
     await refreshAll()
@@ -591,6 +630,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Same cash-ledger integration as Advances above: 'Cash' posts a linked
   // cash-out for the net amount actually paid; anything else requires a
   // reference number and never touches Office Cash.
+  // overtimeAmount is added to net exactly as before — the caller (see
+  // SalaryPage) decides what to pass: the computed Rs amount when
+  // "Include Overtime In Salary" is checked, 0 otherwise. overtimeHours is
+  // only the attendance-derived figure kept for display/history.
   const recordSalaryPayment: DataContextValue['recordSalaryPayment'] = async ({
     employeeName,
     baseAmount,
@@ -605,8 +648,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     paymentMethod,
     referenceNumber,
     allowNegativeCash,
+    overtimeHours,
+    overtimeIncluded,
+    absentDeduction,
+    lateDeduction,
+    leaveDeduction,
   }) => {
-    const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount)
+    const attendanceDeduction = (absentDeduction ?? 0) + (lateDeduction ?? 0) + (leaveDeduction ?? 0)
+    const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount - attendanceDeduction)
     const date = paymentDate ?? todayISO()
     const isCash = isCashPaymentMethod(paymentMethod)
 
@@ -630,6 +679,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         rate_per_piece: ratePerPiece ?? null,
         payment_method: paymentMethod ?? null,
         reference_number: isCash ? null : referenceNumber ?? null,
+        overtime_hours: overtimeHours ?? null,
+        overtime_included: overtimeIncluded ?? false,
+        absent_deduction: absentDeduction ?? 0,
+        late_deduction: lateDeduction ?? 0,
+        leave_deduction: leaveDeduction ?? 0,
       })
       .select()
       .single()

@@ -24,6 +24,10 @@ export interface Database {
           employee_group: 'regular' | 'unit'
           is_active: boolean
           starting_salary: number
+          employee_code: string | null
+          department: string | null
+          salary_date: number | null
+          machine_user_id: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -41,6 +45,10 @@ export interface Database {
           employee_group?: 'regular' | 'unit'
           is_active?: boolean
           starting_salary?: number
+          employee_code?: string | null
+          department?: string | null
+          salary_date?: number | null
+          machine_user_id?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['employees']['Insert']>
@@ -195,6 +203,11 @@ export interface Database {
           rate_per_piece: number | null
           payment_method: string | null
           reference_number: string | null
+          overtime_hours: number | null
+          overtime_included: boolean
+          absent_deduction: number
+          late_deduction: number
+          leave_deduction: number
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -217,9 +230,131 @@ export interface Database {
           rate_per_piece?: number | null
           payment_method?: string | null
           reference_number?: string | null
+          overtime_hours?: number | null
+          overtime_included?: boolean
+          absent_deduction?: number
+          late_deduction?: number
+          leave_deduction?: number
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['salary_payments']['Insert']>
+        Relationships: []
+      }
+      attendance: {
+        Row: {
+          id: number
+          employee_id: number
+          date: string
+          check_in: string | null
+          check_out: string | null
+          status: 'present' | 'absent' | 'late' | 'half_day' | 'paid_leave' | 'unpaid_leave' | 'government_holiday'
+          leave_type: 'sick' | 'casual' | 'other' | null
+          working_hours: number | null
+          shortage_hours: number | null
+          late_minutes: number | null
+          early_leave_minutes: number | null
+          overtime_hours: number | null
+          source: 'machine' | 'manual'
+          machine_log_id: string | null
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          employee_id: number
+          date: string
+          check_in?: string | null
+          check_out?: string | null
+          status: 'present' | 'absent' | 'late' | 'half_day' | 'paid_leave' | 'unpaid_leave' | 'government_holiday'
+          leave_type?: 'sick' | 'casual' | 'other' | null
+          working_hours?: number | null
+          shortage_hours?: number | null
+          late_minutes?: number | null
+          early_leave_minutes?: number | null
+          overtime_hours?: number | null
+          source?: 'machine' | 'manual'
+          machine_log_id?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['attendance']['Insert']>
+        Relationships: []
+      }
+      government_holidays: {
+        Row: {
+          id: number
+          date: string
+          name: string
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          date: string
+          name: string
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['government_holidays']['Insert']>
+        Relationships: []
+      }
+      attendance_settings: {
+        Row: {
+          id: number
+          standard_working_hours: number
+          break_minutes: number
+          standard_start_time: string
+          late_grace_minutes: number
+          late_penalty_per_instance: number
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          standard_working_hours?: number
+          break_minutes?: number
+          standard_start_time?: string
+          late_grace_minutes?: number
+          late_penalty_per_instance?: number
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['attendance_settings']['Insert']>
+        Relationships: []
+      }
+      zkteco_devices: {
+        Row: {
+          id: number
+          name: string
+          ip_address: string
+          port: number
+          is_active: boolean
+          last_synced_at: string | null
+          last_sync_error: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          name: string
+          ip_address: string
+          port?: number
+          is_active?: boolean
+          last_synced_at?: string | null
+          last_sync_error?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['zkteco_devices']['Insert']>
         Relationships: []
       }
       unit_payments: {

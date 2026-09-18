@@ -1,5 +1,6 @@
 import {
   Boxes,
+  CalendarCheck,
   Factory,
   FileBarChart,
   HandCoins,
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { to: '/protees-unit', label: 'Protees Unit', icon: Boxes },
   { to: '/unit-expenses', label: 'Expenses', icon: Receipt },
   { to: '/employees', label: 'Employees', icon: Users },
+  { to: '/attendance', label: 'Attendance', icon: CalendarCheck },
   { to: '/salary', label: 'Salary', icon: Wallet },
   { to: '/advances', label: 'Advances', icon: HandCoins },
   { to: '/zakat', label: 'Zakat', icon: HeartHandshake },
