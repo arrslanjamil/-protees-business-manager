@@ -3,7 +3,6 @@ import {
   ArrowRightLeft,
   Banknote,
   CheckCircle2,
-  ChevronRight,
   Landmark,
   Pencil,
   Plus,
@@ -22,7 +21,8 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
 import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 import { BankLogo } from '@/components/collections/BankLogo'
-import { CollectionsDetailPanel, type CollectionsDetailRow } from '@/components/collections/CollectionsDetailPanel'
+import { AccountCard } from '@/components/collections/AccountCard'
+import { CollectionsDetailPanel, CollectionsDetailBody, type CollectionsDetailRow } from '@/components/collections/CollectionsDetailPanel'
 import { PAYMENT_TYPE_LABELS, type Courier, type PaymentType } from '@/lib/types'
 import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
@@ -42,6 +42,14 @@ function selectionKey(s: DetailSelection | null): string | null {
   if (s.kind === 'bank') return `bank-${s.id}`
   if (s.kind === 'shopify-store') return `store-${s.key}`
   return s.kind
+}
+
+/** The top 5 KPI cards (mixed/aggregate views) use the shared panel below
+ * the grid; individual accounts (courier/bank/shopify-store) expand
+ * inline inside their own AccountCard instead — both draw from the same
+ * `selection` state, so only one of either surface is ever open. */
+function isTopSummaryKind(kind: DetailSelection['kind']): boolean {
+  return kind === 'total-collections' || kind === 'courier-collections' || kind === 'shopify-collections' || kind === 'office-cash' || kind === 'total-bank'
 }
 
 function initials(name: string): string {
@@ -201,7 +209,14 @@ export function CollectionsPage() {
         }
       }
       case 'office-cash': {
-        const rows = [...cashTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(cashRow)
+        const ascending = [...cashTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        let running = 0
+        const rows = ascending
+          .map((t) => {
+            running += t.type === 'cash_in' ? Number(t.amount) : -Number(t.amount)
+            return { ...cashRow(t), runningBalance: running }
+          })
+          .reverse()
         return {
           title: 'Office Cash',
           subtitle: `Complete cash ledger · Live balance: ${formatCurrency(cashBalance)}`,
@@ -222,10 +237,16 @@ export function CollectionsPage() {
       }
       case 'bank': {
         const bank = bankAccountsWithBalance.find((b) => b.id === selection.id)
-        const rows = bankTransactions
+        const ascending = bankTransactions
           .filter((t) => t.bank_account_id === selection.id)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .map(bankRow)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        let running = 0
+        const rows = ascending
+          .map((t) => {
+            running += t.type === 'credit' ? Number(t.amount) : -Number(t.amount)
+            return { ...bankRow(t), runningBalance: running }
+          })
+          .reverse()
         return {
           title: bank?.name ?? 'Bank Account',
           subtitle: `Transaction history · Current balance: ${formatCurrency(bank?.balance ?? 0)}`,
@@ -236,10 +257,16 @@ export function CollectionsPage() {
       }
       case 'courier': {
         const courier = couriersWithBalance.find((c) => c.id === selection.id)
-        const rows = courierCollections
+        const ascending = courierCollections
           .filter((c) => c.courier_id === selection.id)
-          .sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime())
-          .map(courierRow)
+          .sort((a, b) => new Date(a.invoice_date).getTime() - new Date(b.invoice_date).getTime())
+        let running = 0
+        const rows = ascending
+          .map((c) => {
+            running += Number(c.amount)
+            return { ...courierRow(c), runningBalance: running }
+          })
+          .reverse()
         return {
           title: courier?.name ?? 'Courier',
           subtitle: `Collection history · Total collected: ${formatCurrency(courier?.totalCollected ?? 0)}`,
@@ -250,11 +277,17 @@ export function CollectionsPage() {
       }
       case 'shopify-store': {
         const store = shopifyStores.find((s) => s.store_key === selection.key)
-        const rows = shopifyOrders
+        const ascending = shopifyOrders
           .filter((o) => o.store_key === selection.key)
-          .sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime())
-          .map(shopifyRow)
-        const total = rows.reduce((s, r) => s + r.amount, 0)
+          .sort((a, b) => new Date(a.order_date).getTime() - new Date(b.order_date).getTime())
+        let running = 0
+        const rows = ascending
+          .map((o) => {
+            running += Number(o.total_amount)
+            return { ...shopifyRow(o), runningBalance: running }
+          })
+          .reverse()
+        const total = running
         return {
           title: store?.display_name ?? 'Shopify Store',
           subtitle: `Order history · Total collected: ${formatCurrency(total)}`,
@@ -567,8 +600,8 @@ export function CollectionsPage() {
         />
       </div>
 
-      {/* --- Detail panel: opens below whatever card/row was clicked --- */}
-      {detail && (
+      {/* --- Detail panel: opens below the top-5 cards for KPI/mixed views --- */}
+      {detail && selection && isTopSummaryKind(selection.kind) && (
         <div ref={detailRef}>
           <CollectionsDetailPanel
             title={detail.title}
@@ -604,35 +637,37 @@ export function CollectionsPage() {
             }
           />
         ) : (
-          <div className="divide-y divide-white/5">
-            {couriersWithBalance.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => toggleSelection({ kind: 'courier', id: c.id })}
-                className={classNames(
-                  '-mx-2 flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.03]',
-                  selectionKey(selection) === `courier-${c.id}` && 'bg-white/[0.04]'
-                )}
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-green/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
-                    {initials(c.name)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">{c.name}</p>
-                    <p className="text-xs text-slate-500">{c.payment_method === 'bank_transfer' ? c.bankAccountName ?? 'Bank Transfer' : 'Cash'}</p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <div className="text-right">
-                    <p className="font-display text-sm font-semibold text-white">{formatCurrency(c.totalCollected)}</p>
-                    <p className="text-[11px] text-slate-500">{c.collectionCount} collections</p>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-600" />
-                </div>
-              </button>
-            ))}
+          <div className="space-y-3">
+            {couriersWithBalance.map((c) => {
+              const expanded = selectionKey(selection) === `courier-${c.id}`
+              return (
+                <AccountCard
+                  key={c.id}
+                  icon={
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-green/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
+                      {initials(c.name)}
+                    </div>
+                  }
+                  name={c.name}
+                  subtitle={c.payment_method === 'bank_transfer' ? c.bankAccountName ?? 'Bank Transfer' : 'Cash'}
+                  balance={formatCurrency(c.totalCollected)}
+                  balanceHint={`${c.collectionCount} collections`}
+                  expanded={expanded}
+                  onToggle={() => toggleSelection({ kind: 'courier', id: c.id })}
+                >
+                  {expanded && detail && (
+                    <CollectionsDetailBody
+                      title={detail.title}
+                      subtitle={detail.subtitle}
+                      rows={detail.rows}
+                      filenameBase={detail.filenameBase}
+                      emptyMessage={detail.emptyMessage}
+                      maxHeightClassName="max-h-[24rem]"
+                    />
+                  )}
+                </AccountCard>
+              )
+            })}
           </div>
         )}
       </CollapsibleSection>
@@ -642,30 +677,33 @@ export function CollectionsPage() {
         {bankAccountsWithBalance.length === 0 ? (
           <EmptyState icon={Landmark} title="No bank accounts yet" description="Add one from Manage Couriers, or when giving a courier a bank payment method." />
         ) : (
-          <div className="divide-y divide-white/5">
-            {bankAccountsWithBalance.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => toggleSelection({ kind: 'bank', id: b.id })}
-                className={classNames(
-                  '-mx-2 flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.03]',
-                  selectionKey(selection) === `bank-${b.id}` && 'bg-white/[0.04]'
-                )}
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <BankLogo name={b.name} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">{b.name}</p>
-                    <p className="text-xs text-slate-500">Current Balance</p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <p className="font-display text-sm font-semibold text-white">{formatCurrency(b.balance)}</p>
-                  <ChevronRight size={16} className="text-slate-600" />
-                </div>
-              </button>
-            ))}
+          <div className="space-y-3">
+            {bankAccountsWithBalance.map((b) => {
+              const expanded = selectionKey(selection) === `bank-${b.id}`
+              return (
+                <AccountCard
+                  key={b.id}
+                  icon={<BankLogo name={b.name} />}
+                  name={b.name}
+                  subtitle="Current Balance"
+                  balance={formatCurrency(b.balance)}
+                  balanceTone={b.balance < 0 ? 'negative' : 'default'}
+                  expanded={expanded}
+                  onToggle={() => toggleSelection({ kind: 'bank', id: b.id })}
+                >
+                  {expanded && detail && (
+                    <CollectionsDetailBody
+                      title={detail.title}
+                      subtitle={detail.subtitle}
+                      rows={detail.rows}
+                      filenameBase={detail.filenameBase}
+                      emptyMessage={detail.emptyMessage}
+                      maxHeightClassName="max-h-[24rem]"
+                    />
+                  )}
+                </AccountCard>
+              )
+            })}
           </div>
         )}
       </CollapsibleSection>
@@ -688,46 +726,46 @@ export function CollectionsPage() {
         {shopifyStores.length === 0 ? (
           <EmptyState icon={ShoppingBag} title="No Shopify stores yet" description="Configure a store's domain from Manage, then hit Sync Now." />
         ) : (
-          <div className="divide-y divide-white/5">
+          <div className="space-y-3">
             {shopifyStores.map((store) => {
               const storeTotal = periodShopifyOrders.filter((o) => o.store_key === store.store_key).reduce((s, o) => s + Number(o.total_amount), 0)
+              const expanded = selectionKey(selection) === `store-${store.store_key}`
               return (
-                <button
+                <AccountCard
                   key={store.store_key}
-                  type="button"
-                  onClick={() => toggleSelection({ kind: 'shopify-store', key: store.store_key })}
-                  className={classNames(
-                    '-mx-2 flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-white/[0.03]',
-                    selectionKey(selection) === `store-${store.store_key}` && 'bg-white/[0.04]'
-                  )}
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
+                  icon={
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
                       {initials(store.display_name)}
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-white">{store.display_name}</p>
-                      <p className="flex items-center gap-1 text-xs text-slate-500">
-                        {store.is_connected ? (
-                          <>
-                            <CheckCircle2 size={11} className="text-neon-green" /> Connected
-                          </>
-                        ) : (
-                          <>
-                            <XCircle size={11} /> Not Connected
-                          </>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div className="text-right">
-                      <p className="font-display text-sm font-semibold text-white">{formatCurrency(storeTotal)}</p>
-                      <p className="text-[11px] text-slate-500">Selected period</p>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-600" />
-                  </div>
-                </button>
+                  }
+                  name={store.display_name}
+                  subtitle={
+                    store.is_connected ? (
+                      <span className="flex items-center gap-1">
+                        <CheckCircle2 size={11} className="text-neon-green" /> Connected
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <XCircle size={11} /> Not Connected
+                      </span>
+                    )
+                  }
+                  balance={formatCurrency(storeTotal)}
+                  balanceHint="Selected period"
+                  expanded={expanded}
+                  onToggle={() => toggleSelection({ kind: 'shopify-store', key: store.store_key })}
+                >
+                  {expanded && detail && (
+                    <CollectionsDetailBody
+                      title={detail.title}
+                      subtitle={detail.subtitle}
+                      rows={detail.rows}
+                      filenameBase={detail.filenameBase}
+                      emptyMessage={detail.emptyMessage}
+                      maxHeightClassName="max-h-[24rem]"
+                    />
+                  )}
+                </AccountCard>
               )
             })}
           </div>
