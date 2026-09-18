@@ -30,6 +30,32 @@ export function getSupabaseAdmin() {
   return createClient(url, serviceKey, { auth: { persistSession: false } })
 }
 
+/** Cheaply checks whether specific columns exist on a table by probing
+ * each with a trivial `select(col).limit(1)` — cheaper and more reliable
+ * than a system-catalog query (which PostgREST doesn't expose by
+ * default). Used to validate schema *before* a sync starts (so a missing
+ * migration fails fast with a clear message instead of mid-sync with a
+ * cryptic PostgREST error), and to build write payloads that only
+ * include columns the live database actually has, so an optional field
+ * from a not-yet-run migration degrades gracefully instead of failing
+ * the whole sync. */
+export async function detectAvailableColumns(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  table: string,
+  candidateColumns: readonly string[]
+): Promise<{ available: string[]; missing: string[] }> {
+  const available: string[] = []
+  const missing: string[] = []
+  await Promise.all(
+    candidateColumns.map(async (col) => {
+      const { error } = await admin.from(table).select(col).limit(1)
+      if (error) missing.push(col)
+      else available.push(col)
+    })
+  )
+  return { available, missing }
+}
+
 /** Authorizes a request either as the scheduled Vercel Cron (Bearer
  * CRON_SECRET) or as a logged-in app user (Bearer <supabase access token>,
  * checked against app_users — mirrors is_app_user()). Returns a reason
