@@ -99,6 +99,27 @@ export interface ShopifyConnectionTestResult {
   } | null
 }
 
+export interface ShopifyStoreSyncResult {
+  store: string
+  ok: boolean
+  ordersImported: number
+  durationMs: number
+  error?: string
+}
+
+export interface ShopifySyncResult {
+  ok: boolean
+  message: string
+  totalOrdersImported?: number
+  totalCollectionsImported?: number
+  storesSucceeded?: number
+  storesFailed?: number
+  durationMs?: number
+  skippedOptionalColumns?: string[]
+  results?: ShopifyStoreSyncResult[]
+  errors?: string[]
+}
+
 interface CollectionsContextValue {
   loading: boolean
   error: string | null
@@ -129,7 +150,7 @@ interface CollectionsContextValue {
 
   refreshAll: () => Promise<void>
   updateShopifyStoreDomain: (storeKey: string, domain: string) => Promise<void>
-  syncShopifyNow: () => Promise<{ ok: boolean; message: string }>
+  syncShopifyNow: () => Promise<ShopifySyncResult>
   testShopifyConnection: (storeKey: string) => Promise<ShopifyConnectionTestResult>
 
   addCourier: (input: AddCourierInput) => Promise<Courier>
@@ -627,9 +648,20 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         // a deployment/domain issue rather than a Shopify credentials one.
         const base = body?.error ?? (rawBody ? rawBody.slice(0, 200) : `HTTP ${res.status} with an empty body`)
         const detail = body?.reason ? `${base} — ${body.reason}` : base
-        return { ok: false, message: `Sync failed (${res.status}): ${detail}` }
+        return { ok: false, message: `Sync failed (${res.status}): ${detail}`, durationMs: body?.durationMs, errors: body?.errors }
       }
-      return { ok: true, message: body?.message ?? 'Sync complete.' }
+      return {
+        ok: true,
+        message: body?.message ?? 'Sync complete.',
+        totalOrdersImported: body?.totalOrdersImported,
+        totalCollectionsImported: body?.totalCollectionsImported,
+        storesSucceeded: body?.storesSucceeded,
+        storesFailed: body?.storesFailed,
+        durationMs: body?.durationMs,
+        skippedOptionalColumns: body?.skippedOptionalColumns,
+        results: body?.results,
+        errors: body?.errors,
+      }
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : 'Sync failed.' }
     } finally {
