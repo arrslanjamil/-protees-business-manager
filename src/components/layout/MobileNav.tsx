@@ -1,4 +1,4 @@
-import { Boxes, Factory, FileBarChart, HandCoins, HeartHandshake, History, Landmark, LayoutDashboard, Layers, LogOut, Receipt, Settings, Users, Wallet } from 'lucide-react'
+import { Boxes, CalendarCheck, Factory, FileBarChart, HandCoins, HeartHandshake, History, Landmark, LayoutDashboard, Layers, LogOut, Receipt, Settings, Users, Wallet } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { classNames } from '@/lib/utils'
@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: '/protees-unit', label: 'Unit', icon: Boxes },
   { to: '/unit-expenses', label: 'Expense', icon: Receipt },
   { to: '/employees', label: 'Staff', icon: Users },
+  { to: '/attendance', label: 'Attendance', icon: CalendarCheck },
   { to: '/salary', label: 'Salary', icon: Wallet },
   { to: '/advances', label: 'Advance', icon: HandCoins },
   { to: '/zakat', label: 'Zakat', icon: HeartHandshake },

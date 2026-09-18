@@ -32,6 +32,10 @@ export type MasterDataItem = Database['public']['Tables']['master_data_items']['
 export type Creditor = Database['public']['Tables']['creditors']['Row']
 export type CreditorBill = Database['public']['Tables']['creditor_bills']['Row']
 export type CreditorPayment = Database['public']['Tables']['creditor_payments']['Row']
+export type Attendance = Database['public']['Tables']['attendance']['Row']
+export type GovernmentHoliday = Database['public']['Tables']['government_holidays']['Row']
+export type AttendanceSettings = Database['public']['Tables']['attendance_settings']['Row']
+export type ZktecoDevice = Database['public']['Tables']['zkteco_devices']['Row']
 
 /** The fixed set of Master Data "slots" — the VALUES inside each are fully
  * admin-managed (create/rename/archive from Settings), only the slot list
@@ -223,3 +227,31 @@ export const MONTH_NAMES = [
   'November',
   'December',
 ] as const
+
+// ---------------------------------------------------------------------------
+// Attendance Module
+// ---------------------------------------------------------------------------
+
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'half_day' | 'paid_leave' | 'unpaid_leave' | 'government_holiday'
+
+export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
+  present: 'Present',
+  absent: 'Absent',
+  late: 'Late',
+  half_day: 'Half Day',
+  paid_leave: 'Paid Leave',
+  unpaid_leave: 'Unpaid Leave',
+  government_holiday: 'Government Holiday',
+}
+
+/** Statuses that never deduct from salary — worked (or a day the business
+ * already agreed to pay for) regardless of hours shown. */
+export const NO_DEDUCTION_STATUSES: AttendanceStatus[] = ['present', 'paid_leave', 'government_holiday']
+
+export type LeaveType = 'sick' | 'casual' | 'other'
+
+export const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
+  sick: 'Sick Leave',
+  casual: 'Casual Leave',
+  other: 'Other Leave',
+}
