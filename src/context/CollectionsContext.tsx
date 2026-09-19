@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { todayISO } from '@/lib/utils'
+import { removeInvoice, uploadCreditorInvoice } from '@/lib/invoiceStorage'
 import type {
   BankAccount,
   BankAccountWithBalance,
@@ -71,6 +72,9 @@ interface AddCreditorBillInput {
   description?: string
   referenceNumber?: string
   notes?: string
+  /** Invoice picture/PDF kept as proof — uploaded to private storage
+   * before the bill row is written. */
+  invoiceFile?: File | null
 }
 
 interface AddCreditorPaymentInput {
@@ -534,7 +538,8 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
   }
 
   /** A bill increases what the business owes — no cash/bank movement. */
-  const addCreditorBill: CollectionsContextValue['addCreditorBill'] = async ({ creditorId, billDate, amount, description, referenceNumber, notes }) => {
+  const addCreditorBill: CollectionsContextValue['addCreditorBill'] = async ({ creditorId, billDate, amount, description, referenceNumber, notes, invoiceFile }) => {
+    const invoicePath = invoiceFile ? await uploadCreditorInvoice(creditorId, invoiceFile) : null
     const { error: err } = await supabase.from('creditor_bills').insert({
       creditor_id: creditorId,
       bill_date: billDate ?? todayISO(),
@@ -542,14 +547,20 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
       description: description ?? null,
       reference_number: referenceNumber ?? null,
       notes: notes ?? null,
+      ...(invoicePath ? { invoice_path: invoicePath } : {}),
     })
-    if (err) throw err
+    if (err) {
+      if (invoicePath) await removeInvoice(invoicePath)
+      throw err
+    }
     await refreshAll()
   }
 
   const deleteCreditorBill: CollectionsContextValue['deleteCreditorBill'] = async (id) => {
+    const invoicePath = creditorBills.find((b) => b.id === id)?.invoice_path
     const { error: err } = await supabase.from('creditor_bills').delete().eq('id', id)
     if (err) throw err
+    if (invoicePath) await removeInvoice(invoicePath)
     await refreshAll()
   }
 

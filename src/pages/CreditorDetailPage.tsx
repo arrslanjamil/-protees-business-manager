@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowLeft, Plus, Receipt, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowLeft, Paperclip, Plus, Receipt, Trash2, X } from 'lucide-react'
 import { useCollections } from '@/context/CollectionsContext'
 import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { PAYMENT_TYPE_LABELS, type PaymentType } from '@/lib/types'
+import { getInvoiceUrl, INVOICE_ACCEPT } from '@/lib/invoiceStorage'
 import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 function SummaryCard({ label, value, tone = 'text-white' }: { label: string; value: string; tone?: string }) {
@@ -19,7 +20,7 @@ function SummaryCard({ label, value, tone = 'text-white' }: { label: string; val
   )
 }
 
-type LedgerRow = { id: string; date: string; kind: 'bill' | 'payment'; amount: number; description: string; deleteId: number }
+type LedgerRow = { id: string; date: string; kind: 'bill' | 'payment'; amount: number; description: string; deleteId: number; invoicePath?: string | null }
 
 export function CreditorDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -47,6 +48,8 @@ export function CreditorDetailPage() {
   const [billDate, setBillDate] = useState(todayISO())
   const [billDescription, setBillDescription] = useState('')
   const [billRef, setBillRef] = useState('')
+  const [billInvoice, setBillInvoice] = useState<File | null>(null)
+  const billInvoiceInput = useRef<HTMLInputElement>(null)
   const [billSaving, setBillSaving] = useState(false)
   const [billError, setBillError] = useState<string | null>(null)
 
@@ -74,7 +77,7 @@ export function CreditorDetailPage() {
 
   const ledgerRows = useMemo<LedgerRow[]>(() => {
     const rows: LedgerRow[] = [
-      ...bills.map((b) => ({ id: `bill-${b.id}`, date: b.bill_date, kind: 'bill' as const, amount: Number(b.amount), description: b.description || 'Bill', deleteId: b.id })),
+      ...bills.map((b) => ({ id: `bill-${b.id}`, date: b.bill_date, kind: 'bill' as const, amount: Number(b.amount), description: b.description || 'Bill', deleteId: b.id, invoicePath: b.invoice_path })),
       ...payments.map((p) => ({
         id: `pay-${p.id}`,
         date: p.payment_date,
@@ -103,8 +106,17 @@ export function CreditorDetailPage() {
     setBillDate(todayISO())
     setBillDescription('')
     setBillRef('')
+    setBillInvoice(null)
     setBillError(null)
     setBillModalOpen(true)
+  }
+
+  async function openInvoice(path: string) {
+    try {
+      window.open(await getInvoiceUrl(path), '_blank', 'noopener')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not open invoice.')
+    }
   }
 
   async function handleSaveBill() {
@@ -116,7 +128,7 @@ export function CreditorDetailPage() {
     setBillSaving(true)
     setBillError(null)
     try {
-      await addCreditorBill({ creditorId: creditor!.id, amount: amt, billDate, description: billDescription.trim() || undefined, referenceNumber: billRef.trim() || undefined })
+      await addCreditorBill({ creditorId: creditor!.id, amount: amt, billDate, description: billDescription.trim() || undefined, referenceNumber: billRef.trim() || undefined, invoiceFile: billInvoice })
       setBillModalOpen(false)
     } catch (err) {
       setBillError(err instanceof Error ? err.message : 'Failed to save bill.')
@@ -309,7 +321,18 @@ export function CreditorDetailPage() {
                     <td className="px-5 py-3.5">
                       <Badge color={row.kind === 'bill' ? 'red' : 'green'}>{row.kind === 'bill' ? 'Bill' : 'Payment'}</Badge>
                     </td>
-                    <td className="px-5 py-3.5 text-slate-300">{row.description}</td>
+                    <td className="px-5 py-3.5 text-slate-300">
+                      {row.description}
+                      {row.invoicePath && (
+                        <button
+                          type="button"
+                          onClick={() => openInvoice(row.invoicePath!)}
+                          className="ml-2 inline-flex items-center gap-1 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-0.5 text-[11px] font-semibold text-neon-cyan hover:bg-neon-cyan/20"
+                        >
+                          <Paperclip size={11} /> Invoice
+                        </button>
+                      )}
+                    </td>
                     <td className={classNames('px-5 py-3.5 font-semibold', row.kind === 'bill' ? 'text-neon-red' : 'text-neon-green')}>
                       {row.kind === 'bill' ? '+' : '-'}
                       {formatCurrency(row.amount)}
@@ -344,6 +367,33 @@ export function CreditorDetailPage() {
           <div>
             <label className="label-field">Reference / Invoice Number (optional)</label>
             <input className="input-field" value={billRef} onChange={(e) => setBillRef(e.target.value)} />
+          </div>
+          <div>
+            <label className="label-field">Upload Invoice (picture or PDF — kept as proof)</label>
+            <input ref={billInvoiceInput} type="file" accept={INVOICE_ACCEPT} className="hidden" onChange={(e) => setBillInvoice(e.target.files?.[0] ?? null)} />
+            {billInvoice ? (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-neon-cyan/30 bg-neon-cyan/5 px-3.5 py-2.5">
+                <span className="flex min-w-0 items-center gap-2 text-sm text-slate-200">
+                  <Paperclip size={14} className="shrink-0 text-neon-cyan" />
+                  <span className="truncate">{billInvoice.name}</span>
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-white/5 hover:text-white"
+                  onClick={() => {
+                    setBillInvoice(null)
+                    if (billInvoiceInput.current) billInvoiceInput.current.value = ''
+                  }}
+                  aria-label="Remove invoice"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="btn-secondary w-full" onClick={() => billInvoiceInput.current?.click()}>
+                <Paperclip size={15} /> Choose Picture / Take Photo
+              </button>
+            )}
           </div>
           {billError && <p className="text-xs text-neon-red">{billError}</p>}
           <div className="flex gap-3 pt-2">
