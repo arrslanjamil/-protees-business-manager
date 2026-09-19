@@ -941,6 +941,7 @@ export interface Database {
           description: string | null
           reference_number: string | null
           notes: string | null
+          invoice_path: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -956,6 +957,7 @@ export interface Database {
           description?: string | null
           reference_number?: string | null
           notes?: string | null
+          invoice_path?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['creditor_bills']['Insert']>

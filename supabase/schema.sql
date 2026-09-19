@@ -1849,3 +1849,17 @@ alter table bank_transactions add constraint bank_transactions_reference_type_ch
 -- only when the raise was entered as a percentage (see
 -- migration_023_salary_increment_percentage.sql).
 alter table salary_increments add column if not exists increment_percentage numeric(6,2);
+
+-- Creditor bills: invoice picture/PDF proof stored in a private Storage
+-- bucket (see migration_024_creditor_bill_invoices.sql).
+alter table creditor_bills add column if not exists invoice_path text;
+
+insert into storage.buckets (id, name, public)
+values ('creditor-invoices', 'creditor-invoices', false)
+on conflict (id) do nothing;
+
+drop policy if exists "app users manage creditor invoices" on storage.objects;
+create policy "app users manage creditor invoices" on storage.objects
+  for all
+  using (bucket_id = 'creditor-invoices' and is_app_user())
+  with check (bucket_id = 'creditor-invoices' and is_app_user());
