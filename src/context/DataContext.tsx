@@ -735,7 +735,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           reference_id: payment.id,
           notes: `Salary — ${employeeName}`,
         })
-        if (bankErr) console.error('Failed to post linked bank debit for salary payment:', bankErr.message)
+        if (bankErr) {
+          // Never leave a salary payment recorded with no matching bank
+          // debit — undo it (advance deductions cascade) and surface why.
+          await supabase.from('salary_payments').delete().eq('id', payment.id)
+          throw bankErr
+        }
       }
     }
 

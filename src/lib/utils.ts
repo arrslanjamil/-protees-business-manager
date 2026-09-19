@@ -205,3 +205,13 @@ export function fuzzyScore(query: string, target: string): number {
   }
   return hits > 0 ? (hits / qTokens.length) * 60 : 0
 }
+
+/** Supabase/PostgREST errors are plain objects, not Error instances — so a
+ * bare `err instanceof Error` check throws away the real reason. */
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+    return (err as { message: string }).message
+  }
+  return fallback
+}

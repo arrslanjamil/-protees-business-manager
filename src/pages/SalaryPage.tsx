@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { isCashPaymentMethod, MONTH_NAMES, type SalaryPaymentMethod, SALARY_PAYMENT_METHODS, SALARY_PAYMENT_METHOD_LABELS } from '@/lib/types'
 import { computePayrollDeductions, formatHours, summarizeAttendance } from '@/lib/attendance'
-import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 const now = new Date()
 
@@ -182,7 +182,7 @@ export function SalaryPage() {
       })
       setModalOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record salary payment.')
+      setError(errorMessage(err, 'Failed to record salary payment.'))
     } finally {
       setSaving(false)
     }
