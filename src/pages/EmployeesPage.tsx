@@ -10,7 +10,7 @@ import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
 import { SalaryHistoryTimeline } from '@/components/employees/SalaryHistoryTimeline'
-import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, INCREMENT_TYPE_LABELS, type Employee, type EmployeeGroup, type EmployeeType, type IncrementType } from '@/lib/types'
+import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, INCREMENT_TYPE_LABELS, MONTH_NAMES, type Employee, type EmployeeGroup, type EmployeeType, type IncrementType } from '@/lib/types'
 import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -30,7 +30,7 @@ const emptyForm = {
 }
 
 export function EmployeesPage() {
-  const { employeesWithBalance, addEmployee, updateEmployee, deleteEmployee, setEmployeeActive, addSalaryIncrement } = useData()
+  const { employeesWithBalance, salaryPayments, addEmployee, updateEmployee, deleteEmployee, setEmployeeActive, addSalaryIncrement } = useData()
   const { itemsFor, addItem } = useMasterData()
   const departmentNames = itemsFor('department').map((i) => i.name)
   const [search, setSearch] = useState('')
@@ -47,6 +47,22 @@ export function EmployeesPage() {
     setExpandedId((prev) => (prev === id ? null : id))
     setExpandedTab('transactions')
   }
+
+  // Salary counts as paid for the current month once payments recorded for
+  // that month/year cover the employee's base salary (net paid + advance/
+  // attendance deductions) — a contract employee is paid once any payment
+  // for the month exists, since they have no fixed salary to cover.
+  const nowDate = new Date()
+  const thisMonth = nowDate.getMonth() + 1
+  const thisYear = nowDate.getFullYear()
+  const settledByName = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of salaryPayments) {
+      if (p.month !== thisMonth || p.year !== thisYear) continue
+      map.set(p.employee_name, (map.get(p.employee_name) ?? 0) + Number(p.base_amount))
+    }
+    return map
+  }, [salaryPayments, thisMonth, thisYear])
 
   const activeCount = useMemo(() => employeesWithBalance.filter((e) => e.is_active).length, [employeesWithBalance])
   const inactiveCount = employeesWithBalance.length - activeCount
@@ -279,6 +295,11 @@ export function EmployeesPage() {
                       <p className="truncate font-semibold text-white">{emp.name}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge color={emp.is_active ? 'green' : 'red'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge>
+                        {(() => {
+                          const settled = settledByName.get(emp.name)
+                          const isPaid = emp.employee_type === 'contract' ? settled !== undefined : settled !== undefined && settled >= Number(emp.salary)
+                          return isPaid ? <Badge color="green">✓ Paid · {MONTH_NAMES[thisMonth - 1].slice(0, 3)}</Badge> : null
+                        })()}
                         <Badge color={emp.employee_type === 'contract' ? 'purple' : 'cyan'}>{EMPLOYEE_TYPE_LABELS[emp.employee_type]}</Badge>
                         {emp.employee_group === 'unit' && <Badge color="amber">{EMPLOYEE_GROUP_LABELS.unit}</Badge>}
                       </div>
