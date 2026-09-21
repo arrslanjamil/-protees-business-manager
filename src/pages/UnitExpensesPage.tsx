@@ -33,7 +33,12 @@ export function UnitExpensesPage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
 
   const sortedExpenses = useMemo(
-    () => [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    () =>
+      // Newest first: by expense date, then (same-day expenses) by when they
+      // were added, so the latest entry is always on top.
+      [...expenses].sort(
+        (a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at) || b.id - a.id
+      ),
     [expenses]
   )
 
