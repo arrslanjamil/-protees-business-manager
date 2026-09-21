@@ -18,6 +18,7 @@ import { useDashboardLayout, KPI_CARD_IDS, type WidgetId } from '@/hooks/useDash
 import { trendBucketsInRange } from '@/lib/dashboardAnalytics'
 import { dashboardDateRange, formatCurrency, formatCurrencyCompact, formatDate, isWithinRange, type DashboardDatePreset } from '@/lib/utils'
 import { computeZakatProgress } from '@/lib/zakat'
+import { MONTH_NAMES } from '@/lib/types'
 
 const DEFAULT_ZAKAT_MONTHLY_BUDGET = 100_000
 
@@ -223,7 +224,24 @@ export function DashboardPage() {
   )
   const totalContractPayroll = contractPeriodPayments.reduce((s, p) => s + Number(p.base_amount), 0)
   const totalPayroll = totalMonthlyPayroll + totalContractPayroll
-  const salaryDue = Math.max(0, totalPayroll - periodSalaryNet - outstandingAdvances)
+
+  // Salary Due is judged by PAY MONTH (the month/year the payment was
+  // recorded FOR), not by which dates are selected — so a salary paid on
+  // the 10th still counts as paid when the filter is "Today". The month is
+  // the one the selected range ends in. A monthly employee's salary counts
+  // as settled by their base amount (net paid + advance/attendance
+  // deductions), not just the cash that left the building.
+  const payMonth = Number(end.slice(5, 7))
+  const payYear = Number(end.slice(0, 4))
+  const monthlySettledByName = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of salaryPayments) {
+      if (p.month !== payMonth || p.year !== payYear) continue
+      map.set(p.employee_name, (map.get(p.employee_name) ?? 0) + Number(p.base_amount))
+    }
+    return map
+  }, [salaryPayments, payMonth, payYear])
+  const salaryDue = monthlyEmployees.reduce((s, e) => s + Math.max(0, Number(e.salary) - (monthlySettledByName.get(e.name) ?? 0)), 0)
 
   // --- Trend chart: (business) expenses vs salaries, day- or month-bucketed --
   const trendBuckets = useMemo(() => trendBucketsInRange(start, end), [start, end])
@@ -335,10 +353,14 @@ export function DashboardPage() {
     () =>
       regularEmployees.map((emp) => {
         const expected = expectedSalaryRows.find((r) => r.id === emp.id)?.expectedAmount ?? 0
+        if (emp.employee_type === 'monthly') {
+          const settled = monthlySettledByName.get(emp.name) ?? 0
+          return { id: emp.id, name: emp.name, expected, paid: settled, due: Math.max(0, expected - settled) }
+        }
         const paid = periodSalaryListRegular.filter((p) => p.employee_name === emp.name).reduce((s, p) => s + Number(p.net_amount), 0)
         return { id: emp.id, name: emp.name, expected, paid, due: Math.max(0, expected - paid) }
       }),
-    [regularEmployees, expectedSalaryRows, periodSalaryListRegular]
+    [regularEmployees, expectedSalaryRows, periodSalaryListRegular, monthlySettledByName]
   )
 
   const outstandingAdvanceDrillRows = useMemo<AdvanceBalanceDrillRow[]>(() => {
@@ -582,7 +604,7 @@ export function DashboardPage() {
             fullValue={formatCurrency(salaryDue)}
             icon={Receipt}
             accent={salaryDue > 0 ? 'amber' : 'green'}
-            hint="Selected period"
+            hint={`${MONTH_NAMES[payMonth - 1]} ${payYear} salaries`}
             onClick={() => toggleCard('salary-due')}
             selected={isSelected}
           />
@@ -776,7 +798,7 @@ export function DashboardPage() {
         )
       case 'salary-due':
         return (
-          <DrillDownPanel title="Salary Due" subtitle="Regular employees · Selected period" onClose={() => setExpandedId(null)}>
+          <DrillDownPanel title="Salary Due" subtitle={`Regular employees · ${MONTH_NAMES[payMonth - 1]} ${payYear}`} onClose={() => setExpandedId(null)}>
             <DataTable
               columns={payrollDrillColumns}
               rows={payrollDrillRows}
