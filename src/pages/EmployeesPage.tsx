@@ -11,7 +11,7 @@ import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
 import { SalaryHistoryTimeline } from '@/components/employees/SalaryHistoryTimeline'
 import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, INCREMENT_TYPE_LABELS, MONTH_NAMES, type Employee, type EmployeeGroup, type EmployeeType, type IncrementType } from '@/lib/types'
-import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 type ExpandedTab = 'transactions' | 'salary-history'
@@ -145,7 +145,7 @@ export function EmployeesPage() {
       }
       setModalOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save employee.')
+      setError(errorMessage(err, 'Failed to save employee.'))
     } finally {
       setSaving(false)
     }
@@ -205,7 +205,7 @@ export function EmployeesPage() {
       })
       setIncrementModalOpen(false)
     } catch (err) {
-      setIncrementError(err instanceof Error ? err.message : 'Failed to apply increment.')
+      setIncrementError(errorMessage(err, 'Failed to apply increment.'))
     } finally {
       setSavingIncrement(false)
     }
