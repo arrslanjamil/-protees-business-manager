@@ -6,6 +6,7 @@ import { useAttendance } from '@/context/AttendanceContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { isCashPaymentMethod, MONTH_NAMES, type SalaryPaymentMethod, SALARY_PAYMENT_METHODS, SALARY_PAYMENT_METHOD_LABELS } from '@/lib/types'
 import { computePayrollDeductions, formatHours, summarizeAttendance } from '@/lib/attendance'
 import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
@@ -298,14 +299,14 @@ export function SalaryPage() {
         <div className="space-y-4">
           <div>
             <label className="label-field">Employee</label>
-            <select className="input-field" value={employeeName} onChange={(e) => handleEmployeeChange(e.target.value)}>
-              <option value="">Select employee…</option>
-              {activeEmployees.map((emp) => (
-                <option key={emp.id} value={emp.name}>
-                  {emp.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={employeeName}
+              onChange={handleEmployeeChange}
+              options={activeEmployees.map((emp) => ({ value: emp.name, label: emp.name }))}
+              placeholder="Select employee…"
+              searchPlaceholder="Search employee…"
+              emptyMessage="No employee found"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
