@@ -3,7 +3,7 @@ import { Archive, ArchiveRestore, Pencil, Plus, Settings, Trash2 } from 'lucide-
 import { useMasterData } from '@/context/MasterDataContext'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
-import { classNames } from '@/lib/utils'
+import { classNames, errorMessage } from '@/lib/utils'
 
 export function MasterDataPage() {
   const { types, loading, allItemsFor, addItem, renameItem, setItemActive, deleteItem } = useMasterData()
@@ -32,7 +32,7 @@ export function MasterDataPage() {
       await addItem(currentTypeKey, newName)
       setNewName('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add.')
+      setError(errorMessage(err, 'Failed to add.'))
     } finally {
       setSaving(false)
     }
@@ -44,7 +44,7 @@ export function MasterDataPage() {
       await renameItem(id, editingName)
       setEditingId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename.')
+      setError(errorMessage(err, 'Failed to rename.'))
     }
   }
 
@@ -53,7 +53,7 @@ export function MasterDataPage() {
     try {
       await deleteItem(id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete — it may still be referenced elsewhere.')
+      setError(errorMessage(err, 'Failed to delete — it may still be referenced elsewhere.'))
     }
   }
 

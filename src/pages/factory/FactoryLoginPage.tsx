@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Factory, Loader2 } from 'lucide-react'
 import { useFactoryAuth } from '@/context/FactoryAuthContext'
+import { errorMessage } from '@/lib/utils'
 
 export function FactoryLoginPage() {
   const { signIn, signUp } = useFactoryAuth()
@@ -25,7 +26,7 @@ export function FactoryLoginPage() {
         setSignedUp(true)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      setError(errorMessage(err, 'Something went wrong.'))
     } finally {
       setSubmitting(false)
     }

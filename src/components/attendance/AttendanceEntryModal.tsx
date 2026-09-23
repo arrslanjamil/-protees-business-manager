@@ -4,7 +4,7 @@ import { useAttendance } from '@/context/AttendanceContext'
 import { Modal } from '@/components/ui/Modal'
 import { ATTENDANCE_STATUS_LABELS, LEAVE_TYPE_LABELS, type Attendance, type AttendanceStatus, type LeaveType } from '@/lib/types'
 import { computeLateMinutes, computeOvertimeHours, computeShortageHours, computeWorkingHours, deriveAttendanceStatus } from '@/lib/attendance'
-import { classNames, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, todayISO } from '@/lib/utils'
 
 interface AttendanceEntryModalProps {
   open: boolean
@@ -110,7 +110,7 @@ export function AttendanceEntryModal({ open, onClose, defaultEmployeeId, default
       })
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save attendance.')
+      setError(errorMessage(err, 'Failed to save attendance.'))
     } finally {
       setSaving(false)
     }

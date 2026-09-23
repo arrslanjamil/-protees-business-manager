@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
-import { todayISO } from '@/lib/utils'
+import { errorMessage, todayISO } from '@/lib/utils'
 import type {
   Color,
   CurrentOperationRate,
@@ -112,7 +112,7 @@ export function FactoryDataProvider({ children }: { children: ReactNode }) {
       setProfiles(pr.data ?? [])
       hasLoadedOnceRef.current = true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load factory data from Supabase.')
+      setError(errorMessage(err, 'Failed to load factory data from Supabase.'))
     } finally {
       setLoading(false)
     }

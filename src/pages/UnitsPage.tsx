@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Attribution } from '@/components/ui/Attribution'
 import type { Unit } from '@/lib/types'
+import { errorMessage } from '@/lib/utils'
 
 export function UnitsPage() {
   const { units, addUnit, updateUnit, deleteUnit } = useData()
@@ -46,7 +47,7 @@ export function UnitsPage() {
       }
       setModalOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save unit.')
+      setError(errorMessage(err, 'Failed to save unit.'))
     } finally {
       setSaving(false)
     }

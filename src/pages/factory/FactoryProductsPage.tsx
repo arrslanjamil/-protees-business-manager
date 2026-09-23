@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { RequireFactoryRole } from '@/components/factory/RequireFactoryRole'
 import { ADULT_SIZES, KIDS_SIZES, type SizeGroup, type ProductionType } from '@/lib/factoryTypes'
-import { classNames } from '@/lib/utils'
+import { classNames, errorMessage } from '@/lib/utils'
 
 function CreateProductModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { colors, addColor, createProduct } = useFactoryData()
@@ -72,7 +72,7 @@ function CreateProductModal({ open, onClose }: { open: boolean; onClose: () => v
       reset()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create product.')
+      setError(errorMessage(err, 'Failed to create product.'))
     } finally {
       setSaving(false)
     }

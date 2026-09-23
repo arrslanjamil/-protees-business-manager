@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Plus, Search } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
-import { classNames } from '@/lib/utils'
+import { classNames, errorMessage } from '@/lib/utils'
 
 interface CategoryPickerProps {
   value: string
@@ -66,7 +66,7 @@ export function CategoryPicker({ value, onChange, categories, onAddCategory, lab
       setOpen(false)
       setSearch('')
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : 'Failed to add category.')
+      setAddError(errorMessage(err, 'Failed to add category.'))
     } finally {
       setAdding(false)
     }

@@ -5,7 +5,7 @@ import { useFactoryAuth } from '@/context/FactoryAuthContext'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RequireFactoryRole } from '@/components/factory/RequireFactoryRole'
 import { FACTORY_ROLES, FACTORY_ROLE_LABELS, type FactoryRole } from '@/lib/factoryTypes'
-import { formatDate } from '@/lib/utils'
+import { errorMessage, formatDate } from '@/lib/utils'
 
 function TeamMembersContent() {
   const { profiles, updateProfileRole } = useFactoryData()
@@ -19,7 +19,7 @@ function TeamMembersContent() {
     try {
       await updateProfileRole(id, value === '' ? null : (value as FactoryRole))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update role.')
+      setError(errorMessage(err, 'Failed to update role.'))
     } finally {
       setSavingId(null)
     }

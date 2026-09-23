@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { DEPARTMENT_LABELS, isCashPaymentMethod, type Department } from '@/lib/types'
-import { advanceWarningLevel, classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { advanceWarningLevel, classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 export function AdvancesPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, addAdvance, deleteAdvance } = useData()
@@ -125,7 +125,7 @@ export function AdvancesPage() {
       })
       setModalOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record advance.')
+      setError(errorMessage(err, 'Failed to record advance.'))
     } finally {
       setSaving(false)
     }

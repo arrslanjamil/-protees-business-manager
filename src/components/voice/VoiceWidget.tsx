@@ -6,7 +6,7 @@ import { parseVoiceCommand, type NamedPerson, type VoiceIntent } from '@/lib/voi
 import { Modal } from '@/components/ui/Modal'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { DEPARTMENT_LABELS, type Department } from '@/lib/types'
-import { classNames, formatCurrency } from '@/lib/utils'
+import { classNames, errorMessage as getErrorMessage, formatCurrency } from '@/lib/utils'
 
 type Phase = 'listening' | 'review' | 'done'
 type SelectableIntent = Exclude<VoiceIntent, 'unit_payment'>
@@ -115,7 +115,7 @@ export function VoiceWidget() {
       setPhase('done')
       setTimeout(closeWidget, 1400)
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Something went wrong.')
+      setSubmitError(getErrorMessage(err, 'Something went wrong.'))
     } finally {
       setSubmitting(false)
     }

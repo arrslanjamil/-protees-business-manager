@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { RequireFactoryRole } from '@/components/factory/RequireFactoryRole'
 import { PRODUCTION_PLAN_STATUS_LABELS, type ProductionPlanStatus } from '@/lib/factoryTypes'
-import { classNames, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatDate, todayISO } from '@/lib/utils'
 
 const STATUS_BADGE_COLOR: Record<ProductionPlanStatus, 'cyan' | 'amber' | 'green' | 'red'> = {
   pending: 'amber',
@@ -72,7 +72,7 @@ function CreatePlanModal({ open, onClose }: { open: boolean; onClose: () => void
       reset()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create plan.')
+      setError(errorMessage(err, 'Failed to create plan.'))
     } finally {
       setSaving(false)
     }
