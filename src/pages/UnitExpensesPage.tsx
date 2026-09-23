@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { EXPENSE_PAYMENT_SOURCE_LABELS, EXPENSE_SCOPE_LABELS, type Expense, type ExpensePaymentSource, type ExpenseScope } from '@/lib/types'
-import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type ScopeFilter = 'all' | ExpenseScope
 type SourceFilter = 'all' | ExpensePaymentSource
@@ -132,7 +132,7 @@ export function UnitExpensesPage() {
       }
       setModalOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record expense.')
+      setError(errorMessage(err, 'Failed to record expense.'))
     } finally {
       setSaving(false)
     }

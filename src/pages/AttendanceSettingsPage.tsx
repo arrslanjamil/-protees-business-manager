@@ -6,7 +6,7 @@ import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
-import { formatDate, todayISO } from '@/lib/utils'
+import { errorMessage, formatDate, todayISO } from '@/lib/utils'
 
 export function AttendanceSettingsPage() {
   const { attendanceSettings, zktecoDevices, governmentHolidays, updateAttendanceSettings, addZktecoDevice, updateZktecoDevice, deleteZktecoDevice, addGovernmentHoliday, deleteGovernmentHoliday } =
@@ -42,7 +42,7 @@ export function AttendanceSettingsPage() {
       })
       showToast('success', 'Attendance settings saved.')
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to save settings.')
+      showToast('error', errorMessage(err, 'Failed to save settings.'))
     } finally {
       setSavingSettings(false)
     }
@@ -73,7 +73,7 @@ export function AttendanceSettingsPage() {
       showToast('success', 'Device saved.')
       setDeviceModalOpen(false)
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to save device.')
+      showToast('error', errorMessage(err, 'Failed to save device.'))
     } finally {
       setSavingDevice(false)
     }
@@ -107,7 +107,7 @@ export function AttendanceSettingsPage() {
       showToast('success', 'Holiday added.')
       setHolidayModalOpen(false)
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to add holiday.')
+      showToast('error', errorMessage(err, 'Failed to add holiday.'))
     } finally {
       setSavingHoliday(false)
     }

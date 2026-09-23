@@ -24,7 +24,7 @@ import { BankLogo } from '@/components/collections/BankLogo'
 import { AccountCard } from '@/components/collections/AccountCard'
 import { CollectionsDetailPanel, CollectionsDetailBody, type CollectionsDetailRow } from '@/components/collections/CollectionsDetailPanel'
 import { PAYMENT_TYPE_LABELS, type Courier, type PaymentType } from '@/lib/types'
-import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
+import { classNames, dashboardDateRange, errorMessage, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
 type DetailSelection =
   | { kind: 'total-collections' }
@@ -343,7 +343,7 @@ export function CollectionsPage() {
       setNewBankName('')
       showToast('success', `${bank.name} added.`)
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to add bank account.')
+      showToast('error', errorMessage(err, 'Failed to add bank account.'))
     } finally {
       setAddingBank(false)
     }
@@ -377,7 +377,7 @@ export function CollectionsPage() {
       }
       resetCourierForm()
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to save courier.')
+      showToast('error', errorMessage(err, 'Failed to save courier.'))
     } finally {
       setSavingCourier(false)
     }
@@ -426,7 +426,7 @@ export function CollectionsPage() {
       showToast('success', `Collection recorded — posted to ${selectedCourierDestination}.`)
       setCollectionModalOpen(false)
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to record collection.')
+      showToast('error', errorMessage(err, 'Failed to record collection.'))
     } finally {
       setSavingCollection(false)
     }
@@ -460,7 +460,7 @@ export function CollectionsPage() {
       showToast('success', 'Cash transferred to Office.')
       setTransferModalOpen(false)
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to transfer cash.')
+      showToast('error', errorMessage(err, 'Failed to transfer cash.'))
     } finally {
       setSavingTransfer(false)
     }
@@ -482,7 +482,7 @@ export function CollectionsPage() {
       await updateShopifyStoreDomain(storeKey, storeDomainDrafts[storeKey] ?? '')
       showToast('success', 'Store domain saved.')
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to save store domain.')
+      showToast('error', errorMessage(err, 'Failed to save store domain.'))
     } finally {
       setSavingStoreKey(null)
     }

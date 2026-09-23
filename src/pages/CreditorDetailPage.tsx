@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { PAYMENT_TYPE_LABELS, type PaymentType } from '@/lib/types'
 import { getInvoiceUrl, INVOICE_ACCEPT } from '@/lib/invoiceStorage'
-import { classNames, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 function SummaryCard({ label, value, tone = 'text-white' }: { label: string; value: string; tone?: string }) {
   return (
@@ -115,7 +115,7 @@ export function CreditorDetailPage() {
     try {
       window.open(await getInvoiceUrl(path), '_blank', 'noopener')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not open invoice.')
+      alert(errorMessage(err, 'Could not open invoice.'))
     }
   }
 
@@ -131,7 +131,7 @@ export function CreditorDetailPage() {
       await addCreditorBill({ creditorId: creditor!.id, amount: amt, billDate, description: billDescription.trim() || undefined, referenceNumber: billRef.trim() || undefined, invoiceFile: billInvoice })
       setBillModalOpen(false)
     } catch (err) {
-      setBillError(err instanceof Error ? err.message : 'Failed to save bill.')
+      setBillError(errorMessage(err, 'Failed to save bill.'))
     } finally {
       setBillSaving(false)
     }
@@ -170,7 +170,7 @@ export function CreditorDetailPage() {
       })
       setPaymentModalOpen(false)
     } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Failed to save payment.')
+      setPaymentError(errorMessage(err, 'Failed to save payment.'))
     } finally {
       setPaymentSaving(false)
     }
@@ -206,7 +206,7 @@ export function CreditorDetailPage() {
       })
       setEditModalOpen(false)
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Failed to save changes.')
+      setEditError(errorMessage(err, 'Failed to save changes.'))
     } finally {
       setEditSaving(false)
     }
@@ -224,7 +224,7 @@ export function CreditorDetailPage() {
       await deleteCreditor(creditor!.id)
       navigate('/creditors')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete.')
+      alert(errorMessage(err, 'Failed to delete.'))
     }
   }
 

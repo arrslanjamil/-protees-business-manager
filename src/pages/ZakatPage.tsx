@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
 import { computeZakatProgress, monthsAccruedInRange } from '@/lib/zakat'
-import { classNames, dashboardDateRange, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
+import { classNames, dashboardDateRange, errorMessage, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
 const DEFAULT_MONTHLY_BUDGET = 100_000
 
@@ -80,7 +80,7 @@ export function ZakatPage() {
       await addZakatTransaction({ recipientName: recipientName.trim(), amount: amt, date, notes: notes.trim() || undefined })
       setModalOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record Zakat distribution.')
+      setError(errorMessage(err, 'Failed to record Zakat distribution.'))
     } finally {
       setSaving(false)
     }
@@ -115,7 +115,7 @@ export function ZakatPage() {
       await updateZakatBudget(value)
       setBudgetModalOpen(false)
     } catch (err) {
-      setBudgetError(err instanceof Error ? err.message : 'Failed to update budget.')
+      setBudgetError(errorMessage(err, 'Failed to update budget.'))
     } finally {
       setSavingBudget(false)
     }

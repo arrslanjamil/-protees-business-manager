@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Loader2, ShieldAlert, Zap } from 'lucide-react'
 import { useAuth, UnauthorizedAccessError } from '@/context/AuthContext'
+import { errorMessage } from '@/lib/utils'
 
 export function LoginPage() {
   const { signIn } = useAuth()
@@ -26,7 +27,7 @@ export function LoginPage() {
       if (err instanceof UnauthorizedAccessError) {
         setUnauthorized(true)
       } else {
-        setError(err instanceof Error ? err.message : 'Something went wrong.')
+        setError(errorMessage(err, 'Something went wrong.'))
       }
     } finally {
       setSubmitting(false)

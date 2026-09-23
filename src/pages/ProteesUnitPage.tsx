@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatCard } from '@/components/ui/StatCard'
-import { formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 interface TimelineEntry {
   id: string
@@ -119,7 +119,7 @@ export function ProteesUnitPage() {
       }
       setSupervisorModalOpen(false)
     } catch (err) {
-      setSupervisorError(err instanceof Error ? err.message : 'Failed to save supervisor.')
+      setSupervisorError(errorMessage(err, 'Failed to save supervisor.'))
     } finally {
       setSavingSupervisor(false)
     }
@@ -160,7 +160,7 @@ export function ProteesUnitPage() {
       await addAdvance({ name: supervisor.name, department: 'protees_unit', amount: amt, paymentDate: advanceDate, notes: advanceNotes.trim() || undefined })
       setAdvanceModalOpen(false)
     } catch (err) {
-      setAdvanceError(err instanceof Error ? err.message : 'Failed to save advance.')
+      setAdvanceError(errorMessage(err, 'Failed to save advance.'))
     } finally {
       setSavingAdvance(false)
     }
@@ -212,7 +212,7 @@ export function ProteesUnitPage() {
       })
       setPaymentModalOpen(false)
     } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Failed to record payment.')
+      setPaymentError(errorMessage(err, 'Failed to record payment.'))
     } finally {
       setSavingPayment(false)
     }
@@ -240,7 +240,7 @@ export function ProteesUnitPage() {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[ProteesUnitPage] Failed to delete unit history record:', entry, err)
-      const message = err instanceof Error ? err.message : 'Failed to delete this record. Please try again.'
+      const message = errorMessage(err, 'Failed to delete this record. Please try again.')
       showToast('error', message)
     } finally {
       setDeletingEntry(false)

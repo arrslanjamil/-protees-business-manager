@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { classNames, formatCurrency, formatDate } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate } from '@/lib/utils'
 
 function SummaryCard({ label, value, tone = 'text-white' }: { label: string; value: string; tone?: string }) {
   return (
@@ -81,7 +81,7 @@ export function CreditorsPage() {
       setModalOpen(false)
       navigate(`/creditors/${creditor.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add creditor.')
+      setError(errorMessage(err, 'Failed to add creditor.'))
     } finally {
       setSaving(false)
     }
