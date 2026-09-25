@@ -4,6 +4,7 @@ import { useVoiceCommand } from '@/hooks/useVoiceCommand'
 import { useData } from '@/context/DataContext'
 import { parseVoiceCommand, type NamedPerson, type VoiceIntent } from '@/lib/voiceParser'
 import { Modal } from '@/components/ui/Modal'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { DEPARTMENT_LABELS, type Department } from '@/lib/types'
 import { classNames, errorMessage as getErrorMessage, formatCurrency } from '@/lib/utils'
@@ -233,14 +234,14 @@ export function VoiceWidget() {
                 {(intent === 'salary' || intent === 'advance') && (
                   <div>
                     <label className="label-field">{intent === 'salary' ? 'Employee' : department === 'cutting_department' ? 'Employee' : 'Supervisor'}</label>
-                    <select className="input-field" value={personName} onChange={(e) => setPersonName(e.target.value)}>
-                      <option value="">Select…</option>
-                      {(intent === 'salary' ? employees : nameOptions).map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={personName}
+                      onChange={setPersonName}
+                      options={(intent === 'salary' ? employees : nameOptions).map((p) => ({ value: p.name, label: p.name }))}
+                      placeholder="Select…"
+                      searchPlaceholder="Search name…"
+                      emptyMessage="No match found"
+                    />
                   </div>
                 )}
 
