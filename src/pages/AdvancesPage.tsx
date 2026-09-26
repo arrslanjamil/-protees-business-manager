@@ -204,6 +204,7 @@ export function AdvancesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                  <th className="px-5 py-3.5">Type</th>
                   <th className="px-5 py-3.5">Name</th>
                   <th className="px-5 py-3.5">Department</th>
                   <th className="px-5 py-3.5">Amount</th>
@@ -217,6 +218,9 @@ export function AdvancesPage() {
               <tbody>
                 {sortedAdvances.map((adv) => (
                   <tr key={adv.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                    <td className="px-5 py-3.5">
+                      <Badge color="blue">Advance</Badge>
+                    </td>
                     <td className="px-5 py-3.5 font-medium text-white">{adv.employee_name}</td>
                     <td className="px-5 py-3.5">
                       <Badge color={adv.department === 'cutting_department' ? 'cyan' : 'purple'}>{DEPARTMENT_LABELS[adv.department]}</Badge>
@@ -245,145 +249,150 @@ export function AdvancesPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setAdvanceType('normal') }} title="Give Advance" subtitle="Record a new advance / loan (qarza)">
-        {advanceType === 'grand' ? (
-          <GrandAdvanceModal
-            open={true}
-            onClose={() => setModalOpen(false)}
-            employees={employees}
-            onSubmit={addGrandAdvance}
-          />
-        ) : (
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm() }} title="Give Advance" subtitle="Record a new advance / loan (qarza)">
+        <div className="mb-6 space-y-4">
+          <div>
+            <label className="label-field">Advance Type</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAdvanceType('normal')}
+                className={classNames(
+                  'flex-1 rounded-lg px-4 py-3 font-semibold transition-all duration-200',
+                  advanceType === 'normal'
+                    ? 'bg-neon-cyan text-slate-950 shadow-lg shadow-neon-cyan/20'
+                    : 'border border-slate-600 bg-slate-700/30 text-slate-300 hover:border-slate-500 hover:bg-slate-700/50'
+                )}
+              >
+                Advance
+              </button>
+              <button
+                onClick={() => setAdvanceType('grand')}
+                className={classNames(
+                  'flex-1 rounded-lg px-4 py-3 font-semibold transition-all duration-200',
+                  advanceType === 'grand'
+                    ? 'bg-neon-amber text-slate-950 shadow-lg shadow-neon-amber/20'
+                    : 'border border-slate-600 bg-slate-700/30 text-slate-300 hover:border-slate-500 hover:bg-slate-700/50'
+                )}
+              >
+                Grand Advance
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {advanceType === 'normal' ? (
           <div className="space-y-4">
             <div>
-              <label className="label-field">Advance Type</label>
+              <label className="label-field">Department</label>
               <div className="grid grid-cols-2 gap-2">
-                {(['normal', 'grand'] as AdvanceType[]).map((type) => (
+                {(['cutting_department', 'protees_unit'] as Department[]).map((dept) => (
                   <button
-                    key={type}
-                    onClick={() => setAdvanceType(type)}
-                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition capitalize ${
-                      advanceType === type
+                    key={dept}
+                    onClick={() => handleDepartmentChange(dept)}
+                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                      department === dept
                         ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
                         : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {type === 'normal' ? 'Normal Advance' : 'Grand Advance (Loan)'}
+                    {DEPARTMENT_LABELS[dept]}
                   </button>
                 ))}
               </div>
             </div>
-          <div>
-            <label className="label-field">Department</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['cutting_department', 'protees_unit'] as Department[]).map((dept) => (
-                <button
-                  key={dept}
-                  onClick={() => handleDepartmentChange(dept)}
-                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                    department === dept
-                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {DEPARTMENT_LABELS[dept]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="label-field">{department === 'cutting_department' ? 'Employee' : 'Supervisor'}</label>
-            <div className="relative">
-              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                className="input-field pl-10"
-                placeholder="Search Employee Name..."
-                value={employeeSearch}
-                onChange={(e) => setEmployeeSearch(e.target.value)}
-              />
-            </div>
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-base-900/60">
-              {filteredNameOptions.length === 0 ? (
-                <p className="px-3.5 py-4 text-center text-sm text-slate-500">No employee found</p>
-              ) : (
-                filteredNameOptions.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => handleSelectPerson(p.name)}
-                    className={classNames(
-                      'flex w-full items-center justify-between border-b border-white/5 px-3.5 py-2.5 text-left text-sm transition last:border-0',
-                      name === p.name ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-slate-300 hover:bg-white/5'
-                    )}
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    <span className={name === p.name ? 'text-neon-cyan' : 'text-slate-500'}>{formatCurrency(p.advanceBalance)}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-
-          {selectedPerson && (
-            <div className="flex items-center justify-between rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-3.5 py-2.5">
-              <div>
-                <p className="text-xs text-slate-400">Employee</p>
-                <p className="text-sm font-semibold text-white">{selectedPerson.name}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-400">Outstanding Advance</p>
-                <p className="font-display text-sm font-bold text-neon-amber">{formatCurrency(selectedPerson.advanceBalance)}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-field">Amount</label>
-              <input type="number" className="input-field" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <label className="label-field">Date</label>
-              <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
-            </div>
-          </div>
-          <CategoryPicker
-            label="Payment Method"
-            value={paymentMethod}
-            onChange={setPaymentMethod}
-            categories={paymentMethodNames}
-            onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
-          />
-          {isCash ? (
-            <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
-          ) : (
-            <>
-              <div>
-                <label className="label-field">Bank Account</label>
-                <select
-                  className="input-field"
-                  value={bankAccountId ?? ''}
-                  onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="">Select a bank account</option>
-                  {bankAccountsWithBalance.map((bank) => (
-                    <option key={bank.id} value={bank.id}>
-                      {bank.name} ({formatCurrency(bank.balance)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label-field">Transaction Reference</label>
+              <label className="label-field">{department === 'cutting_department' ? 'Employee' : 'Supervisor'}</label>
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  className="input-field"
-                  value={referenceNumber}
-                  onChange={(e) => setReferenceNumber(e.target.value)}
-                  placeholder="e.g. Bank transfer ID, Easypaisa TID"
+                  className="input-field pl-10"
+                  placeholder="Search Employee Name..."
+                  value={employeeSearch}
+                  onChange={(e) => setEmployeeSearch(e.target.value)}
                 />
               </div>
-            </>
-          )}
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-base-900/60">
+                {filteredNameOptions.length === 0 ? (
+                  <p className="px-3.5 py-4 text-center text-sm text-slate-500">No employee found</p>
+                ) : (
+                  filteredNameOptions.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectPerson(p.name)}
+                      className={classNames(
+                        'flex w-full items-center justify-between border-b border-white/5 px-3.5 py-2.5 text-left text-sm transition last:border-0',
+                        name === p.name ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-slate-300 hover:bg-white/5'
+                      )}
+                    >
+                      <span className="font-medium">{p.name}</span>
+                      <span className={name === p.name ? 'text-neon-cyan' : 'text-slate-500'}>{formatCurrency(p.advanceBalance)}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {selectedPerson && (
+              <div className="flex items-center justify-between rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-3.5 py-2.5">
+                <div>
+                  <p className="text-xs text-slate-400">Employee</p>
+                  <p className="text-sm font-semibold text-white">{selectedPerson.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">Outstanding Advance</p>
+                  <p className="font-display text-sm font-bold text-neon-amber">{formatCurrency(selectedPerson.advanceBalance)}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-field">Amount</label>
+                <input type="number" className="input-field" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <label className="label-field">Date</label>
+                <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+              </div>
+            </div>
+            <CategoryPicker
+              label="Payment Method"
+              value={paymentMethod}
+              onChange={setPaymentMethod}
+              categories={paymentMethodNames}
+              onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
+            />
+            {isCash ? (
+              <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
+            ) : (
+              <>
+                <div>
+                  <label className="label-field">Bank Account</label>
+                  <select
+                    className="input-field"
+                    value={bankAccountId ?? ''}
+                    onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Select a bank account</option>
+                    {bankAccountsWithBalance.map((bank) => (
+                      <option key={bank.id} value={bank.id}>
+                        {bank.name} ({formatCurrency(bank.balance)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label-field">Transaction Reference</label>
+                  <input
+                    className="input-field"
+                    value={referenceNumber}
+                    onChange={(e) => setReferenceNumber(e.target.value)}
+                    placeholder="e.g. Bank transfer ID, Easypaisa TID"
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label className="label-field">Notes (optional)</label>
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />
@@ -404,6 +413,144 @@ export function AdvancesPage() {
               </button>
               <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
                 {saving ? 'Saving…' : 'Give Advance'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="label-field">Employee</label>
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  className="input-field pl-10"
+                  placeholder="Search employee…"
+                  value={employeeSearch}
+                  onChange={(e) => setEmployeeSearch(e.target.value)}
+                />
+              </div>
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-base-900/60">
+                {employees.length === 0 ? (
+                  <p className="px-3.5 py-4 text-center text-sm text-slate-500">No employee found</p>
+                ) : (
+                  employees
+                    .filter((e) => e.name.toLowerCase().includes(employeeSearch.toLowerCase()))
+                    .map((emp) => (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onClick={() => { setName(emp.name); setEmployeeSearch(''); setError(null) }}
+                        className={classNames(
+                          'w-full border-b border-white/5 px-3.5 py-2.5 text-left text-sm transition last:border-0',
+                          name === emp.name ? 'bg-neon-amber/10 text-neon-amber' : 'text-slate-300 hover:bg-white/5'
+                        )}
+                      >
+                        <span className="font-medium">{emp.name}</span>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+
+            {employees.find((e) => e.name === name) && (
+              <div className="flex items-center justify-between rounded-xl border border-neon-amber/20 bg-neon-amber/5 px-3.5 py-2.5">
+                <div>
+                  <p className="text-xs text-slate-400">Selected Employee</p>
+                  <p className="text-sm font-semibold text-white">{name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">Monthly Salary</p>
+                  <p className="font-display text-sm font-bold text-neon-amber">{formatCurrency(employees.find((e) => e.name === name)?.salary || 0)}</p>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="label-field">Grand Advance Amount</label>
+              <input
+                type="number"
+                className="input-field"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="e.g. 100000"
+              />
+            </div>
+
+            <div>
+              <label className="label-field">Suggested Monthly Recovery (Optional)</label>
+              <input
+                type="number"
+                className="input-field"
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+                placeholder="e.g. 5000"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                {Number(amount) > 0 && Number(referenceNumber) > 0
+                  ? `Recovery period: ~${Math.ceil(Number(amount) / Number(referenceNumber))} months`
+                  : 'This is optional and can be changed during salary processing'}
+              </p>
+            </div>
+
+            <div>
+              <label className="label-field">Issue Date</label>
+              <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="label-field">Notes (Optional)</label>
+              <input
+                className="input-field"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Medical emergency, Education fees"
+              />
+            </div>
+
+            {error && <p className="text-xs text-neon-red">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn-primary flex-1"
+                onClick={async () => {
+                  const emp = employees.find((e) => e.name === name)
+                  if (!emp) {
+                    setError('Select an employee.')
+                    return
+                  }
+                  const amt = Number(amount)
+                  if (!amt || amt <= 0) {
+                    setError('Enter a valid grand advance amount.')
+                    return
+                  }
+                  const monthly = Number(referenceNumber) || 0
+                  if (monthly < 0) {
+                    setError('Monthly recovery amount cannot be negative.')
+                    return
+                  }
+                  setSaving(true)
+                  setError(null)
+                  try {
+                    await addGrandAdvance({
+                      employeeId: emp.id,
+                      originalAmount: amt,
+                      monthlyRecoveryAmount: monthly || undefined,
+                      issueDate: paymentDate,
+                      notes: notes.trim() || undefined,
+                    })
+                    setModalOpen(false)
+                    resetForm()
+                  } catch (err) {
+                    setError(errorMessage(err, 'Failed to create grand advance.'))
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+                disabled={saving || !name || !amount}
+              >
+                {saving ? 'Creating…' : 'Create Grand Advance'}
               </button>
             </div>
           </div>
