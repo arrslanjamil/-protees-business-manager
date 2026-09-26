@@ -148,6 +148,7 @@ export interface Database {
           original_amount: number
           outstanding_balance: number
           total_recovered: number
+          monthly_recovery_amount: number | null
           status: 'active' | 'completed'
           issue_date: string
           notes: string | null
@@ -164,6 +165,7 @@ export interface Database {
           original_amount: number
           outstanding_balance?: number
           total_recovered?: number
+          monthly_recovery_amount?: number | null
           status?: 'active' | 'completed'
           issue_date: string
           notes?: string | null

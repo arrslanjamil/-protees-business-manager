@@ -10,6 +10,7 @@ create table if not exists grand_advances (
   original_amount numeric(12,2) not null check (original_amount > 0),
   outstanding_balance numeric(12,2) not null check (outstanding_balance >= 0),
   total_recovered numeric(12,2) not null default 0 check (total_recovered >= 0),
+  monthly_recovery_amount numeric(12,2),
   status text not null default 'active' check (status in ('active', 'completed')),
   issue_date date not null,
   notes text,
@@ -21,6 +22,9 @@ create table if not exists grand_advances (
   updated_by_username text,
   constraint grand_advances_balance_check check (
     total_recovered + outstanding_balance = original_amount
+  ),
+  constraint grand_advances_monthly_recovery_check check (
+    monthly_recovery_amount is null or monthly_recovery_amount > 0
   )
 );
 

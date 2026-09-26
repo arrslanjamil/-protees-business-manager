@@ -192,6 +192,7 @@ interface DataContextValue {
   addGrandAdvance: (input: {
     employeeId: number
     originalAmount: number
+    monthlyRecoveryAmount?: number
     issueDate: string
     notes?: string
   }) => Promise<void>
@@ -678,12 +679,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Grand Advances (Employee Loans) ----------------------------------------
-  const addGrandAdvance: DataContextValue['addGrandAdvance'] = async ({ employeeId, originalAmount, issueDate, notes }) => {
+  const addGrandAdvance: DataContextValue['addGrandAdvance'] = async ({ employeeId, originalAmount, monthlyRecoveryAmount, issueDate, notes }) => {
     const { error: err } = await supabase.from('grand_advances').insert({
       employee_id: employeeId,
       original_amount: originalAmount,
       outstanding_balance: originalAmount,
       total_recovered: 0,
+      monthly_recovery_amount: monthlyRecoveryAmount ?? null,
       issue_date: issueDate,
       notes: notes ?? null,
     })
