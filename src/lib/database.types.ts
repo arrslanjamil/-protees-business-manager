@@ -118,6 +118,7 @@ export interface Database {
           notes: string | null
           payment_method: string | null
           reference_number: string | null
+          bank_account_id: number | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
@@ -134,6 +135,7 @@ export interface Database {
           notes?: string | null
           payment_method?: string | null
           reference_number?: string | null
+          bank_account_id?: number | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['advances']['Insert']>

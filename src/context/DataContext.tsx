@@ -180,6 +180,7 @@ interface DataContextValue {
     notes?: string
     paymentMethod?: string
     referenceNumber?: string
+    bankAccountId?: number
     allowNegativeCash?: boolean
   }) => Promise<void>
   deleteAdvance: (id: number) => Promise<void>
@@ -595,10 +596,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // previously advances never touched the cash ledger at all. Any other
   // payment method is assumed to bypass Office Cash and carries a
   // reference number instead.
-  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod, referenceNumber, allowNegativeCash }) => {
+  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod, referenceNumber, bankAccountId, allowNegativeCash }) => {
     const isCash = isCashPaymentMethod(paymentMethod)
     if (isCash && !allowNegativeCash && amount > cashBalance) {
       throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
+    }
+    if (!isCash && !bankAccountId) {
+      throw new Error('Select a bank account for a non-cash advance.')
     }
     const date = paymentDate ?? todayISO()
     const { data: advance, error: err } = await supabase
@@ -610,7 +614,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         payment_date: date,
         notes: notes ?? null,
         payment_method: paymentMethod ?? null,
-        reference_number: isCash ? null : referenceNumber ?? null,
+        reference_number: isCash ? null : (referenceNumber ?? null),
+        bank_account_id: isCash ? null : (bankAccountId ?? null),
       })
       .select()
       .single()
@@ -626,6 +631,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         reference_id: advance.id,
       })
       if (cashErr) console.error('Failed to post linked cash-out for advance:', cashErr.message)
+    } else if (bankAccountId) {
+      const { error: bankErr } = await supabase.from('bank_transactions').insert({
+        bank_account_id: bankAccountId,
+        type: 'debit',
+        amount,
+        date,
+        notes: `Advance — ${name}`,
+        reference_type: 'manual',
+        reference_id: advance.id,
+      })
+      if (bankErr) throw bankErr
     }
 
     await refreshAll()

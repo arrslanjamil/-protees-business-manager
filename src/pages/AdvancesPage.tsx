@@ -13,7 +13,7 @@ import { advanceWarningLevel, classNames, errorMessage, formatCurrency, formatDa
 
 export function AdvancesPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, addAdvance, deleteAdvance } = useData()
-  const { cashBalance } = useCollections()
+  const { cashBalance, bankAccountsWithBalance } = useCollections()
   const { itemsFor, addItem } = useMasterData()
   const [modalOpen, setModalOpen] = useState(false)
   const [department, setDepartment] = useState<Department>('cutting_department')
@@ -22,6 +22,7 @@ export function AdvancesPage() {
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(todayISO())
   const [paymentMethod, setPaymentMethod] = useState('Cash')
+  const [bankAccountId, setBankAccountId] = useState<number | null>(null)
   const [referenceNumber, setReferenceNumber] = useState('')
   const [allowNegativeCash, setAllowNegativeCash] = useState(false)
   const [notes, setNotes] = useState('')
@@ -74,6 +75,7 @@ export function AdvancesPage() {
     setAmount('')
     setPaymentDate(todayISO())
     setPaymentMethod('Cash')
+    setBankAccountId(null)
     setReferenceNumber('')
     setAllowNegativeCash(false)
     setNotes('')
@@ -121,6 +123,7 @@ export function AdvancesPage() {
         notes: notes.trim() || undefined,
         paymentMethod,
         referenceNumber: isCash ? undefined : referenceNumber.trim(),
+        bankAccountId: isCash ? undefined : bankAccountId ?? undefined,
         allowNegativeCash,
       })
       setModalOpen(false)
@@ -324,15 +327,32 @@ export function AdvancesPage() {
           {isCash ? (
             <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
           ) : (
-            <div>
-              <label className="label-field">Transaction Reference</label>
-              <input
-                className="input-field"
-                value={referenceNumber}
-                onChange={(e) => setReferenceNumber(e.target.value)}
-                placeholder="e.g. Bank transfer ID, Easypaisa TID"
-              />
-            </div>
+            <>
+              <div>
+                <label className="label-field">Bank Account</label>
+                <select
+                  className="input-field"
+                  value={bankAccountId ?? ''}
+                  onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Select a bank account</option>
+                  {bankAccountsWithBalance.map((bank) => (
+                    <option key={bank.id} value={bank.id}>
+                      {bank.name} ({formatCurrency(bank.balance)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label-field">Transaction Reference</label>
+                <input
+                  className="input-field"
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  placeholder="e.g. Bank transfer ID, Easypaisa TID"
+                />
+              </div>
+            </>
           )}
           <div>
             <label className="label-field">Notes (optional)</label>
