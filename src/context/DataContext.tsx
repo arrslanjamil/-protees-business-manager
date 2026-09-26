@@ -21,6 +21,8 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseScope,
+  GrandAdvance,
+  GrandAdvanceRecovery,
   IncrementType,
   KhadimTransaction,
   KhadimTransactionType,
@@ -118,6 +120,8 @@ interface DataContextValue {
   employees: Employee[]
   supervisors: Supervisor[]
   advances: Advance[]
+  grandAdvances: GrandAdvance[]
+  grandAdvanceRecoveries: GrandAdvanceRecovery[]
   salaryPayments: SalaryPayment[]
   salaryIncrements: SalaryIncrement[]
   unitPayments: UnitPayment[]
@@ -185,6 +189,20 @@ interface DataContextValue {
   }) => Promise<void>
   deleteAdvance: (id: number) => Promise<void>
 
+  addGrandAdvance: (input: {
+    employeeId: number
+    originalAmount: number
+    issueDate: string
+    notes?: string
+  }) => Promise<void>
+  deleteGrandAdvance: (id: number) => Promise<void>
+  recordGrandAdvanceRecovery: (input: {
+    grandAdvanceId: number
+    recoveryAmount: number
+    salaryPaymentId?: number
+    recoveryDate?: string
+  }) => Promise<void>
+
   recordSalaryPayment: (input: RecordSalaryInput) => Promise<void>
   deleteSalaryPayment: (id: number) => Promise<void>
 
@@ -223,6 +241,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [supervisors, setSupervisors] = useState<Supervisor[]>([])
   const [advances, setAdvances] = useState<Advance[]>([])
+  const [grandAdvances, setGrandAdvances] = useState<GrandAdvance[]>([])
+  const [grandAdvanceRecoveries, setGrandAdvanceRecoveries] = useState<GrandAdvanceRecovery[]>([])
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([])
   const [salaryIncrements, setSalaryIncrements] = useState<SalaryIncrement[]>([])
   const [unitPayments, setUnitPayments] = useState<UnitPayment[]>([])
@@ -250,7 +270,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs] = await Promise.all([
+      const [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs, ga, gar] = await Promise.all([
         supabase.from('units').select('*').order('name'),
         supabase.from('employees').select('*').order('created_at', { ascending: false }),
         supabase.from('supervisors').select('*').order('created_at', { ascending: false }),
@@ -264,8 +284,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         supabase.from('expense_categories').select('*').order('created_at', { ascending: true }),
         supabase.from('zakat_transactions').select('*').order('date', { ascending: false }),
         supabase.from('zakat_settings').select('*').eq('id', 1).maybeSingle(),
+        supabase.from('grand_advances').select('*').order('issue_date', { ascending: false }),
+        supabase.from('grand_advance_recoveries').select('*').order('recovery_date', { ascending: false }),
       ])
-      const firstError = [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs].find((r) => r.error)?.error
+      const firstError = [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs, ga, gar].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setUnits(u.data ?? [])
@@ -281,6 +303,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setExpenseCategories(ec.data ?? [])
       setZakatTransactions(zt.data ?? [])
       setZakatSettings(zs.data ?? null)
+      setGrandAdvances(ga.data ?? [])
+      setGrandAdvanceRecoveries(gar.data ?? [])
       hasLoadedOnceRef.current = true
     } catch (err) {
       const message =
@@ -653,6 +677,62 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  // --- Grand Advances (Employee Loans) ----------------------------------------
+  const addGrandAdvance: DataContextValue['addGrandAdvance'] = async ({ employeeId, originalAmount, issueDate, notes }) => {
+    const { error: err } = await supabase.from('grand_advances').insert({
+      employee_id: employeeId,
+      original_amount: originalAmount,
+      outstanding_balance: originalAmount,
+      total_recovered: 0,
+      issue_date: issueDate,
+      notes: notes ?? null,
+    })
+    if (err) throw err
+    await refreshAll()
+  }
+
+  const deleteGrandAdvance: DataContextValue['deleteGrandAdvance'] = async (id) => {
+    await supabase.from('grand_advance_recoveries').delete().eq('grand_advance_id', id)
+    const { error: err } = await supabase.from('grand_advances').delete().eq('id', id)
+    if (err) throw err
+    await refreshAll()
+  }
+
+  const recordGrandAdvanceRecovery: DataContextValue['recordGrandAdvanceRecovery'] = async ({
+    grandAdvanceId,
+    recoveryAmount,
+    salaryPaymentId,
+    recoveryDate,
+  }) => {
+    const date = recoveryDate ?? todayISO()
+    const { error: recErr } = await supabase.from('grand_advance_recoveries').insert({
+      grand_advance_id: grandAdvanceId,
+      recovery_amount: recoveryAmount,
+      salary_payment_id: salaryPaymentId ?? null,
+      recovery_date: date,
+    })
+    if (recErr) throw recErr
+
+    const grandAdvance = grandAdvances.find((ga) => ga.id === grandAdvanceId)
+    if (!grandAdvance) throw new Error('Grand advance not found')
+
+    const newOutstanding = Math.max(0, grandAdvance.outstanding_balance - recoveryAmount)
+    const newRecovered = grandAdvance.total_recovered + recoveryAmount
+    const newStatus = newOutstanding === 0 ? 'completed' : grandAdvance.status
+
+    const { error: updateErr } = await supabase
+      .from('grand_advances')
+      .update({
+        outstanding_balance: newOutstanding,
+        total_recovered: newRecovered,
+        status: newStatus,
+      })
+      .eq('id', grandAdvanceId)
+    if (updateErr) throw updateErr
+
+    await refreshAll()
+  }
+
   // --- Salary payments (monthly) -------------------------------------------
   // Payment method drives where the net amount actually comes from: 'Cash'
   // (the default — see SalaryPage) posts a linked Office Cash cash-out;
@@ -981,6 +1061,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     employees,
     supervisors,
     advances,
+    grandAdvances,
+    grandAdvanceRecoveries,
     salaryPayments,
     salaryIncrements,
     unitPayments,
@@ -1008,6 +1090,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteSupervisor,
     addAdvance,
     deleteAdvance,
+    addGrandAdvance,
+    deleteGrandAdvance,
+    recordGrandAdvanceRecovery,
     recordSalaryPayment,
     deleteSalaryPayment,
     addSalaryIncrement,

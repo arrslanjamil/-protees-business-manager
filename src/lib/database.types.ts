@@ -141,6 +141,86 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['advances']['Insert']>
         Relationships: []
       }
+      grand_advances: {
+        Row: {
+          id: number
+          employee_id: number
+          original_amount: number
+          outstanding_balance: number
+          total_recovered: number
+          status: 'active' | 'completed'
+          issue_date: string
+          notes: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          employee_id: number
+          original_amount: number
+          outstanding_balance?: number
+          total_recovered?: number
+          status?: 'active' | 'completed'
+          issue_date: string
+          notes?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+        }
+        Update: Partial<Database['public']['Tables']['grand_advances']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'grand_advances_employee_id_fk'
+            columns: ['employee_id']
+            isOneToOne: false
+            referencedRelation: 'employees'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      grand_advance_recoveries: {
+        Row: {
+          id: number
+          grand_advance_id: number
+          recovery_amount: number
+          salary_payment_id: number | null
+          recovery_date: string
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+        }
+        Insert: {
+          id?: number
+          grand_advance_id: number
+          recovery_amount: number
+          salary_payment_id?: number | null
+          recovery_date: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+        }
+        Update: Partial<Database['public']['Tables']['grand_advance_recoveries']['Insert']>
+        Relationships: [
+          {
+            foreignKeyName: 'grand_advance_recoveries_grand_advance_id_fk'
+            columns: ['grand_advance_id']
+            isOneToOne: false
+            referencedRelation: 'grand_advances'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'grand_advance_recoveries_salary_payment_id_fk'
+            columns: ['salary_payment_id']
+            isOneToOne: false
+            referencedRelation: 'salary_payments'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       expenses: {
         Row: {
           id: number
