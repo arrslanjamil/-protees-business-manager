@@ -8,13 +8,17 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
+import { GrandAdvanceModal } from '@/components/advances/GrandAdvanceModal'
 import { DEPARTMENT_LABELS, isCashPaymentMethod, type Department } from '@/lib/types'
 import { advanceWarningLevel, classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
+type AdvanceType = 'normal' | 'grand'
+
 export function AdvancesPage() {
-  const { employeesWithBalance, supervisorsWithBalance, advances, addAdvance, deleteAdvance } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, employees, advances, addAdvance, deleteAdvance, addGrandAdvance } = useData()
   const { cashBalance, bankAccountsWithBalance } = useCollections()
   const { itemsFor, addItem } = useMasterData()
+  const [advanceType, setAdvanceType] = useState<AdvanceType>('normal')
   const [modalOpen, setModalOpen] = useState(false)
   const [department, setDepartment] = useState<Department>('cutting_department')
   const [name, setName] = useState('')
@@ -68,7 +72,7 @@ export function AdvancesPage() {
 
   const selectedPerson = nameOptions.find((p) => p.name === name)
 
-  function openCreate() {
+  function resetForm() {
     setDepartment('cutting_department')
     setName('')
     setEmployeeSearch('')
@@ -80,7 +84,7 @@ export function AdvancesPage() {
     setAllowNegativeCash(false)
     setNotes('')
     setError(null)
-    setModalOpen(true)
+    setAdvanceType('normal')
   }
 
   function handleDepartmentChange(dept: Department) {
@@ -151,7 +155,7 @@ export function AdvancesPage() {
             <span className="font-semibold text-neon-amber">{formatCurrency(totalOutstanding)}</span>
           </p>
         </div>
-        <button className="btn-primary" onClick={openCreate}>
+        <button className="btn-primary" onClick={() => { resetForm(); setModalOpen(true) }}>
           <Plus size={16} /> Give Advance
         </button>
       </div>
@@ -241,8 +245,34 @@ export function AdvancesPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Give Advance" subtitle="Record a new advance / loan (qarza)">
-        <div className="space-y-4">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setAdvanceType('normal') }} title="Give Advance" subtitle="Record a new advance / loan (qarza)">
+        {advanceType === 'grand' ? (
+          <GrandAdvanceModal
+            open={true}
+            onClose={() => setModalOpen(false)}
+            employees={employees}
+            onSubmit={addGrandAdvance}
+          />
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="label-field">Advance Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['normal', 'grand'] as AdvanceType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setAdvanceType(type)}
+                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition capitalize ${
+                      advanceType === type
+                        ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {type === 'normal' ? 'Normal Advance' : 'Grand Advance (Loan)'}
+                  </button>
+                ))}
+              </div>
+            </div>
           <div>
             <label className="label-field">Department</label>
             <div className="grid grid-cols-2 gap-2">
@@ -354,29 +384,30 @@ export function AdvancesPage() {
               </div>
             </>
           )}
-          <div>
-            <label className="label-field">Notes (optional)</label>
-            <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />
-          </div>
-          {wouldGoNegative && (
-            <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
-              <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).</p>
-              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-                <input type="checkbox" checked={allowNegativeCash} onChange={(e) => setAllowNegativeCash(e.target.checked)} />
-                Allow negative Office Cash balance and save anyway
-              </label>
+            <div>
+              <label className="label-field">Notes (optional)</label>
+              <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />
             </div>
-          )}
-          {error && <p className="text-xs text-neon-red">{error}</p>}
-          <div className="flex gap-3 pt-2">
-            <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
-              Cancel
-            </button>
-            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
-              {saving ? 'Saving…' : 'Give Advance'}
-            </button>
+            {wouldGoNegative && (
+              <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
+                <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).</p>
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" checked={allowNegativeCash} onChange={(e) => setAllowNegativeCash(e.target.checked)} />
+                  Allow negative Office Cash balance and save anyway
+                </label>
+              </div>
+            )}
+            {error && <p className="text-xs text-neon-red">{error}</p>}
+            <div className="flex gap-3 pt-2">
+              <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
+                {saving ? 'Saving…' : 'Give Advance'}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
     </div>
   )
