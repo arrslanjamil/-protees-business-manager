@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
 import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 import { BankLogo } from '@/components/collections/BankLogo'
+import { CourierLogo } from '@/components/collections/CourierLogo'
 import { AccountCard } from '@/components/collections/AccountCard'
 import { CollectionsDetailPanel, CollectionsDetailBody, type CollectionsDetailRow } from '@/components/collections/CollectionsDetailPanel'
 import { PAYMENT_TYPE_LABELS, type Courier, type PaymentType } from '@/lib/types'
@@ -50,16 +51,6 @@ function selectionKey(s: DetailSelection | null): string | null {
  * `selection` state, so only one of either surface is ever open. */
 function isTopSummaryKind(kind: DetailSelection['kind']): boolean {
   return kind === 'total-collections' || kind === 'courier-collections' || kind === 'shopify-collections' || kind === 'office-cash' || kind === 'total-bank'
-}
-
-function initials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
 }
 
 export function CollectionsPage() {
@@ -643,11 +634,7 @@ export function CollectionsPage() {
               return (
                 <AccountCard
                   key={c.id}
-                  icon={
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-green/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
-                      {initials(c.name)}
-                    </div>
-                  }
+                  icon={<CourierLogo name={c.name} size={44} />}
                   name={c.name}
                   subtitle={c.payment_method === 'bank_transfer' ? c.bankAccountName ?? 'Bank Transfer' : 'Cash'}
                   balance={formatCurrency(c.totalCollected)}
@@ -734,8 +721,8 @@ export function CollectionsPage() {
                 <AccountCard
                   key={store.store_key}
                   icon={
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/15 to-neon-cyan/15 font-display text-xs font-bold text-white">
-                      {initials(store.display_name)}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/15 to-neon-pink/15 font-display text-xs font-bold text-white">
+                      S
                     </div>
                   }
                   name={store.display_name}
