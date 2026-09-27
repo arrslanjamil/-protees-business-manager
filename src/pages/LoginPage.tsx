@@ -1,11 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Loader2, ShieldAlert, Zap } from 'lucide-react'
+import { Loader2, ShieldAlert, Zap, Fingerprint, AlertTriangle } from 'lucide-react'
 import { useAuth, UnauthorizedAccessError } from '@/context/AuthContext'
 import { errorMessage } from '@/lib/utils'
+import { isBiometricAvailable, isPlatformAuthenticatorAvailable, authenticateWithBiometric, getBiometricLabel } from '@/lib/biometric'
 
 export function LoginPage() {
-  const { signIn } = useAuth()
+  const { signIn, sessionTimeoutWarning, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [username, setUsername] = useState('')
@@ -13,6 +14,18 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unauthorized, setUnauthorized] = useState(false)
+  const [biometricAvailable, setBiometricAvailable] = useState(false)
+  const [biometricLabel, setBiometricLabel] = useState('')
+  const [usingBiometric, setUsingBiometric] = useState(false)
+
+  useEffect(() => {
+    async function checkBiometric() {
+      const available = isBiometricAvailable() && (await isPlatformAuthenticatorAvailable())
+      setBiometricAvailable(available)
+      setBiometricLabel(getBiometricLabel())
+    }
+    checkBiometric()
+  }, [])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -34,8 +47,66 @@ export function LoginPage() {
     }
   }
 
+  async function handleBiometricLogin() {
+    setError(null)
+    setUnauthorized(false)
+    setSubmitting(true)
+    setUsingBiometric(true)
+    try {
+      const authenticated = await authenticateWithBiometric()
+      if (!authenticated) {
+        setError(`${biometricLabel} authentication failed. Please try again or use username/password.`)
+      } else {
+        // For demo purposes, we'll show a message
+        // In production, you'd store biometric credentials and link them to user accounts
+        setError(`${biometricLabel} verified! Please enter your username to complete login.`)
+      }
+    } catch (err) {
+      setError(`${biometricLabel} not available or was cancelled. Try username/password instead.`)
+      console.error(err)
+    } finally {
+      setSubmitting(false)
+      setUsingBiometric(false)
+    }
+  }
+
+  async function handleExtendSession() {
+    setError(null)
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-900 bg-grid-glow px-4">
+      {/* Session Timeout Warning Modal */}
+      {sessionTimeoutWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="card w-full max-w-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neon-amber/10 text-neon-amber">
+                <AlertTriangle size={20} />
+              </div>
+              <h2 className="font-semibold text-white">Session Expiring</h2>
+            </div>
+            <p className="mb-4 text-sm text-slate-400">
+              Your session is about to expire due to inactivity. You will be logged out in 2 minutes.
+            </p>
+            <div className="flex gap-3">
+              <button
+                className="btn-secondary flex-1"
+                onClick={async () => {
+                  await signOut()
+                  navigate('/login', { replace: true })
+                }}
+              >
+                Logout Now
+              </button>
+              <button className="btn-primary flex-1" onClick={handleExtendSession}>
+                Continue Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card w-full max-w-sm">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-neon-cyan to-neon-purple shadow-glow">
@@ -89,8 +160,35 @@ export function LoginPage() {
             </div>
             {error && <p className="text-xs text-neon-red">{error}</p>}
             <button className="btn-primary w-full" type="submit" disabled={submitting}>
-              {submitting ? <Loader2 size={16} className="animate-spin" /> : 'Sign In'}
+              {submitting && !usingBiometric ? <Loader2 size={16} className="animate-spin" /> : 'Sign In'}
             </button>
+
+            {biometricAvailable && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/10" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="bg-base-800 px-2 text-slate-500">or</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-secondary w-full gap-2"
+                  onClick={handleBiometricLogin}
+                  disabled={submitting}
+                >
+                  {submitting && usingBiometric ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Fingerprint size={16} />
+                  )}
+                  Use {biometricLabel}
+                </button>
+              </>
+            )}
           </form>
         )}
       </div>

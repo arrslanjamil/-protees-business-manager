@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { AppUser } from '@/lib/types'
@@ -10,6 +10,9 @@ export class UnauthorizedAccessError extends Error {
   }
 }
 
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
+const WARNING_BEFORE_TIMEOUT_MS = 2 * 60 * 1000 // 2 minutes before timeout
+
 interface AuthContextValue {
   loading: boolean
   user: User | null
@@ -18,6 +21,7 @@ interface AuthContextValue {
   displayName: string | null
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  sessionTimeoutWarning: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -26,10 +30,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<Session | null>(null)
   const [appUser, setAppUser] = useState<AppUser | null>(null)
+  const [sessionTimeoutWarning, setSessionTimeoutWarning] = useState(false)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const warningRef = useRef<NodeJS.Timeout | null>(null)
 
   async function loadAppUser(userId: string): Promise<AppUser | null> {
     const { data } = await supabase.from('app_users').select('*').eq('id', userId).maybeSingle()
     return data ?? null
+  }
+
+  function resetSessionTimeout() {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (warningRef.current) clearTimeout(warningRef.current)
+    setSessionTimeoutWarning(false)
+
+    // Show warning before timeout
+    warningRef.current = setTimeout(() => {
+      setSessionTimeoutWarning(true)
+    }, SESSION_TIMEOUT_MS - WARNING_BEFORE_TIMEOUT_MS)
+
+    // Auto logout after timeout
+    timeoutRef.current = setTimeout(async () => {
+      await supabase.auth.signOut()
+      setSession(null)
+      setAppUser(null)
+      setSessionTimeoutWarning(false)
+    }, SESSION_TIMEOUT_MS)
+  }
+
+  function setupActivityListeners() {
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+    const handler = () => resetSessionTimeout()
+
+    events.forEach((event) => document.addEventListener(event, handler))
+    return () => events.forEach((event) => document.removeEventListener(event, handler))
   }
 
   useEffect(() => {
@@ -50,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setSession(data.session)
           setAppUser(found)
+          resetSessionTimeout()
         }
       } else {
         setSession(null)
@@ -66,9 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return
         setSession(newSession)
         setAppUser(found)
+        resetSessionTimeout()
       } else {
         setSession(null)
         setAppUser(null)
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        if (warningRef.current) clearTimeout(warningRef.current)
       }
     })
 
@@ -77,6 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe()
     }
   }, [])
+
+  // Setup activity listeners when session is active
+  useEffect(() => {
+    if (!appUser) return
+    return setupActivityListeners()
+  }, [appUser])
 
   async function signIn(username: string, password: string) {
     const trimmed = username.trim().toLowerCase()
@@ -116,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     displayName: appUser?.display_name ?? null,
     signIn,
     signOut,
+    sessionTimeoutWarning,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
