@@ -10,11 +10,12 @@ import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
 import { EmployeeTransactionHistory } from '@/components/employees/EmployeeTransactionHistory'
 import { SalaryHistoryTimeline } from '@/components/employees/SalaryHistoryTimeline'
+import { GrandAdvanceSummary } from '@/components/employees/GrandAdvanceSummary'
 import { EMPLOYEE_GROUP_LABELS, EMPLOYEE_TYPE_LABELS, INCREMENT_TYPE_LABELS, MONTH_NAMES, type Employee, type EmployeeGroup, type EmployeeType, type IncrementType } from '@/lib/types'
 import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
-type ExpandedTab = 'transactions' | 'salary-history'
+type ExpandedTab = 'transactions' | 'salary-history' | 'grand-advance'
 
 const emptyForm = {
   name: '',
@@ -30,7 +31,7 @@ const emptyForm = {
 }
 
 export function EmployeesPage() {
-  const { employeesWithBalance, salaryPayments, addEmployee, updateEmployee, deleteEmployee, setEmployeeActive, addSalaryIncrement } = useData()
+  const { employeesWithBalance, salaryPayments, grandAdvances, addEmployee, updateEmployee, deleteEmployee, setEmployeeActive, addSalaryIncrement } = useData()
   const { itemsFor, addItem } = useMasterData()
   const departmentNames = itemsFor('department').map((i) => i.name)
   const [search, setSearch] = useState('')
@@ -302,6 +303,10 @@ export function EmployeesPage() {
                         })()}
                         <Badge color={emp.employee_type === 'contract' ? 'purple' : 'cyan'}>{EMPLOYEE_TYPE_LABELS[emp.employee_type]}</Badge>
                         {emp.employee_group === 'unit' && <Badge color="amber">{EMPLOYEE_GROUP_LABELS.unit}</Badge>}
+                        {(() => {
+                          const activeGA = grandAdvances.find((ga) => ga.employee_id === emp.id && ga.status === 'active')
+                          return activeGA ? <Badge color="orange">Grand Advance: {formatCurrency(activeGA.outstanding_balance)}</Badge> : null
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -394,11 +399,27 @@ export function EmployeesPage() {
                       >
                         Salary History
                       </button>
+                      {grandAdvances.some((ga) => ga.employee_id === emp.id) && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedTab('grand-advance')}
+                          className={classNames(
+                            'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                            expandedTab === 'grand-advance' ? 'bg-neon-amber/10 text-neon-amber' : 'text-slate-500 hover:text-slate-300'
+                          )}
+                        >
+                          Grand Advance
+                        </button>
+                      )}
                     </div>
                     {expandedTab === 'transactions' ? (
                       <EmployeeTransactionHistory employeeId={emp.id} employeeName={emp.name} />
-                    ) : (
+                    ) : expandedTab === 'salary-history' ? (
                       <SalaryHistoryTimeline employee={emp} />
+                    ) : (
+                      <div className="mt-4">
+                        <GrandAdvanceSummary grandAdvance={grandAdvances.find((ga) => ga.employee_id === emp.id && ga.status === 'active') || null} />
+                      </div>
                     )}
                   </div>
                 )}

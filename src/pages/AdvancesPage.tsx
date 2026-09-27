@@ -13,12 +13,14 @@ import { DEPARTMENT_LABELS, isCashPaymentMethod, type Department } from '@/lib/t
 import { advanceWarningLevel, classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type AdvanceType = 'normal' | 'grand'
+type HistoryFilter = 'all' | 'normal' | 'grand'
 
 export function AdvancesPage() {
-  const { employeesWithBalance, supervisorsWithBalance, employees, advances, addAdvance, deleteAdvance, addGrandAdvance } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, employees, advances, grandAdvances, addAdvance, deleteAdvance, addGrandAdvance, deleteGrandAdvance } = useData()
   const { cashBalance, bankAccountsWithBalance } = useCollections()
   const { itemsFor, addItem } = useMasterData()
   const [advanceType, setAdvanceType] = useState<AdvanceType>('normal')
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [department, setDepartment] = useState<Department>('cutting_department')
   const [name, setName] = useState('')
@@ -54,9 +56,31 @@ export function AdvancesPage() {
     [employeesWithBalance, supervisorsWithBalance]
   )
 
-  const sortedAdvances = useMemo(
-    () => [...advances].sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
-    [advances]
+  const combinedAdvances = useMemo(() => {
+    const normalAdvs = advances.map((a) => ({ ...a, type: 'normal' as const }))
+    const grandAdvs = grandAdvances.map((ga) => ({
+      id: ga.id,
+      employee_name: employees.find((e) => e.id === ga.employee_id)?.name ?? 'Unknown',
+      amount: ga.original_amount,
+      payment_date: ga.issue_date,
+      department: 'unknown' as any,
+      payment_method: null,
+      reference_number: null,
+      notes: ga.notes,
+      created_by_username: ga.created_by_username,
+      type: 'grand' as const,
+      outstanding_balance: ga.outstanding_balance,
+      total_recovered: ga.total_recovered,
+    }))
+    return [...normalAdvs, ...grandAdvs] as any[]
+  }, [advances, grandAdvances, employees])
+
+  const filteredCombinedAdvances = useMemo(
+    () =>
+      combinedAdvances
+        .filter((a) => (historyFilter === 'all' ? true : historyFilter === 'normal' ? a.type === 'normal' : a.type === 'grand'))
+        .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
+    [combinedAdvances, historyFilter]
   )
 
   // Only active people can receive a NEW advance — historical advances to
@@ -196,8 +220,28 @@ export function AdvancesPage() {
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Advance History</h2>
-        {sortedAdvances.length === 0 ? (
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Advance History</h2>
+          <div className="flex gap-2">
+            {(['all', 'normal', 'grand'] as HistoryFilter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setHistoryFilter(f)}
+                className={classNames(
+                  'rounded-xl border px-3 py-1.5 text-xs font-semibold capitalize transition',
+                  historyFilter === f
+                    ? f === 'grand'
+                      ? 'border-neon-amber/50 bg-neon-amber/10 text-neon-amber'
+                      : 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                    : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                )}
+              >
+                {f === 'all' ? 'All' : f === 'normal' ? 'Normal Advances' : 'Grand Advances'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filteredCombinedAdvances.length === 0 ? (
           <EmptyState icon={HandCoins} title="No advances recorded" description="Advances you give will show up here." />
         ) : (
           <div className="card overflow-x-auto p-0">
@@ -206,37 +250,55 @@ export function AdvancesPage() {
                 <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
                   <th className="px-5 py-3.5">Type</th>
                   <th className="px-5 py-3.5">Name</th>
-                  <th className="px-5 py-3.5">Department</th>
                   <th className="px-5 py-3.5">Amount</th>
-                  <th className="px-5 py-3.5">Method</th>
-                  <th className="px-5 py-3.5">Notes</th>
+                  <th className="px-5 py-3.5">{historyFilter === 'grand' ? 'Outstanding' : 'Method'}</th>
+                  <th className="px-5 py-3.5">Status</th>
                   <th className="px-5 py-3.5">Date</th>
-                  <th className="px-5 py-3.5">Added By</th>
+                  <th className="px-5 py-3.5">Notes</th>
                   <th className="px-5 py-3.5" />
                 </tr>
               </thead>
               <tbody>
-                {sortedAdvances.map((adv) => (
-                  <tr key={adv.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                {filteredCombinedAdvances.map((adv) => (
+                  <tr key={`${adv.type}-${adv.id}`} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                     <td className="px-5 py-3.5">
-                      <Badge color="blue">Advance</Badge>
+                      <Badge color={adv.type === 'grand' ? 'orange' : 'blue'}>
+                        {adv.type === 'grand' ? 'Grand Advance' : 'Advance'}
+                      </Badge>
                     </td>
                     <td className="px-5 py-3.5 font-medium text-white">{adv.employee_name}</td>
-                    <td className="px-5 py-3.5">
-                      <Badge color={adv.department === 'cutting_department' ? 'cyan' : 'purple'}>{DEPARTMENT_LABELS[adv.department]}</Badge>
-                    </td>
                     <td className="px-5 py-3.5 text-neon-amber">{formatCurrency(adv.amount)}</td>
                     <td className="px-5 py-3.5">
-                      {adv.payment_method ? <Badge color="slate">{adv.payment_method}</Badge> : <span className="text-slate-600">—</span>}
-                      {adv.reference_number && <p className="mt-0.5 text-[11px] text-slate-500">Ref: {adv.reference_number}</p>}
+                      {adv.type === 'grand' ? (
+                        <span className="text-slate-400">{formatCurrency(adv.outstanding_balance)}</span>
+                      ) : adv.payment_method ? (
+                        <Badge color="slate">{adv.payment_method}</Badge>
+                      ) : (
+                        <span className="text-slate-600">—</span>
+                      )}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-400">{adv.notes || '—'}</td>
+                    <td className="px-5 py-3.5">
+                      {adv.type === 'grand' ? (
+                        <Badge color={adv.outstanding_balance === 0 ? 'green' : 'amber'}>
+                          {adv.outstanding_balance === 0 ? 'Completed' : 'Active'}
+                        </Badge>
+                      ) : (
+                        <Badge color="slate">—</Badge>
+                      )}
+                    </td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDate(adv.payment_date)}</td>
-                    <td className="px-5 py-3.5 text-slate-500">{adv.created_by_username ?? '—'}</td>
+                    <td className="px-5 py-3.5 text-slate-400">{adv.notes || '—'}</td>
                     <td className="px-5 py-3.5 text-right">
                       <button
                         className="rounded-lg p-1.5 text-slate-500 hover:bg-neon-red/10 hover:text-neon-red"
-                        onClick={() => handleDelete(adv.id)}
+                        onClick={async () => {
+                          if (!confirm(`Delete this ${adv.type === 'grand' ? 'grand' : ''} advance?`)) return
+                          if (adv.type === 'grand') {
+                            await deleteGrandAdvance(adv.id)
+                          } else {
+                            await deleteAdvance(adv.id)
+                          }
+                        }}
                       >
                         <Trash2 size={15} />
                       </button>
