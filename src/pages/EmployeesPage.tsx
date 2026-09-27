@@ -305,7 +305,7 @@ export function EmployeesPage() {
                         {emp.employee_group === 'unit' && <Badge color="amber">{EMPLOYEE_GROUP_LABELS.unit}</Badge>}
                         {(() => {
                           const activeGA = grandAdvances.find((ga) => ga.employee_id === emp.id && ga.status === 'active')
-                          return activeGA ? <Badge color="orange">Grand Advance: {formatCurrency(activeGA.outstanding_balance)}</Badge> : null
+                          return activeGA ? <Badge color="amber">Grand Advance: {formatCurrency(activeGA.outstanding_balance)}</Badge> : null
                         })()}
                       </div>
                     </div>

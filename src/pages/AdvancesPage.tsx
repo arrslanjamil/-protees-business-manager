@@ -8,7 +8,6 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { GrandAdvanceModal } from '@/components/advances/GrandAdvanceModal'
 import { DEPARTMENT_LABELS, isCashPaymentMethod, type Department } from '@/lib/types'
 import { advanceWarningLevel, classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
@@ -162,11 +161,6 @@ export function AdvancesPage() {
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm('Delete this advance entry?')) return
-    await deleteAdvance(id)
-  }
-
   const totalOutstanding = people.reduce((sum, p) => sum + Math.max(0, p.advanceBalance), 0)
 
   return (
@@ -262,7 +256,7 @@ export function AdvancesPage() {
                 {filteredCombinedAdvances.map((adv) => (
                   <tr key={`${adv.type}-${adv.id}`} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                     <td className="px-5 py-3.5">
-                      <Badge color={adv.type === 'grand' ? 'orange' : 'blue'}>
+                      <Badge color={adv.type === 'grand' ? 'amber' : 'cyan'}>
                         {adv.type === 'grand' ? 'Grand Advance' : 'Advance'}
                       </Badge>
                     </td>
