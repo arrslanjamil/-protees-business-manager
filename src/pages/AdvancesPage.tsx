@@ -198,7 +198,7 @@ export function AdvancesPage() {
                       </div>
                       <div className="text-right">
                         <span className="block font-display text-sm font-bold text-white">{formatCurrency(p.advanceBalance)}</span>
-                        <Badge color={warning === 'red' ? 'red' : 'green'}>{warning === 'red' ? 'At limit' : 'Healthy'}</Badge>
+                        {warning === 'red' && <Badge color="red">At limit</Badge>}
                       </div>
                     </div>
                     {p.payAmount > 0 && (

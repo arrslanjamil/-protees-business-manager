@@ -107,7 +107,8 @@ export type AdvanceWarningLevel = 'green' | 'red'
 
 export function advanceWarningLevel(balance: number, payAmount: number): AdvanceWarningLevel {
   if (payAmount <= 0) return balance > 0 ? 'red' : 'green'
-  return balance >= payAmount ? 'red' : 'green'
+  const percent = (balance / payAmount) * 100
+  return percent > 70 ? 'red' : 'green'
 }
 
 export type DateRangePreset = 'today' | 'week' | 'month' | 'year' | 'custom'
