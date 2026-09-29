@@ -415,7 +415,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const personAdvances = advances
       .filter((a) => a.employee_name === name && a.department === department)
-      .sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime())
+      .sort((a, b) => {
+        const dateA = a.payment_date ? new Date(a.payment_date).getTime() : 0
+        const dateB = b.payment_date ? new Date(b.payment_date).getTime() : 0
+        return dateA - dateB
+      })
 
     const deductedByAdvance = new Map<number, number>()
     for (const d of advanceDeductions) {
@@ -978,7 +982,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (err) throw err
 
     if (existing.payment_source === 'cash' && paymentSource === 'cash') {
-      await supabase.from('cash_transactions').update({ category: title, amount, date: expenseDate }).eq('reference_type', 'expense').eq('reference_id', id)
+      await supabase.from('cash_transactions').update({ category: title, amount, date: expenseDate ?? null }).eq('reference_type', 'expense').eq('reference_id', id)
     } else if (existing.payment_source === 'cash' && paymentSource === 'online') {
       await supabase.from('cash_transactions').delete().eq('reference_type', 'expense').eq('reference_id', id)
     } else if (existing.payment_source === 'online' && paymentSource === 'cash') {
@@ -986,7 +990,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         type: 'cash_out',
         category: title,
         amount,
-        date: expenseDate,
+        date: expenseDate ?? null,
         reference_type: 'expense',
         reference_id: id,
       })

@@ -6,6 +6,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export type FactoryRole = 'admin' | 'cutting_head' | 'stitching_head' | 'quality_head' | 'store_manager'
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)

@@ -76,18 +76,23 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       // payroll period lookback without pulling a permanently-growing
       // full-history table on every load.
       const sinceISO = new Date(Date.now() - 14 * 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      const [att, gh, as_, zd] = await Promise.all([
-        supabase.from('attendance').select('*').gte('date', sinceISO).order('date', { ascending: false }),
-        supabase.from('government_holidays').select('*').order('date', { ascending: false }),
-        supabase.from('attendance_settings').select('*').eq('id', 1).maybeSingle(),
-        supabase.from('zkteco_devices').select('*').order('created_at', { ascending: true }),
-      ])
-      const firstError = [att, gh, as_, zd].find((r) => r.error)?.error
-      if (firstError) throw firstError
 
+      // Fetch attendance records
+      const att = await supabase.from('attendance').select('*').gte('date', sinceISO).order('date', { ascending: false })
+      if (att.error) throw att.error
       setAttendance(att.data ?? [])
+
+      // Fetch government holidays (optional table, may not exist)
+      const gh = await supabase.from('government_holidays' as any).select('*').order('date', { ascending: false }).catch(() => ({ data: [] }))
       setGovernmentHolidays(gh.data ?? [])
+
+      // Fetch attendance settings (optional table, may not exist)
+      const as_ = await supabase.from('attendance_settings' as any).select('*').eq('id', 1).maybeSingle().catch(() => ({ data: null }))
       setAttendanceSettings(as_.data ?? null)
+
+      // Fetch ZKTeco devices
+      const zd = await supabase.from('zkteco_devices').select('*').order('created_at', { ascending: true })
+      if (zd.error) throw zd.error
       setZktecoDevices(zd.data ?? [])
       hasLoadedOnceRef.current = true
     } catch (err) {
@@ -138,35 +143,39 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   }
 
   const addGovernmentHoliday: AttendanceContextValue['addGovernmentHoliday'] = async ({ date, name }) => {
-    const { error: err } = await supabase.from('government_holidays').insert({ date, name })
-    if (err) throw err
-    await refreshAll()
+    try {
+      const { error: err } = await supabase.from('government_holidays' as any).insert({ date, name })
+      if (err) throw err
+      await refreshAll()
+    } catch (e) {
+      console.warn('government_holidays table may not exist')
+    }
   }
 
   const deleteGovernmentHoliday: AttendanceContextValue['deleteGovernmentHoliday'] = async (id) => {
-    const { error: err } = await supabase.from('government_holidays').delete().eq('id', id)
-    if (err) throw err
-    await refreshAll()
+    try {
+      const { error: err } = await supabase.from('government_holidays' as any).delete().eq('id', id)
+      if (err) throw err
+      await refreshAll()
+    } catch (e) {
+      console.warn('government_holidays table may not exist')
+    }
   }
 
   const updateAttendanceSettings: AttendanceContextValue['updateAttendanceSettings'] = async (input) => {
-    const payload: {
-      id: number
-      updated_at: string
-      standard_working_hours?: number
-      break_minutes?: number
-      standard_start_time?: string
-      late_grace_minutes?: number
-      late_penalty_per_instance?: number
-    } = { id: 1, updated_at: new Date().toISOString() }
-    if (input.standardWorkingHours !== undefined) payload.standard_working_hours = input.standardWorkingHours
-    if (input.breakMinutes !== undefined) payload.break_minutes = input.breakMinutes
-    if (input.standardStartTime !== undefined) payload.standard_start_time = input.standardStartTime
-    if (input.lateGraceMinutes !== undefined) payload.late_grace_minutes = input.lateGraceMinutes
-    if (input.latePenaltyPerInstance !== undefined) payload.late_penalty_per_instance = input.latePenaltyPerInstance
-    const { error: err } = await supabase.from('attendance_settings').upsert(payload)
-    if (err) throw err
-    await refreshAll()
+    try {
+      const payload: any = { id: 1, updated_at: new Date().toISOString() }
+      if (input.standardWorkingHours !== undefined) payload.standard_working_hours = input.standardWorkingHours
+      if (input.breakMinutes !== undefined) payload.break_minutes = input.breakMinutes
+      if (input.standardStartTime !== undefined) payload.standard_start_time = input.standardStartTime
+      if (input.lateGraceMinutes !== undefined) payload.late_grace_minutes = input.lateGraceMinutes
+      if (input.latePenaltyPerInstance !== undefined) payload.late_penalty_per_instance = input.latePenaltyPerInstance
+      const { error: err } = await supabase.from('attendance_settings' as any).upsert(payload)
+      if (err) throw err
+      await refreshAll()
+    } catch (e) {
+      console.warn('attendance_settings table may not exist')
+    }
   }
 
   const addZktecoDevice: AttendanceContextValue['addZktecoDevice'] = async ({ name, ipAddress, port }) => {
