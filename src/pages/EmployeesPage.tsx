@@ -28,6 +28,7 @@ const emptyForm = {
   department: '',
   salaryDate: '',
   machineUserId: '',
+  deviceEmployeeId: '',
 }
 
 export function EmployeesPage() {
@@ -97,6 +98,7 @@ export function EmployeesPage() {
       department: emp.department ?? '',
       salaryDate: emp.salary_date != null ? String(emp.salary_date) : '',
       machineUserId: emp.machine_user_id ?? '',
+      deviceEmployeeId: emp.device_employee_id ?? '',
     })
     setError(null)
     setModalOpen(true)
@@ -138,6 +140,7 @@ export function EmployeesPage() {
         department: form.department || null,
         salaryDate: form.salaryDate ? Number(form.salaryDate) : null,
         machineUserId: form.machineUserId.trim() || null,
+        deviceEmployeeId: form.deviceEmployeeId.trim() || null,
       }
       if (editing) {
         await updateEmployee(editing.id, payload)
@@ -555,6 +558,17 @@ export function EmployeesPage() {
               placeholder="The fingerprint enrollment ID on the K40"
             />
             <p className="mt-1 text-[11px] text-slate-500">Matches attendance punches from the K40 to this employee — leave blank if not enrolled yet.</p>
+          </div>
+
+          <div>
+            <label className="label-field">ZKTeco SenseFace Device Employee ID (optional)</label>
+            <input
+              className="input-field"
+              value={form.deviceEmployeeId}
+              onChange={(e) => setForm({ ...form, deviceEmployeeId: e.target.value })}
+              placeholder="e.g. 1001"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">The User ID enrolled in ZKTeco SenseFace 2-A device. Used for automatic attendance mapping.</p>
           </div>
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">

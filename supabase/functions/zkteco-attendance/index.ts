@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
 
 interface AttendanceRecord {
-  user_id: string
+  user_id?: string
+  device_employee_id?: string
   check_in?: string
   check_out?: string
   timestamp: string
@@ -33,28 +34,72 @@ serve(async (req) => {
     const payload = await req.json() as AttendanceRecord
 
     // Validate required fields
-    if (!payload.user_id || !payload.device_id || !payload.timestamp) {
+    if (!payload.device_id || !payload.timestamp) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: user_id, device_id, timestamp" }),
+        JSON.stringify({ error: "Missing required fields: device_id, timestamp" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       )
     }
 
-    // Get employee ID from ZKTeco user mapping
-    const { data: mapping, error: mapError } = await supabase
-      .from("zkteco_user_mapping")
-      .select("employee_id")
-      .eq("zkteco_user_id", payload.user_id)
-      .single()
+    // Determine employee by matching device_employee_id first, then fall back to zkteco_user_mapping
+    let employeeId: string | null = null
 
-    if (mapError || !mapping) {
-      return new Response(
-        JSON.stringify({ error: `No employee mapping found for ZKTeco user ${payload.user_id}` }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      )
+    // Strategy 1: Match by device_employee_id (direct SenseFace mapping)
+    if (payload.device_employee_id) {
+      const { data: employee } = await supabase
+        .from("app_users")
+        .select("id")
+        .eq("device_employee_id", payload.device_employee_id)
+        .single()
+
+      if (employee) {
+        employeeId = employee.id
+      }
     }
 
-    const employeeId = mapping.employee_id
+    // Strategy 2: Fall back to zkteco_user_mapping (for K40 compatibility)
+    if (!employeeId && payload.user_id) {
+      const { data: mapping } = await supabase
+        .from("zkteco_user_mapping")
+        .select("employee_id")
+        .eq("zkteco_user_id", payload.user_id)
+        .single()
+
+      if (mapping) {
+        employeeId = mapping.employee_id
+      }
+    }
+
+    // Strategy 3: No matching employee found - save to unmapped_attendance
+    if (!employeeId) {
+      console.log("No employee mapping found, saving to unmapped_attendance")
+      const { error: unmappedError } = await supabase
+        .from("unmapped_attendance")
+        .insert({
+          device_employee_id: payload.device_employee_id || payload.user_id || "unknown",
+          device_id: payload.device_id,
+          device_name: payload.device_name || "ZKTeco SenseFace",
+          check_in: payload.check_in ? new Date(`${new Date().toISOString().split('T')[0]}T${payload.check_in}`).toISOString() : null,
+          check_out: payload.check_out ? new Date(`${new Date().toISOString().split('T')[0]}T${payload.check_out}`).toISOString() : null,
+          raw_payload: payload,
+          sync_time: new Date().toISOString(),
+          status: "unmapped",
+        })
+
+      if (unmappedError) {
+        console.error("Failed to save unmapped attendance:", unmappedError)
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `No employee mapping found for device ID ${payload.device_employee_id || payload.user_id}`,
+          saved_as_unmapped: !unmappedError,
+          error: `Unmapped attendance: device_employee_id ${payload.device_employee_id || payload.user_id}`,
+        }),
+        { status: 202, headers: { "Content-Type": "application/json" } }
+      )
+    }
     const date = new Date(payload.timestamp).toISOString().split("T")[0]
 
     // Get or create attendance record for the day
@@ -75,7 +120,9 @@ serve(async (req) => {
       source: "machine",
       device_id: payload.device_id,
       device_name: payload.device_name || "ZKTeco SenseFace",
-      last_sync: new Date().toISOString(),
+      device_employee_id: payload.device_employee_id || payload.user_id,
+      device_sync_time: new Date().toISOString(),
+      device_source: "zkteco_senseface",
     }
 
     if (isCheckIn) {
