@@ -153,6 +153,7 @@ interface DataContextValue {
     department?: string | null
     salaryDate?: number | null
     machineUserId?: string | null
+    deviceEmployeeId?: string | null
   }) => Promise<void>
   updateEmployee: (
     id: number,
@@ -167,6 +168,7 @@ interface DataContextValue {
       department: string | null
       salaryDate: number | null
       machineUserId: string | null
+      deviceEmployeeId: string | null
     }>
   ) => Promise<void>
   deleteEmployee: (id: number) => Promise<void>
@@ -499,6 +501,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     department,
     salaryDate,
     machineUserId,
+    deviceEmployeeId,
   }) => {
     const { error: err } = await supabase.from('employees').insert({
       name,
@@ -514,6 +517,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       department: department ?? null,
       salary_date: salaryDate ?? null,
       machine_user_id: machineUserId ?? null,
+      device_employee_id: deviceEmployeeId ?? null,
     })
     if (err) throw err
     await refreshAll()
@@ -530,6 +534,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       department?: string | null
       salary_date?: number | null
       machine_user_id?: string | null
+      device_employee_id?: string | null
     } = {}
     if (input.name !== undefined) payload.name = input.name
     if (input.salary !== undefined) payload.salary = input.salary
@@ -541,6 +546,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (input.department !== undefined) payload.department = input.department
     if (input.salaryDate !== undefined) payload.salary_date = input.salaryDate
     if (input.machineUserId !== undefined) payload.machine_user_id = input.machineUserId
+    if (input.deviceEmployeeId !== undefined) payload.device_employee_id = input.deviceEmployeeId
     const { error: err } = await supabase.from('employees').update(payload).eq('id', id)
     if (err) throw err
     await refreshAll()
