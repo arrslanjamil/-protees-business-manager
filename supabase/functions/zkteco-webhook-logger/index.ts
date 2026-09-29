@@ -8,15 +8,22 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 
 serve(async (req) => {
   try {
-    // CORS preflight
+    // CORS preflight - allow all
     if (req.method === "OPTIONS") {
       return new Response("ok", {
+        status: 200,
         headers: {
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE, HEAD",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+          "Access-Control-Max-Age": "86400",
         },
       })
+    }
+
+    // Allow GET/HEAD for health checks
+    if (req.method === "GET" || req.method === "HEAD") {
+      return new Response("OK", { status: 200 })
     }
 
     // Parse request
