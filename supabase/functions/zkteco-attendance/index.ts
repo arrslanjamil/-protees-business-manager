@@ -42,7 +42,7 @@ serve(async (req) => {
     }
 
     // Determine employee by matching device_employee_id first, then fall back to zkteco_user_mapping
-    let employeeId: string | null = null
+    let employeeId: number | null = null
 
     // Strategy 1: Match by device_employee_id (direct SenseFace mapping)
     if (payload.device_employee_id) {
@@ -53,7 +53,7 @@ serve(async (req) => {
         .single()
 
       if (employee) {
-        employeeId = employee.id
+        employeeId = Number(employee.id)
       }
     }
 
@@ -66,7 +66,7 @@ serve(async (req) => {
         .single()
 
       if (mapping) {
-        employeeId = mapping.employee_id
+        employeeId = Number(mapping.employee_id)
       }
     }
 
