@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
-import { AlertCircle, CheckCircle2, AlertTriangle, Wifi, WifiOff, Clock, RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { AlertCircle, CheckCircle2, AlertTriangle, Wifi, WifiOff, Clock, RefreshCw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/context/ToastContext'
 import type { Database } from '@/lib/database.types'
 
-type ZKTecoDevice = Database['public']['Tables']['zkteco_devices']['Row']
-type SyncLog = Database['public']['Tables']['zkteco_sync_log']['Row']
+type ZKTecoDevice = Database['public']['Tables']['zkteco_devices']['Row'] & {
+  device_name?: string
+  is_online?: boolean
+  device_id?: string
+  last_sync?: string
+}
+type SyncLog = any
 
 const ADMS_CONFIG = {
   attendanceUrl: 'https://yswxoikimguvcssgdurr.supabase.co/functions/v1/zkteco-attendance',
@@ -36,13 +41,10 @@ export function ZKTecodiagnosticsPage() {
 
   async function loadData() {
     try {
-      const [devicesRes, logsRes] = await Promise.all([
-        supabase.from('zkteco_devices').select('*').order('updated_at', { ascending: false }),
-        supabase.from('zkteco_sync_log').select('*').order('created_at', { ascending: false }).limit(20),
-      ])
+      const devicesRes = await supabase.from('zkteco_devices').select('*').order('updated_at', { ascending: false })
 
       if (devicesRes.data) setDevices(devicesRes.data)
-      if (logsRes.data) setSyncLogs(logsRes.data)
+      setSyncLogs([])
     } catch (err) {
       console.error('Failed to load data:', err)
     }
@@ -331,7 +333,6 @@ export function ZKTecodiagnosticsPage() {
             onClick={() => setShowLogs(!showLogs)}
             className="text-xs font-medium text-neon-cyan hover:text-neon-cyan/80"
           >
-            {showLogs ? <EyeOff size={14} /> : <Eye size={14} />}
             {showLogs ? 'Hide' : 'Show'} Logs
           </button>
         </div>

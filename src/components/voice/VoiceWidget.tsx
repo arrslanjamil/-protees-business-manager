@@ -94,7 +94,7 @@ export function VoiceWidget() {
     try {
       if (intent === 'advance') {
         if (!personName || amount <= 0) throw new Error('Pick a person and enter a valid amount.')
-        await addAdvance({ name: personName, department, amount, notes: notes || undefined })
+        await addAdvance({ name: personName, department, amount, paymentMethod: 'Cash', notes: notes || undefined })
       } else if (intent === 'expense') {
         if (amount <= 0) throw new Error('Enter a valid amount.')
         await addExpense({ title: title.trim() || 'Expense', category, amount, notes: notes || undefined, paymentSource: 'cash' })

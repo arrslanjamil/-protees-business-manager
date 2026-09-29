@@ -16,6 +16,7 @@ import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 type ExpandedTab = 'transactions' | 'salary-history' | 'grand-advance'
+type EmployeeWithDevice = Employee & { device_employee_id?: string | null }
 
 const emptyForm = {
   name: '',
@@ -85,8 +86,8 @@ export function EmployeesPage() {
     setModalOpen(true)
   }
 
-  function openEdit(emp: Employee) {
-    setEditing(emp)
+  function openEdit(emp: EmployeeWithDevice) {
+    setEditing(emp as Employee)
     setForm({
       name: emp.name,
       salary: String(emp.salary ?? ''),

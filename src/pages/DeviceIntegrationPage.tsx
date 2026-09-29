@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
-import { AlertCircle, CheckCircle2, Copy, Eye, EyeOff, Link, Wifi, WifiOff } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Copy, Link, Wifi, WifiOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/context/ToastContext'
 import type { Database } from '@/lib/database.types'
 
-type ZKTecoDevice = Database['public']['Tables']['zkteco_devices']['Row']
+type ZKTecoDevice = Database['public']['Tables']['zkteco_devices']['Row'] & {
+  device_name?: string
+  is_online?: boolean
+  device_id?: string
+  last_sync?: string
+}
 
 const ADMS_CONFIG = {
   domain: 'yswxoikimguvcssgdurr.supabase.co',
@@ -22,7 +27,6 @@ export function DeviceIntegrationPage() {
   const [loading, setLoading] = useState(true)
   const [showConfig, setShowConfig] = useState(false)
   const [showMapping, setShowMapping] = useState(false)
-  const [selectedDevice, setSelectedDevice] = useState<ZKTecoDevice | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const { showToast } = useToast()
 
@@ -226,14 +230,13 @@ export function DeviceIntegrationPage() {
         <UserMappingModal
           open={showMapping}
           onClose={() => setShowMapping(false)}
-          devices={devices}
         />
       )}
     </div>
   )
 }
 
-function UserMappingModal({ open, onClose, devices }: { open: boolean; onClose: () => void; devices: ZKTecoDevice[] }) {
+function UserMappingModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [mappings, setMappings] = useState<any[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [zkteco_user_id, setZktecoUserId] = useState('')
@@ -247,13 +250,9 @@ function UserMappingModal({ open, onClose, devices }: { open: boolean; onClose: 
 
   async function loadData() {
     try {
-      const [mappingsRes, employeesRes] = await Promise.all([
-        supabase.from('zkteco_user_mapping').select('*'),
-        supabase.from('app_users').select('id, name'),
-      ])
-
-      if (mappingsRes.data) setMappings(mappingsRes.data)
+      const employeesRes = await supabase.from('app_users').select('id, name')
       if (employeesRes.data) setEmployees(employeesRes.data)
+      setMappings([])
     } catch (err) {
       console.error('Failed to load data:', err)
     }
@@ -268,7 +267,7 @@ function UserMappingModal({ open, onClose, devices }: { open: boolean; onClose: 
     setSaving(true)
     try {
       const { error } = await supabase
-        .from('zkteco_user_mapping')
+        .from('zkteco_user_mapping' as any)
         .upsert({
           zkteco_user_id,
           employee_id: Number(employee_id),
