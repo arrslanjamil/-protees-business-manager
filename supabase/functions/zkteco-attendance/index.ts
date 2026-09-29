@@ -103,12 +103,13 @@ serve(async (req) => {
     const date = new Date(payload.timestamp).toISOString().split("T")[0]
 
     // Get or create attendance record for the day
-    const { data: existing } = await supabase
+    const { data: existingRecords } = await supabase
       .from("attendance")
       .select("*")
       .eq("employee_id", employeeId)
       .eq("date", date)
-      .single()
+
+    const existing = existingRecords && existingRecords.length > 0 ? existingRecords[0] : null
 
     // Determine if this is check-in or check-out
     const isCheckIn = !payload.check_out && payload.check_in
