@@ -1,676 +1,2091 @@
-export type FactoryRole = 'admin' | 'cutting_head' | 'stitching_head' | 'quality_head' | 'store_manager'
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-/** Trigger-managed attribution columns present on every audited business
- * table. Never set by the client — always stamped server-side. */
-export interface AuditColumns {
-  created_by_user_id: string | null
-  created_by_username: string | null
-  updated_by_user_id: string | null
-  updated_by_username: string | null
-  updated_at: string | null
-}
-
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
-      employees: {
+      _diag_probe: {
         Row: {
-          id: number
-          name: string
-          salary: number
-          join_date: string | null
-          employee_type: 'monthly' | 'contract'
-          rate_per_piece: number | null
-          employee_group: 'regular' | 'unit'
-          is_active: boolean
-          starting_salary: number
-          employee_code: string | null
-          department: string | null
-          salary_date: number | null
-          machine_user_id: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
+          id: number | null
         }
         Insert: {
-          id?: number
-          name: string
-          salary: number
-          join_date?: string | null
-          employee_type?: 'monthly' | 'contract'
-          rate_per_piece?: number | null
-          employee_group?: 'regular' | 'unit'
-          is_active?: boolean
-          starting_salary?: number
-          employee_code?: string | null
-          department?: string | null
-          salary_date?: number | null
-          machine_user_id?: string | null
-          created_at?: string
+          id?: number | null
         }
-        Update: Partial<Database['public']['Tables']['employees']['Insert']>
-        Relationships: []
-      }
-      salary_increments: {
-        Row: {
-          id: number
-          employee_id: number
-          increment_date: string
-          previous_salary: number
-          increment_type: 'fixed' | 'percentage'
-          increment_value: number
-          increment_amount: number
-          increment_percentage: number | null
-          new_salary: number
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
+        Update: {
+          id?: number | null
         }
-        Insert: {
-          id?: number
-          employee_id: number
-          increment_date?: string
-          previous_salary: number
-          increment_type: 'fixed' | 'percentage'
-          increment_value: number
-          increment_amount: number
-          increment_percentage?: number | null
-          new_salary: number
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['salary_increments']['Insert']>
-        Relationships: []
-      }
-      supervisors: {
-        Row: {
-          id: number
-          name: string
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          name: string
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['supervisors']['Insert']>
-        Relationships: []
-      }
-      advances: {
-        Row: {
-          id: number
-          employee_name: string
-          department: 'cutting_department' | 'protees_unit'
-          amount: number
-          payment_date: string
-          notes: string | null
-          payment_method: string | null
-          reference_number: string | null
-          bank_account_id: number | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          employee_name: string
-          department: 'cutting_department' | 'protees_unit'
-          amount: number
-          payment_date?: string
-          notes?: string | null
-          payment_method?: string | null
-          reference_number?: string | null
-          bank_account_id?: number | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['advances']['Insert']>
-        Relationships: []
-      }
-      grand_advances: {
-        Row: {
-          id: number
-          employee_id: number
-          original_amount: number
-          outstanding_balance: number
-          total_recovered: number
-          monthly_recovery_amount: number | null
-          status: 'active' | 'completed'
-          issue_date: string
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          employee_id: number
-          original_amount: number
-          outstanding_balance?: number
-          total_recovered?: number
-          monthly_recovery_amount?: number | null
-          status?: 'active' | 'completed'
-          issue_date: string
-          notes?: string | null
-          created_at?: string
-          created_by_user_id?: string | null
-          created_by_username?: string | null
-        }
-        Update: Partial<Database['public']['Tables']['grand_advances']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'grand_advances_employee_id_fk'
-            columns: ['employee_id']
-            isOneToOne: false
-            referencedRelation: 'employees'
-            referencedColumns: ['id']
-          }
-        ]
-      }
-      grand_advance_recoveries: {
-        Row: {
-          id: number
-          grand_advance_id: number
-          recovery_amount: number
-          salary_payment_id: number | null
-          recovery_date: string
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-        }
-        Insert: {
-          id?: number
-          grand_advance_id: number
-          recovery_amount: number
-          salary_payment_id?: number | null
-          recovery_date: string
-          created_at?: string
-          created_by_user_id?: string | null
-          created_by_username?: string | null
-        }
-        Update: Partial<Database['public']['Tables']['grand_advance_recoveries']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'grand_advance_recoveries_grand_advance_id_fk'
-            columns: ['grand_advance_id']
-            isOneToOne: false
-            referencedRelation: 'grand_advances'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'grand_advance_recoveries_salary_payment_id_fk'
-            columns: ['salary_payment_id']
-            isOneToOne: false
-            referencedRelation: 'salary_payments'
-            referencedColumns: ['id']
-          }
-        ]
-      }
-      expenses: {
-        Row: {
-          id: number
-          title: string
-          category: string
-          amount: number
-          date: string
-          notes: string | null
-          expense_scope: 'business' | 'unit'
-          payment_source: 'cash' | 'online'
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          title: string
-          category: string
-          amount: number
-          date?: string
-          notes?: string | null
-          expense_scope?: 'business' | 'unit'
-          payment_source?: 'cash' | 'online'
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['expenses']['Insert']>
-        Relationships: []
-      }
-      expense_categories: {
-        Row: {
-          id: number
-          name: string
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          name: string
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['expense_categories']['Insert']>
-        Relationships: []
-      }
-      salary_payments: {
-        Row: {
-          id: number
-          employee_name: string
-          base_amount: number
-          overtime_amount: number
-          deduction_amount: number
-          net_amount: number
-          month: number
-          year: number
-          payment_date: string
-          notes: string | null
-          pieces_completed: number | null
-          rate_per_piece: number | null
-          payment_method: string | null
-          reference_number: string | null
-          overtime_hours: number | null
-          overtime_included: boolean
-          absent_deduction: number
-          late_deduction: number
-          leave_deduction: number
-          bank_account_id: number | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          employee_name: string
-          base_amount: number
-          overtime_amount?: number
-          deduction_amount?: number
-          net_amount: number
-          month: number
-          year: number
-          payment_date?: string
-          notes?: string | null
-          pieces_completed?: number | null
-          rate_per_piece?: number | null
-          payment_method?: string | null
-          reference_number?: string | null
-          overtime_hours?: number | null
-          overtime_included?: boolean
-          absent_deduction?: number
-          late_deduction?: number
-          leave_deduction?: number
-          bank_account_id?: number | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['salary_payments']['Insert']>
-        Relationships: []
-      }
-      attendance: {
-        Row: {
-          id: number
-          employee_id: number
-          date: string
-          check_in: string | null
-          check_out: string | null
-          status: 'present' | 'absent' | 'late' | 'half_day' | 'paid_leave' | 'unpaid_leave' | 'government_holiday'
-          leave_type: 'sick' | 'casual' | 'other' | null
-          working_hours: number | null
-          shortage_hours: number | null
-          late_minutes: number | null
-          early_leave_minutes: number | null
-          overtime_hours: number | null
-          source: 'machine' | 'manual'
-          machine_log_id: string | null
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          employee_id: number
-          date: string
-          check_in?: string | null
-          check_out?: string | null
-          status: 'present' | 'absent' | 'late' | 'half_day' | 'paid_leave' | 'unpaid_leave' | 'government_holiday'
-          leave_type?: 'sick' | 'casual' | 'other' | null
-          working_hours?: number | null
-          shortage_hours?: number | null
-          late_minutes?: number | null
-          early_leave_minutes?: number | null
-          overtime_hours?: number | null
-          source?: 'machine' | 'manual'
-          machine_log_id?: string | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['attendance']['Insert']>
-        Relationships: []
-      }
-      government_holidays: {
-        Row: {
-          id: number
-          date: string
-          name: string
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          date: string
-          name: string
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['government_holidays']['Insert']>
-        Relationships: []
-      }
-      attendance_settings: {
-        Row: {
-          id: number
-          standard_working_hours: number
-          break_minutes: number
-          standard_start_time: string
-          late_grace_minutes: number
-          late_penalty_per_instance: number
-          updated_at: string
-        }
-        Insert: {
-          id?: number
-          standard_working_hours?: number
-          break_minutes?: number
-          standard_start_time?: string
-          late_grace_minutes?: number
-          late_penalty_per_instance?: number
-          updated_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['attendance_settings']['Insert']>
-        Relationships: []
-      }
-      zkteco_devices: {
-        Row: {
-          id: number
-          name: string
-          ip_address: string
-          port: number
-          is_active: boolean
-          last_synced_at: string | null
-          last_sync_error: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          name: string
-          ip_address: string
-          port?: number
-          is_active?: boolean
-          last_synced_at?: string | null
-          last_sync_error?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['zkteco_devices']['Insert']>
-        Relationships: []
-      }
-      unit_payments: {
-        Row: {
-          id: number
-          supervisor_name: string
-          payment_date: string
-          period_start: string
-          period_end: string
-          total_amount: number
-          overtime_amount: number
-          advance_given: number
-          net_amount: number
-          unit_expenses_during_period: number
-          notes: string | null
-          month: number
-          year: number
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          supervisor_name: string
-          payment_date?: string
-          period_start: string
-          period_end: string
-          total_amount: number
-          overtime_amount?: number
-          advance_given?: number
-          net_amount: number
-          unit_expenses_during_period?: number
-          notes?: string | null
-          month: number
-          year: number
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['unit_payments']['Insert']>
         Relationships: []
       }
       advance_deductions: {
         Row: {
-          id: number
           advance_id: number | null
-          employee_name: string
-          department: 'cutting_department' | 'protees_unit'
-          salary_payment_id: number | null
-          unit_payment_id: number | null
           amount: number
-          date: string
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
+          date: string
+          department: string
+          employee_name: string
+          id: number
+          salary_payment_id: number | null
+          unit_payment_id: number | null
+          updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
-          updated_at: string | null
         }
         Insert: {
-          id?: number
           advance_id?: number | null
+          amount: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          department?: string
           employee_name: string
-          department: 'cutting_department' | 'protees_unit'
+          id?: number
           salary_payment_id?: number | null
           unit_payment_id?: number | null
-          amount: number
-          date?: string
-          created_at?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
         }
-        Update: Partial<Database['public']['Tables']['advance_deductions']['Insert']>
+        Update: {
+          advance_id?: number | null
+          amount?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          department?: string
+          employee_name?: string
+          id?: number
+          salary_payment_id?: number | null
+          unit_payment_id?: number | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
         Relationships: [
           {
-            foreignKeyName: 'advance_deductions_advance_id_fkey'
-            columns: ['advance_id']
-            referencedRelation: 'advances'
-            referencedColumns: ['id']
+            foreignKeyName: "advance_deductions_advance_id_fkey"
+            columns: ["advance_id"]
+            isOneToOne: false
+            referencedRelation: "advances"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'advance_deductions_salary_payment_id_fkey'
-            columns: ['salary_payment_id']
-            referencedRelation: 'salary_payments'
-            referencedColumns: ['id']
+            foreignKeyName: "advance_deductions_salary_payment_id_fkey"
+            columns: ["salary_payment_id"]
+            isOneToOne: false
+            referencedRelation: "salary_payments"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'advance_deductions_unit_payment_id_fkey'
-            columns: ['unit_payment_id']
-            referencedRelation: 'unit_payments'
-            referencedColumns: ['id']
+            foreignKeyName: "advance_deductions_unit_payment_id_fkey"
+            columns: ["unit_payment_id"]
+            isOneToOne: false
+            referencedRelation: "unit_payments"
+            referencedColumns: ["id"]
           },
         ]
       }
-      units: {
+      advances: {
         Row: {
-          id: number
-          name: string
-          location: string | null
-          created_at: string
+          amount: number | null
+          bank_account_id: number | null
+          created_at: string | null
           created_by_user_id: string | null
           created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          name: string
-          location?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['units']['Insert']>
-        Relationships: []
-      }
-      khadim_transactions: {
-        Row: {
+          department: string
+          employee_name: string | null
           id: number
-          type: 'payment_given' | 'bill_submitted'
-          date: string
-          amount: number
           notes: string | null
-          description: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
+          payment_date: string | null
+          payment_method: string | null
+          reference_number: string | null
+          updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
-          updated_at: string | null
         }
         Insert: {
-          id?: number
-          type: 'payment_given' | 'bill_submitted'
-          date?: string
-          amount: number
+          amount?: number | null
+          bank_account_id?: number | null
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          department?: string
+          employee_name?: string | null
+          id?: never
           notes?: string | null
-          description?: string | null
-          created_at?: string
+          payment_date?: string | null
+          payment_method?: string | null
+          reference_number?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
         }
-        Update: Partial<Database['public']['Tables']['khadim_transactions']['Insert']>
-        Relationships: []
+        Update: {
+          amount?: number | null
+          bank_account_id?: number | null
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          department?: string
+          employee_name?: string | null
+          id?: never
+          notes?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          reference_number?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advances_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       app_users: {
         Row: {
-          id: string
-          username: string
+          created_at: string
+          device_employee_id: string | null
           display_name: string
           email: string
-          created_at: string
+          id: string
+          username: string
         }
         Insert: {
-          id: string
-          username: string
+          created_at?: string
+          device_employee_id?: string | null
           display_name: string
           email: string
-          created_at?: string
+          id: string
+          username: string
         }
-        Update: Partial<Database['public']['Tables']['app_users']['Insert']>
+        Update: {
+          created_at?: string
+          device_employee_id?: string | null
+          display_name?: string
+          email?: string
+          id?: string
+          username?: string
+        }
         Relationships: []
+      }
+      attendance: {
+        Row: {
+          check_in: string | null
+          check_out: string | null
+          created_at: string | null
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string
+          device_employee_id: string | null
+          device_id: string | null
+          device_name: string | null
+          device_source: string | null
+          device_sync_time: string | null
+          early_leave_minutes: number | null
+          employee_id: number
+          id: number
+          late_minutes: number | null
+          leave_type: string | null
+          machine_log_id: string | null
+          notes: string | null
+          overtime_hours: number | null
+          shortage_hours: number | null
+          source: string
+          status: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          working_hours: number | null
+        }
+        Insert: {
+          check_in?: string | null
+          check_out?: string | null
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date: string
+          device_employee_id?: string | null
+          device_id?: string | null
+          device_name?: string | null
+          device_source?: string | null
+          device_sync_time?: string | null
+          early_leave_minutes?: number | null
+          employee_id: number
+          id?: never
+          late_minutes?: number | null
+          leave_type?: string | null
+          machine_log_id?: string | null
+          notes?: string | null
+          overtime_hours?: number | null
+          shortage_hours?: number | null
+          source?: string
+          status?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+          working_hours?: number | null
+        }
+        Update: {
+          check_in?: string | null
+          check_out?: string | null
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          device_employee_id?: string | null
+          device_id?: string | null
+          device_name?: string | null
+          device_source?: string | null
+          device_sync_time?: string | null
+          early_leave_minutes?: number | null
+          employee_id?: number
+          id?: never
+          late_minutes?: number | null
+          leave_type?: string | null
+          machine_log_id?: string | null
+          notes?: string | null
+          overtime_hours?: number | null
+          shortage_hours?: number | null
+          source?: string
+          status?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+          working_hours?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       audit_log: {
         Row: {
+          action: string
           id: number
-          table_name: string
-          record_id: string
-          action: 'create' | 'update' | 'delete'
+          new_data: Json | null
+          old_data: Json | null
+          performed_at: string
           performed_by: string | null
           performed_by_username: string | null
-          performed_at: string
-          old_data: Record<string, unknown> | null
-          new_data: Record<string, unknown> | null
-        }
-        // Written only by the stamp_and_log_audit() trigger (security
-        // definer) — the app never calls .insert()/.update() on this table,
-        // but Insert/Update still need real object shapes: a literal
-        // `never` here collapses every OTHER table's insert/update types to
-        // `never[]` too, since supabase-js infers them from the whole
-        // Database['public']['Tables'] union.
-        Insert: {
-          id?: number
-          table_name: string
           record_id: string
-          action: 'create' | 'update' | 'delete'
+          table_name: string
+        }
+        Insert: {
+          action: string
+          id?: number
+          new_data?: Json | null
+          old_data?: Json | null
+          performed_at?: string
           performed_by?: string | null
           performed_by_username?: string | null
-          performed_at?: string
-          old_data?: Record<string, unknown> | null
-          new_data?: Record<string, unknown> | null
+          record_id: string
+          table_name: string
         }
-        Update: Partial<Database['public']['Tables']['audit_log']['Insert']>
+        Update: {
+          action?: string
+          id?: number
+          new_data?: Json | null
+          old_data?: Json | null
+          performed_at?: string
+          performed_by?: string | null
+          performed_by_username?: string | null
+          record_id?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
+      bank_accounts: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          is_active: boolean
+          name: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      bank_transactions: {
+        Row: {
+          amount: number
+          bank_account_id: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string
+          id: number
+          notes: string | null
+          reference_id: number | null
+          reference_type: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          bank_account_id: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          reference_id?: number | null
+          reference_type?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          reference_id?: number | null
+          reference_type?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_settings: {
+        Row: {
+          id: number
+          opening_balance: number
+          opening_date: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          opening_balance?: number
+          opening_date?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          opening_balance?: number
+          opening_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cash_transactions: {
+        Row: {
+          amount: number
+          bank_account_id: number | null
+          category: string
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string
+          id: number
+          notes: string | null
+          reference_id: number | null
+          reference_type: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          bank_account_id?: number | null
+          category: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          reference_id?: number | null
+          reference_type?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: number | null
+          category?: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          reference_id?: number | null
+          reference_type?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_transactions_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_transfers: {
+        Row: {
+          amount: number
+          bank_account_id: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string
+          id: number
+          notes: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          bank_account_id: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_transfers_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      colors: {
+        Row: {
+          created_at: string
+          hex: string
+          id: number
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          hex?: string
+          id?: number
+          name: string
+        }
+        Update: {
+          created_at?: string
+          hex?: string
+          id?: number
+          name?: string
+        }
+        Relationships: []
+      }
+      courier_collections: {
+        Row: {
+          amount: number
+          courier_id: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          invoice_date: string
+          invoice_number: string | null
+          notes: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          courier_id: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          invoice_date?: string
+          invoice_number?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          courier_id?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          invoice_date?: string
+          invoice_number?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_collections_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courier_expected_collections: {
+        Row: {
+          amount: number
+          courier_id: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string
+          id: number
+          notes: string | null
+          order_reference: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          courier_id: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          order_reference?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          courier_id?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          order_reference?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_expected_collections_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courier_payments: {
+        Row: {
+          amount: number
+          bank_account_id: number | null
+          courier_id: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          notes: string | null
+          payment_date: string
+          payment_type: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          bank_account_id?: number | null
+          courier_id: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          notes?: string | null
+          payment_date?: string
+          payment_type: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: number | null
+          courier_id?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          notes?: string | null
+          payment_date?: string
+          payment_type?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_payments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_payments_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      couriers: {
+        Row: {
+          bank_account_id: number | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          is_active: boolean
+          name: string
+          payment_method: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          bank_account_id?: number | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name: string
+          payment_method?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          bank_account_id?: number | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name?: string
+          payment_method?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "couriers_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      creditor_bills: {
+        Row: {
+          amount: number
+          bill_date: string
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          creditor_id: number
+          description: string | null
+          id: number
+          invoice_path: string | null
+          notes: string | null
+          reference_number: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          bill_date?: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          creditor_id: number
+          description?: string | null
+          id?: number
+          invoice_path?: string | null
+          notes?: string | null
+          reference_number?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          bill_date?: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          creditor_id?: number
+          description?: string | null
+          id?: number
+          invoice_path?: string | null
+          notes?: string | null
+          reference_number?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "creditor_bills_creditor_id_fkey"
+            columns: ["creditor_id"]
+            isOneToOne: false
+            referencedRelation: "creditors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      creditor_payments: {
+        Row: {
+          amount: number
+          bank_account_id: number | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          creditor_id: number
+          id: number
+          notes: string | null
+          payment_date: string
+          payment_type: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          bank_account_id?: number | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          creditor_id: number
+          id?: number
+          notes?: string | null
+          payment_date?: string
+          payment_type: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: number | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          creditor_id?: number
+          id?: number
+          notes?: string | null
+          payment_date?: string
+          payment_type?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "creditor_payments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "creditor_payments_creditor_id_fkey"
+            columns: ["creditor_id"]
+            isOneToOne: false
+            referencedRelation: "creditors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      creditors: {
+        Row: {
+          address: string | null
+          category: string | null
+          contact_person: string | null
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          is_active: boolean
+          name: string
+          notes: string | null
+          opening_balance: number
+          phone: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          address?: string | null
+          category?: string | null
+          contact_person?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          opening_balance?: number
+          phone?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          address?: string | null
+          category?: string | null
+          contact_person?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          opening_balance?: number
+          phone?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
         Relationships: []
       }
       dashboard_layouts: {
         Row: {
+          updated_at: string
           user_id: string
           widget_order: string[]
-          updated_at: string
         }
         Insert: {
+          updated_at?: string
           user_id: string
           widget_order: string[]
-          updated_at?: string
         }
-        Update: Partial<Database['public']['Tables']['dashboard_layouts']['Insert']>
+        Update: {
+          updated_at?: string
+          user_id?: string
+          widget_order?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dashboard_layouts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          created_at: string | null
+          created_by_user_id: string | null
+          created_by_username: string | null
+          department: string | null
+          device_employee_id: string | null
+          employee_code: string | null
+          employee_group: string
+          employee_type: string
+          id: number
+          is_active: boolean
+          join_date: string | null
+          machine_user_id: string | null
+          name: string
+          rate_per_piece: number | null
+          salary: number | null
+          salary_date: number | null
+          starting_salary: number
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          department?: string | null
+          device_employee_id?: string | null
+          employee_code?: string | null
+          employee_group?: string
+          employee_type?: string
+          id?: never
+          is_active?: boolean
+          join_date?: string | null
+          machine_user_id?: string | null
+          name: string
+          rate_per_piece?: number | null
+          salary?: number | null
+          salary_date?: number | null
+          starting_salary?: number
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          department?: string | null
+          device_employee_id?: string | null
+          employee_code?: string | null
+          employee_group?: string
+          employee_type?: string
+          id?: never
+          is_active?: boolean
+          join_date?: string | null
+          machine_user_id?: string | null
+          name?: string
+          rate_per_piece?: number | null
+          salary?: number | null
+          salary_date?: number | null
+          starting_salary?: number
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
         Relationships: []
       }
-      zakat_transactions: {
+      expense_categories: {
         Row: {
-          id: number
-          recipient_name: string
-          amount: number
-          date: string
-          notes: string | null
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
+          id: number
+          name: string
+          updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          name: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          name?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number | null
+          category: string
+          created_at: string | null
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string | null
+          expense_scope: string
+          id: number
+          notes: string | null
+          payment_source: string
+          title: string
           updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount?: number | null
+          category?: string
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string | null
+          expense_scope?: string
+          id?: never
+          notes?: string | null
+          payment_source?: string
+          title: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number | null
+          category?: string
+          created_at?: string | null
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string | null
+          expense_scope?: string
+          id?: never
+          notes?: string | null
+          payment_source?: string
+          title?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      grand_advance_recoveries: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          grand_advance_id: number
+          id: number
+          recovery_amount: number
+          recovery_date: string
+          salary_payment_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          grand_advance_id: number
+          id?: number
+          recovery_amount: number
+          recovery_date: string
+          salary_payment_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          grand_advance_id?: number
+          id?: number
+          recovery_amount?: number
+          recovery_date?: string
+          salary_payment_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grand_advance_recoveries_grand_advance_id_fkey"
+            columns: ["grand_advance_id"]
+            isOneToOne: false
+            referencedRelation: "grand_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grand_advance_recoveries_salary_payment_id_fkey"
+            columns: ["salary_payment_id"]
+            isOneToOne: false
+            referencedRelation: "salary_payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grand_advances: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          employee_id: number
+          id: number
+          issue_date: string
+          monthly_recovery_amount: number | null
+          notes: string | null
+          original_amount: number
+          outstanding_balance: number
+          status: string
+          total_recovered: number
+          updated_at: string
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          employee_id: number
+          id?: number
+          issue_date: string
+          monthly_recovery_amount?: number | null
+          notes?: string | null
+          original_amount: number
+          outstanding_balance: number
+          status?: string
+          total_recovered?: number
+          updated_at?: string
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          employee_id?: number
+          id?: number
+          issue_date?: string
+          monthly_recovery_amount?: number | null
+          notes?: string | null
+          original_amount?: number
+          outstanding_balance?: number
+          status?: string
+          total_recovered?: number
+          updated_at?: string
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grand_advances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      khadim_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          date: string
+          description: string | null
+          id: number
+          notes: string | null
+          type: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          description?: string | null
+          id?: number
+          notes?: string | null
+          type: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          description?: string | null
+          id?: number
+          notes?: string | null
+          type?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      master_data_items: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          is_active: boolean
+          name: string
+          sort_order: number
+          type_key: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          type_key: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          type_key?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "master_data_items_type_key_fkey"
+            columns: ["type_key"]
+            isOneToOne: false
+            referencedRelation: "master_data_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      master_data_types: {
+        Row: {
+          created_at: string
+          key: string
+          label: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          label: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          label?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      product_colors: {
+        Row: {
+          color_id: number
+          product_id: number
+        }
+        Insert: {
+          color_id: number
+          product_id: number
+        }
+        Update: {
+          color_id?: number
+          product_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_colors_color_id_fkey"
+            columns: ["color_id"]
+            isOneToOne: false
+            referencedRelation: "colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_colors_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_operation_rates: {
+        Row: {
+          created_at: string
+          effective_from: string
+          id: number
+          product_operation_id: number
+          rate: number
+        }
+        Insert: {
+          created_at?: string
+          effective_from?: string
+          id?: number
+          product_operation_id: number
+          rate: number
+        }
+        Update: {
+          created_at?: string
+          effective_from?: string
+          id?: number
+          product_operation_id?: number
+          rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_operation_rates_product_operation_id_fkey"
+            columns: ["product_operation_id"]
+            isOneToOne: false
+            referencedRelation: "product_operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_operations: {
+        Row: {
+          created_at: string
+          department_label: string
+          id: number
+          is_active: boolean
+          operation_name: string
+          product_id: number
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          department_label: string
+          id?: number
+          is_active?: boolean
+          operation_name: string
+          product_id: number
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          department_label?: string
+          id?: number
+          is_active?: boolean
+          operation_name?: string
+          product_id?: number
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_operations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_sizes: {
+        Row: {
+          created_at: string
+          id: number
+          product_id: number
+          size_label: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          product_id: number
+          size_label: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          product_id?: number
+          size_label?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_sizes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_plan_sizes: {
+        Row: {
+          id: number
+          planned_qty: number
+          production_plan_id: number
+          size_label: string
         }
         Insert: {
           id?: number
-          recipient_name: string
-          amount: number
-          date?: string
-          notes?: string | null
-          created_at?: string
+          planned_qty: number
+          production_plan_id: number
+          size_label: string
         }
-        Update: Partial<Database['public']['Tables']['zakat_transactions']['Insert']>
+        Update: {
+          id?: number
+          planned_qty?: number
+          production_plan_id?: number
+          size_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_plan_sizes_production_plan_id_fkey"
+            columns: ["production_plan_id"]
+            isOneToOne: false
+            referencedRelation: "production_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_plans: {
+        Row: {
+          color_id: number | null
+          created_at: string
+          created_by: string | null
+          expected_completion_date: string | null
+          id: number
+          plan_date: string
+          product_id: number
+          production_type: string
+          remarks: string | null
+          status: string
+        }
+        Insert: {
+          color_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          expected_completion_date?: string | null
+          id?: number
+          plan_date?: string
+          product_id: number
+          production_type?: string
+          remarks?: string | null
+          status?: string
+        }
+        Update: {
+          color_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          expected_completion_date?: string | null
+          id?: number
+          plan_date?: string
+          product_id?: number
+          production_type?: string
+          remarks?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_plans_color_id_fkey"
+            columns: ["color_id"]
+            isOneToOne: false
+            referencedRelation: "colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_plans_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          created_at: string
+          id: number
+          is_active: boolean
+          name: string
+          picture_url: string | null
+          production_type: string
+          size_group: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          is_active?: boolean
+          name: string
+          picture_url?: string | null
+          production_type?: string
+          size_group?: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          is_active?: boolean
+          name?: string
+          picture_url?: string | null
+          production_type?: string
+          size_group?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          role: string | null
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name: string
+          role?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          role?: string | null
+        }
+        Relationships: []
+      }
+      salary_increments: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          employee_id: number
+          id: number
+          increment_amount: number
+          increment_date: string
+          increment_percentage: number | null
+          increment_type: string
+          increment_value: number
+          new_salary: number
+          notes: string | null
+          previous_salary: number
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          employee_id: number
+          id?: number
+          increment_amount: number
+          increment_date?: string
+          increment_percentage?: number | null
+          increment_type: string
+          increment_value: number
+          new_salary: number
+          notes?: string | null
+          previous_salary: number
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          employee_id?: number
+          id?: number
+          increment_amount?: number
+          increment_date?: string
+          increment_percentage?: number | null
+          increment_type?: string
+          increment_value?: number
+          new_salary?: number
+          notes?: string | null
+          previous_salary?: number
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_increments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_payments: {
+        Row: {
+          absent_deduction: number
+          bank_account_id: number | null
+          base_amount: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          deduction_amount: number
+          employee_name: string
+          id: number
+          late_deduction: number
+          leave_deduction: number
+          month: number
+          net_amount: number
+          notes: string | null
+          overtime_amount: number
+          overtime_hours: number | null
+          overtime_included: boolean
+          payment_date: string
+          payment_method: string | null
+          pieces_completed: number | null
+          rate_per_piece: number | null
+          reference_number: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          year: number
+        }
+        Insert: {
+          absent_deduction?: number
+          bank_account_id?: number | null
+          base_amount: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          deduction_amount?: number
+          employee_name: string
+          id?: number
+          late_deduction?: number
+          leave_deduction?: number
+          month: number
+          net_amount: number
+          notes?: string | null
+          overtime_amount?: number
+          overtime_hours?: number | null
+          overtime_included?: boolean
+          payment_date?: string
+          payment_method?: string | null
+          pieces_completed?: number | null
+          rate_per_piece?: number | null
+          reference_number?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+          year: number
+        }
+        Update: {
+          absent_deduction?: number
+          bank_account_id?: number | null
+          base_amount?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          deduction_amount?: number
+          employee_name?: string
+          id?: number
+          late_deduction?: number
+          leave_deduction?: number
+          month?: number
+          net_amount?: number
+          notes?: string | null
+          overtime_amount?: number
+          overtime_hours?: number | null
+          overtime_included?: boolean
+          payment_date?: string
+          payment_method?: string | null
+          pieces_completed?: number | null
+          rate_per_piece?: number | null
+          reference_number?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_payments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shopify_orders: {
+        Row: {
+          customer_city: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          financial_status: string
+          id: number
+          imported_at: string
+          order_date: string
+          order_number: string
+          payment_method: string | null
+          shopify_order_id: string
+          shopify_transaction_id: string | null
+          store_key: string | null
+          total_amount: number
+        }
+        Insert: {
+          customer_city?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          financial_status: string
+          id?: number
+          imported_at?: string
+          order_date: string
+          order_number: string
+          payment_method?: string | null
+          shopify_order_id: string
+          shopify_transaction_id?: string | null
+          store_key?: string | null
+          total_amount: number
+        }
+        Update: {
+          customer_city?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          financial_status?: string
+          id?: number
+          imported_at?: string
+          order_date?: string
+          order_number?: string
+          payment_method?: string | null
+          shopify_order_id?: string
+          shopify_transaction_id?: string | null
+          store_key?: string | null
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopify_orders_store_key_fkey"
+            columns: ["store_key"]
+            isOneToOne: false
+            referencedRelation: "shopify_stores"
+            referencedColumns: ["store_key"]
+          },
+        ]
+      }
+      shopify_settings: {
+        Row: {
+          id: number
+          last_synced_at: string | null
+          store_domain: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          last_synced_at?: string | null
+          store_domain?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          last_synced_at?: string | null
+          store_domain?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shopify_stores: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          display_name: string
+          id: number
+          is_connected: boolean
+          last_sync_error: string | null
+          last_synced_at: string | null
+          store_domain: string | null
+          store_key: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          display_name: string
+          id?: number
+          is_connected?: boolean
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          store_domain?: string | null
+          store_key: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          display_name?: string
+          id?: number
+          is_connected?: boolean
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          store_domain?: string | null
+          store_key?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      supervisors: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          name: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          name: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          name?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      unit_payments: {
+        Row: {
+          advance_given: number
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          month: number
+          net_amount: number
+          notes: string | null
+          overtime_amount: number
+          payment_date: string
+          period_end: string
+          period_start: string
+          supervisor_name: string
+          total_amount: number
+          unit_expenses_during_period: number
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+          year: number
+        }
+        Insert: {
+          advance_given?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          month: number
+          net_amount?: number
+          notes?: string | null
+          overtime_amount?: number
+          payment_date?: string
+          period_end: string
+          period_start: string
+          supervisor_name: string
+          total_amount?: number
+          unit_expenses_during_period?: number
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+          year: number
+        }
+        Update: {
+          advance_given?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          month?: number
+          net_amount?: number
+          notes?: string | null
+          overtime_amount?: number
+          payment_date?: string
+          period_end?: string
+          period_start?: string
+          supervisor_name?: string
+          total_amount?: number
+          unit_expenses_during_period?: number
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+          year?: number
+        }
+        Relationships: []
+      }
+      units: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          id: number
+          location: string | null
+          name: string
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          location?: string | null
+          name: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          id?: number
+          location?: string | null
+          name?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      unmapped_attendance: {
+        Row: {
+          check_in: string | null
+          check_out: string | null
+          created_at: string | null
+          device_employee_id: string
+          device_id: string | null
+          device_name: string | null
+          id: number
+          raw_payload: Json | null
+          source_ip: string | null
+          status: string | null
+          sync_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          check_in?: string | null
+          check_out?: string | null
+          created_at?: string | null
+          device_employee_id: string
+          device_id?: string | null
+          device_name?: string | null
+          id?: never
+          raw_payload?: Json | null
+          source_ip?: string | null
+          status?: string | null
+          sync_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          check_in?: string | null
+          check_out?: string | null
+          created_at?: string | null
+          device_employee_id?: string
+          device_id?: string | null
+          device_name?: string | null
+          id?: never
+          raw_payload?: Json | null
+          source_ip?: string | null
+          status?: string | null
+          sync_time?: string
+          updated_at?: string | null
+        }
         Relationships: []
       }
       zakat_settings: {
@@ -688,644 +2103,384 @@ export interface Database {
           opening_month?: string
           updated_at?: string
         }
-        Update: Partial<Database['public']['Tables']['zakat_settings']['Insert']>
-        Relationships: []
-      }
-      couriers: {
-        Row: {
-          id: number
-          name: string
-          is_active: boolean
-          payment_method: 'cash' | 'bank_transfer'
-          bank_account_id: number | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
+        Update: {
           id?: number
-          name: string
-          is_active?: boolean
-          payment_method?: 'cash' | 'bank_transfer'
-          bank_account_id?: number | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['couriers']['Insert']>
-        Relationships: []
-      }
-      courier_collections: {
-        Row: {
-          id: number
-          courier_id: number
-          invoice_number: string | null
-          invoice_date: string
-          amount: number
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          courier_id: number
-          invoice_number?: string | null
-          invoice_date?: string
-          amount: number
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['courier_collections']['Insert']>
-        Relationships: []
-      }
-      cash_transfers: {
-        Row: {
-          id: number
-          bank_account_id: number
-          amount: number
-          date: string
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          bank_account_id: number
-          amount: number
-          date?: string
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['cash_transfers']['Insert']>
-        Relationships: []
-      }
-      bank_accounts: {
-        Row: {
-          id: number
-          name: string
-          is_active: boolean
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          name: string
-          is_active?: boolean
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['bank_accounts']['Insert']>
-        Relationships: []
-      }
-      bank_transactions: {
-        Row: {
-          id: number
-          bank_account_id: number
-          type: 'credit' | 'debit'
-          amount: number
-          date: string
-          reference_type: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'salary_payment' | null
-          reference_id: number | null
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-        }
-        Insert: {
-          id?: number
-          bank_account_id: number
-          type: 'credit' | 'debit'
-          amount: number
-          date?: string
-          reference_type?: 'courier_payment' | 'cash_withdrawal' | 'manual' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'salary_payment' | null
-          reference_id?: number | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['bank_transactions']['Insert']>
-        Relationships: []
-      }
-      cash_transactions: {
-        Row: {
-          id: number
-          type: 'cash_in' | 'cash_out'
-          category: string
-          amount: number
-          date: string
-          reference_type: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'advance' | 'salary_payment' | null
-          reference_id: number | null
-          bank_account_id: number | null
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-        }
-        Insert: {
-          id?: number
-          type: 'cash_in' | 'cash_out'
-          category: string
-          amount: number
-          date?: string
-          reference_type?: 'courier_payment' | 'bank_withdrawal' | 'expense' | 'other' | 'courier_collection' | 'cash_transfer' | 'creditor_payment' | 'advance' | 'salary_payment' | null
-          reference_id?: number | null
-          bank_account_id?: number | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['cash_transactions']['Insert']>
-        Relationships: []
-      }
-      cash_settings: {
-        Row: {
-          id: number
-          opening_balance: number
-          opening_date: string
-          updated_at: string
-        }
-        Insert: {
-          id?: number
+          monthly_budget?: number
           opening_balance?: number
-          opening_date?: string
+          opening_month?: string
           updated_at?: string
         }
-        Update: Partial<Database['public']['Tables']['cash_settings']['Insert']>
         Relationships: []
       }
-      shopify_orders: {
+      zakat_transactions: {
         Row: {
-          id: number
-          shopify_order_id: string
-          shopify_transaction_id: string | null
-          order_number: string
-          order_date: string
-          customer_name: string | null
-          customer_phone: string | null
-          customer_city: string | null
-          total_amount: number
-          payment_method: string | null
-          financial_status: string
-          store_key: string | null
-          imported_at: string
-        }
-        Insert: {
-          id?: number
-          shopify_order_id: string
-          shopify_transaction_id?: string | null
-          order_number: string
-          order_date: string
-          customer_name?: string | null
-          customer_phone?: string | null
-          customer_city?: string | null
-          total_amount: number
-          payment_method?: string | null
-          financial_status: string
-          store_key?: string | null
-          imported_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['shopify_orders']['Insert']>
-        Relationships: []
-      }
-      shopify_settings: {
-        Row: {
-          id: number
-          store_domain: string | null
-          last_synced_at: string | null
-          updated_at: string
-        }
-        Insert: {
-          id?: number
-          store_domain?: string | null
-          last_synced_at?: string | null
-          updated_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['shopify_settings']['Insert']>
-        Relationships: []
-      }
-      shopify_stores: {
-        Row: {
-          id: number
-          store_key: string
-          display_name: string
-          store_domain: string | null
-          is_connected: boolean
-          last_synced_at: string | null
-          last_sync_error: string | null
+          amount: number
           created_at: string
           created_by_user_id: string | null
           created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          store_key: string
-          display_name: string
-          store_domain?: string | null
-          is_connected?: boolean
-          last_synced_at?: string | null
-          last_sync_error?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['shopify_stores']['Insert']>
-        Relationships: []
-      }
-      master_data_types: {
-        Row: {
-          key: string
-          label: string
-          sort_order: number
-          created_at: string
-        }
-        Insert: {
-          key: string
-          label: string
-          sort_order?: number
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['master_data_types']['Insert']>
-        Relationships: []
-      }
-      master_data_items: {
-        Row: {
+          date: string
           id: number
-          type_key: string
-          name: string
-          is_active: boolean
-          sort_order: number
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          type_key: string
-          name: string
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['master_data_items']['Insert']>
-        Relationships: []
-      }
-      creditors: {
-        Row: {
-          id: number
-          name: string
-          category: string | null
-          contact_person: string | null
-          phone: string | null
-          address: string | null
           notes: string | null
-          opening_balance: number
-          is_active: boolean
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
+          recipient_name: string
+          updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          recipient_name: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          date?: string
+          id?: number
+          notes?: string | null
+          recipient_name?: string
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: []
+      }
+      zkteco_devices: {
+        Row: {
+          created_at: string | null
+          device_id: string
+          device_model: string | null
+          device_name: string
+          id: number
+          ip_address: string | null
+          is_online: boolean | null
+          last_sync: string | null
+          location: string | null
+          port: number | null
           updated_at: string | null
         }
         Insert: {
-          id?: number
-          name: string
-          category?: string | null
-          contact_person?: string | null
-          phone?: string | null
-          address?: string | null
-          notes?: string | null
-          opening_balance?: number
-          is_active?: boolean
-          created_at?: string
+          created_at?: string | null
+          device_id: string
+          device_model?: string | null
+          device_name: string
+          id?: never
+          ip_address?: string | null
+          is_online?: boolean | null
+          last_sync?: string | null
+          location?: string | null
+          port?: number | null
+          updated_at?: string | null
         }
-        Update: Partial<Database['public']['Tables']['creditors']['Insert']>
+        Update: {
+          created_at?: string | null
+          device_id?: string
+          device_model?: string | null
+          device_name?: string
+          id?: never
+          ip_address?: string | null
+          is_online?: boolean | null
+          last_sync?: string | null
+          location?: string | null
+          port?: number | null
+          updated_at?: string | null
+        }
         Relationships: []
       }
-      creditor_bills: {
+      zkteco_request_logs: {
         Row: {
+          body: string | null
+          created_at: string | null
+          headers: Json | null
           id: number
-          creditor_id: number
-          bill_date: string
-          amount: number
-          description: string | null
-          reference_number: string | null
-          notes: string | null
-          invoice_path: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
+          method: string | null
+          path: string | null
+          query_params: Json | null
+          source_ip: string | null
+          timestamp: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          headers?: Json | null
+          id?: never
+          method?: string | null
+          path?: string | null
+          query_params?: Json | null
+          source_ip?: string | null
+          timestamp?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          headers?: Json | null
+          id?: never
+          method?: string | null
+          path?: string | null
+          query_params?: Json | null
+          source_ip?: string | null
+          timestamp?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
+      zkteco_sync_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          device_id: string
+          employee_id: string
+          error_message: string | null
+          id: number
+          status: string | null
+          timestamp: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          device_id: string
+          employee_id: string
+          error_message?: string | null
+          id?: never
+          status?: string | null
+          timestamp: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          device_id?: string
+          employee_id?: string
+          error_message?: string | null
+          id?: never
+          status?: string | null
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_device"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "zkteco_devices"
+            referencedColumns: ["device_id"]
+          },
+        ]
+      }
+      zkteco_user_mapping: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          enrollment_status: string | null
+          id: number
           updated_at: string | null
+          zkteco_card_id: string | null
+          zkteco_user_id: string
+          zkteco_username: string | null
         }
         Insert: {
-          id?: number
-          creditor_id: number
-          bill_date?: string
-          amount: number
-          description?: string | null
-          reference_number?: string | null
-          notes?: string | null
-          invoice_path?: string | null
-          created_at?: string
+          created_at?: string | null
+          employee_id: string
+          enrollment_status?: string | null
+          id?: never
+          updated_at?: string | null
+          zkteco_card_id?: string | null
+          zkteco_user_id: string
+          zkteco_username?: string | null
         }
-        Update: Partial<Database['public']['Tables']['creditor_bills']['Insert']>
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          enrollment_status?: string | null
+          id?: never
+          updated_at?: string | null
+          zkteco_card_id?: string | null
+          zkteco_user_id?: string
+          zkteco_username?: string | null
+        }
         Relationships: []
-      }
-      creditor_payments: {
-        Row: {
-          id: number
-          creditor_id: number
-          amount: number
-          payment_date: string
-          payment_type: 'cash' | 'bank_transfer'
-          bank_account_id: number | null
-          notes: string | null
-          created_at: string
-          created_by_user_id: string | null
-          created_by_username: string | null
-          updated_by_user_id: string | null
-          updated_by_username: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          creditor_id: number
-          amount: number
-          payment_date?: string
-          payment_type: 'cash' | 'bank_transfer'
-          bank_account_id?: number | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['creditor_payments']['Insert']>
-        Relationships: []
-      }
-      profiles: {
-        Row: {
-          id: string
-          name: string
-          role: FactoryRole | null
-          created_at: string
-        }
-        Insert: {
-          id: string
-          name: string
-          role?: FactoryRole | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['profiles']['Insert']>
-        Relationships: []
-      }
-      colors: {
-        Row: {
-          id: number
-          name: string
-          hex: string
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          name: string
-          hex?: string
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['colors']['Insert']>
-        Relationships: []
-      }
-      products: {
-        Row: {
-          id: number
-          name: string
-          picture_url: string | null
-          production_type: 'normal' | 'digital_print'
-          size_group: 'adult' | 'kids'
-          is_active: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          name: string
-          picture_url?: string | null
-          production_type?: 'normal' | 'digital_print'
-          size_group?: 'adult' | 'kids'
-          is_active?: boolean
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['products']['Insert']>
-        Relationships: []
-      }
-      product_sizes: {
-        Row: {
-          id: number
-          product_id: number
-          size_label: string
-          sort_order: number
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          product_id: number
-          size_label: string
-          sort_order?: number
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['product_sizes']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'product_sizes_product_id_fkey'
-            columns: ['product_id']
-            referencedRelation: 'products'
-            referencedColumns: ['id']
-          },
-        ]
-      }
-      product_colors: {
-        Row: {
-          product_id: number
-          color_id: number
-        }
-        Insert: {
-          product_id: number
-          color_id: number
-        }
-        Update: Partial<Database['public']['Tables']['product_colors']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'product_colors_product_id_fkey'
-            columns: ['product_id']
-            referencedRelation: 'products'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'product_colors_color_id_fkey'
-            columns: ['color_id']
-            referencedRelation: 'colors'
-            referencedColumns: ['id']
-          },
-        ]
-      }
-      product_operations: {
-        Row: {
-          id: number
-          product_id: number
-          department_label: string
-          operation_name: string
-          sort_order: number
-          is_active: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          product_id: number
-          department_label: string
-          operation_name: string
-          sort_order?: number
-          is_active?: boolean
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['product_operations']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'product_operations_product_id_fkey'
-            columns: ['product_id']
-            referencedRelation: 'products'
-            referencedColumns: ['id']
-          },
-        ]
-      }
-      product_operation_rates: {
-        Row: {
-          id: number
-          product_operation_id: number
-          rate: number
-          effective_from: string
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          product_operation_id: number
-          rate: number
-          effective_from?: string
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['product_operation_rates']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'product_operation_rates_product_operation_id_fkey'
-            columns: ['product_operation_id']
-            referencedRelation: 'product_operations'
-            referencedColumns: ['id']
-          },
-        ]
-      }
-      production_plans: {
-        Row: {
-          id: number
-          product_id: number
-          color_id: number | null
-          production_type: 'normal' | 'digital_print'
-          plan_date: string
-          expected_completion_date: string | null
-          remarks: string | null
-          status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-          created_by: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          product_id: number
-          color_id?: number | null
-          production_type?: 'normal' | 'digital_print'
-          plan_date?: string
-          expected_completion_date?: string | null
-          remarks?: string | null
-          status?: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-          created_by?: string | null
-          created_at?: string
-        }
-        Update: Partial<Database['public']['Tables']['production_plans']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'production_plans_product_id_fkey'
-            columns: ['product_id']
-            referencedRelation: 'products'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'production_plans_color_id_fkey'
-            columns: ['color_id']
-            referencedRelation: 'colors'
-            referencedColumns: ['id']
-          },
-        ]
-      }
-      production_plan_sizes: {
-        Row: {
-          id: number
-          production_plan_id: number
-          size_label: string
-          planned_qty: number
-        }
-        Insert: {
-          id?: number
-          production_plan_id: number
-          size_label: string
-          planned_qty: number
-        }
-        Update: Partial<Database['public']['Tables']['production_plan_sizes']['Insert']>
-        Relationships: [
-          {
-            foreignKeyName: 'production_plan_sizes_production_plan_id_fkey'
-            columns: ['production_plan_id']
-            referencedRelation: 'production_plans'
-            referencedColumns: ['id']
-          },
-        ]
       }
     }
     Views: {
       advance_balance_by_name: {
         Row: {
-          name: string
-          department: 'cutting_department' | 'protees_unit'
-          total_advanced: number
-          total_deducted: number
-          balance: number
+          balance: number | null
+          department: string | null
+          name: string | null
+          total_advanced: number | null
+          total_deducted: number | null
+        }
+        Relationships: []
+      }
+      employee_advance_balance: {
+        Row: {
+          balance: number | null
+          employee_name: string | null
+          total_advanced: number | null
+          total_deducted: number | null
         }
         Relationships: []
       }
       product_operation_current_rates: {
         Row: {
-          product_operation_id: number
-          rate: number
-          effective_from: string
+          effective_from: string | null
+          product_operation_id: number | null
+          rate: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "product_operation_rates_product_operation_id_fkey"
+            columns: ["product_operation_id"]
+            isOneToOne: false
+            referencedRelation: "product_operations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
-      resolve_login_email: {
-        Args: { p_username: string }
-        Returns: string
-      }
+      current_app_username: { Args: never; Returns: string }
+      factory_role: { Args: never; Returns: string }
+      is_app_user: { Args: never; Returns: boolean }
+      resolve_login_email: { Args: { p_username: string }; Returns: string }
     }
-    Enums: Record<string, never>
-    CompositeTypes: Record<string, never>
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
