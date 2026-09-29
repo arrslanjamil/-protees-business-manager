@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
   Wallet,
+  Wifi,
   Zap,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
@@ -35,6 +36,8 @@ const NAV_ITEMS = [
   { to: '/reports', label: 'Reports', icon: FileBarChart },
   { to: '/activity-log', label: 'Activity Log', icon: History },
   { to: '/factory', label: 'Factory', icon: Factory },
+  { to: '/device-integration', label: 'Device Integration', icon: Wifi },
+  { to: '/device-diagnostics', label: 'Device Diagnostics', icon: Wifi },
   { to: '/settings', label: 'Master Data', icon: Settings },
 ]
 

@@ -27,6 +27,8 @@ import { MasterDataPage } from '@/pages/MasterDataPage'
 import { AttendanceDashboardPage } from '@/pages/AttendanceDashboardPage'
 import { AttendancePage } from '@/pages/AttendancePage'
 import { AttendanceSettingsPage } from '@/pages/AttendanceSettingsPage'
+import { ZKTecodiagnosticsPage } from '@/pages/ZKTecodiagnosticsPage'
+import { DeviceIntegrationPage } from '@/pages/DeviceIntegrationPage'
 import { FactoryAuthProvider } from '@/context/FactoryAuthContext'
 import { FactoryRoot } from '@/pages/factory/FactoryRoot'
 import { FactoryDashboardPage } from '@/pages/factory/FactoryDashboardPage'
@@ -65,6 +67,8 @@ export default function App() {
                           <Route path="/attendance" element={<AttendanceDashboardPage />} />
                           <Route path="/attendance/records" element={<AttendancePage />} />
                           <Route path="/attendance/settings" element={<AttendanceSettingsPage />} />
+                          <Route path="/device-integration" element={<DeviceIntegrationPage />} />
+                          <Route path="/device-diagnostics" element={<ZKTecodiagnosticsPage />} />
                           <Route path="/reports" element={<ReportsPage />} />
                           <Route path="/units" element={<UnitsPage />} />
                           <Route path="/activity-log" element={<ActivityLogPage />} />
