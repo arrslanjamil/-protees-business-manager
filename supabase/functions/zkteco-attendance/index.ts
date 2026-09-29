@@ -47,7 +47,7 @@ serve(async (req) => {
     // Strategy 1: Match by device_employee_id (direct SenseFace mapping)
     if (payload.device_employee_id) {
       const { data: employee } = await supabase
-        .from("app_users")
+        .from("employees")
         .select("id")
         .eq("device_employee_id", payload.device_employee_id)
         .single()
