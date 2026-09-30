@@ -1,0 +1,5 @@
+[env.local]
+enabled = true
+
+[functions."zkteco-attendance"]
+verify_jwt = false

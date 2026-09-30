@@ -85,6 +85,16 @@ serve(async (req) => {
       )
     }
 
+    // Whitelist: only accept known devices
+    const ALLOWED_DEVICES = ["zkteco-001", "zkteco-senseface", "1"]
+    if (!ALLOWED_DEVICES.includes(String(payload.device_id).toLowerCase())) {
+      console.error(`Rejected unknown device: ${payload.device_id}`)
+      return new Response(
+        JSON.stringify({ error: `Unknown device: ${payload.device_id}` }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    }
+
     // Business-local day of this punch. Computed before the mapping branches
     // because the unmapped fallback needs it too.
     const date = businessDate(payload.timestamp)
