@@ -1,13 +1,8 @@
 {
-  "crons": [
+  "rewrites": [
     {
-      "path": "/api/shopify-sync",
-      "schedule": "0 6 * * *"
+      "source": "/((?!_next/static|_next/image|favicon.ico).*)",
+      "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "api/shopify-sync.ts": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
