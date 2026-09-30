@@ -96,7 +96,7 @@ interface CollectionDrillRow {
 
 export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
-  const { shopifyOrders, shopifyStores, courierCollections, couriers, cashBalance, bankAccountsWithBalance } = useCollections()
+  const { shopifyOrders, shopifyStores, courierCollections, couriers, cashBalance, bankAccountsWithBalance, creditors, creditorPayments } = useCollections()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('today')
@@ -139,6 +139,10 @@ export function DashboardPage() {
   const periodCourierCollectionsRows = useMemo(
     () => courierCollections.filter((c) => isWithinRange(c.invoice_date, start, end)),
     [courierCollections, start, end]
+  )
+  const periodCreditorPaymentsRows = useMemo(
+    () => creditorPayments.filter((p) => isWithinRange(p.payment_date, start, end)),
+    [creditorPayments, start, end]
   )
 
   // Total Expenses is business-only — Unit Expenses are excluded and get
@@ -195,11 +199,19 @@ export function DashboardPage() {
   // Khadim Sahib — derived from expense records, no dedicated table.
   const khadimExpenseTotal = periodKhadimRows.reduce((s, e) => s + Number(e.amount), 0)
 
+  // Paying a creditor is real money leaving the business, and it is NOT an
+  // expense record — addCreditorPayment writes creditor_payments plus a cash
+  // or bank debit, while the bill that created the debt only ever lands in
+  // creditor_bills. So this adds to Total Money Out without double-counting
+  // anything already inside Total Expenses / Unit Expenses.
+  const periodCreditorPaid = periodCreditorPaymentsRows.reduce((s, p) => s + Number(p.amount), 0)
+
   // Total Money Out — every distinct money-out category combined into one
   // figure, so nothing needs to be mentally added up across cards. Khadim
   // is a subset of Total Expenses/Unit Expenses (derived from the same
   // expense records), so it is not added again.
-  const totalMoneyOut = totalExpenses + unitExpensesTotal + salaryPaid + periodAdvancesGiven + periodZakatDistributed
+  const totalMoneyOut =
+    totalExpenses + unitExpensesTotal + salaryPaid + periodAdvancesGiven + periodZakatDistributed + periodCreditorPaid
 
   // --- Collections (Shopify + Courier) — period-scoped, same treatment as
   // Total Advance Given / Zakat Distributed above.
@@ -408,6 +420,21 @@ export function DashboardPage() {
     [periodZakatRows]
   )
 
+  const creditorNameById = useMemo(() => new Map(creditors.map((c) => [c.id, c.name])), [creditors])
+
+  const creditorPaymentsDrillRows = useMemo<LedgerDrillRow[]>(
+    () =>
+      periodCreditorPaymentsRows.map((p) => ({
+        id: `crp-${p.id}`,
+        date: p.payment_date,
+        type: p.payment_type === 'bank_transfer' ? 'Creditor (Bank)' : 'Creditor (Cash)',
+        name: creditorNameById.get(p.creditor_id) ?? '—',
+        amount: Number(p.amount),
+        notes: p.notes ?? '',
+      })),
+    [periodCreditorPaymentsRows, creditorNameById]
+  )
+
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
   const shopifyStoreNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
   const collectionDrillRows = useMemo<CollectionDrillRow[]>(
@@ -433,10 +460,15 @@ export function DashboardPage() {
 
   const totalMoneyOutRows = useMemo<LedgerDrillRow[]>(
     () =>
-      [...salaryPaidDrillRows, ...advancesGivenDrillRows, ...totalExpensesDrillRows, ...unitExpensesDrillRows, ...zakatDrillRows].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      ),
-    [salaryPaidDrillRows, advancesGivenDrillRows, totalExpensesDrillRows, unitExpensesDrillRows, zakatDrillRows]
+      [
+        ...salaryPaidDrillRows,
+        ...advancesGivenDrillRows,
+        ...totalExpensesDrillRows,
+        ...unitExpensesDrillRows,
+        ...zakatDrillRows,
+        ...creditorPaymentsDrillRows,
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [salaryPaidDrillRows, advancesGivenDrillRows, totalExpensesDrillRows, unitExpensesDrillRows, zakatDrillRows, creditorPaymentsDrillRows]
   )
 
   // =========================================================================
@@ -489,7 +521,7 @@ export function DashboardPage() {
             fullValue={formatCurrency(totalMoneyOut)}
             icon={Wallet}
             accent="red"
-            hint="Expenses + Salary + Advances + Zakat · Selected period"
+            hint="Expenses + Salary + Advances + Zakat + Creditor Payments · Selected period"
             onClick={() => toggleCard('total-money-out')}
             selected={isSelected}
           />
