@@ -1,24 +1,63 @@
 import type { Attendance, AttendanceSettings, AttendanceStatus } from './types'
 import { NO_DEDUCTION_STATUSES } from './types'
 
-/** Hours between two timestamps minus the configured break, floored at 0
- * and rounded to 2 decimals (matches the numeric(6,2) column). */
-export function computeWorkingHours(checkIn: string | Date, checkOut: string | Date, breakMinutes: number): number {
-  const inMs = new Date(checkIn).getTime()
-  const outMs = new Date(checkOut).getTime()
-  const rawHours = (outMs - inMs) / (1000 * 60 * 60)
-  const hours = rawHours - breakMinutes / 60
+/** The business runs in Pakistan and the attendance devices report local
+ * wall-clock time. Punches are stored as TIMESTAMPTZ (migration 032) and must
+ * be rendered back in this zone, not the viewer's, so a record always shows
+ * the time the employee actually punched. Pakistan observes no DST, so the
+ * fixed offset below is safe and matches the zkteco-attendance Edge Function. */
+export const BUSINESS_TIME_ZONE = 'Asia/Karachi'
+export const BUSINESS_UTC_OFFSET = '+05:00'
+
+/** Parse a TIMESTAMPTZ value from Supabase, returning null rather than an
+ * Invalid Date. Every attendance formatter and calculation goes through this
+ * so a malformed value degrades to '—' or 0 instead of "Invalid Date"/NaN. */
+function parseTimestamp(value: string | Date | null | undefined): Date | null {
+  if (value == null) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+/** Hours between two punches minus the configured break, floored at 0 and
+ * rounded to 2 decimals (matches the numeric(6,2) column). Returns 0 rather
+ * than NaN for an absent or unparseable punch, so a bad value can never be
+ * written into working_hours or cascade into payroll deductions. */
+export function computeWorkingHours(
+  checkIn: string | Date | null | undefined,
+  checkOut: string | Date | null | undefined,
+  breakMinutes: number,
+): number {
+  const inDate = parseTimestamp(checkIn)
+  const outDate = parseTimestamp(checkOut)
+  if (!inDate || !outDate) return 0
+  const rawHours = (outDate.getTime() - inDate.getTime()) / (1000 * 60 * 60)
+  const hours = rawHours - (Number.isFinite(breakMinutes) ? breakMinutes : 0) / 60
   return Math.round(Math.max(0, hours) * 100) / 100
 }
 
-/** Minutes a check-in was after standard_start_time + grace, on that same
- * calendar day. 0 if on time or early. */
-export function computeLateMinutes(checkIn: string | Date, dateISO: string, standardStartTime: string, graceMinutes: number): number {
-  const checkInDate = new Date(checkIn)
-  const [h, m] = standardStartTime.split(':').map(Number)
-  const expected = new Date(`${dateISO}T00:00:00`)
-  expected.setHours(h, m + graceMinutes, 0, 0)
-  const diffMinutes = (checkInDate.getTime() - expected.getTime()) / (1000 * 60)
+/** Minutes a check-in was after standard_start_time + grace. 0 if on time,
+ * early, or unparseable. The expected start is pinned to the business timezone
+ * rather than the viewer's, so the same record yields the same late count from
+ * any machine. */
+export function computeLateMinutes(
+  checkIn: string | Date | null | undefined,
+  dateISO: string,
+  standardStartTime: string,
+  graceMinutes: number,
+): number {
+  const checkInDate = parseTimestamp(checkIn)
+  if (!checkInDate) return 0
+
+  const [h, m] = (standardStartTime ?? '').split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0
+
+  const expected = parseTimestamp(
+    `${dateISO}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00${BUSINESS_UTC_OFFSET}`,
+  )
+  if (!expected) return 0
+
+  const grace = Number.isFinite(graceMinutes) ? graceMinutes : 0
+  const diffMinutes = (checkInDate.getTime() - expected.getTime()) / (1000 * 60) - grace
   return Math.max(0, Math.round(diffMinutes))
 }
 
@@ -132,4 +171,46 @@ export function isPaidStatus(status: AttendanceStatus): boolean {
 export function formatHours(hours: number | null | undefined): string {
   if (hours == null) return '—'
   return `${hours.toFixed(1)}h`
+}
+
+/** A punch rendered in the business timezone, e.g. "09:00 AM". '—' when the
+ * punch is absent or unparseable. */
+export function formatCheckInTime(value: string | Date | null | undefined): string {
+  const date = parseTimestamp(value)
+  if (!date) return '—'
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: BUSINESS_TIME_ZONE,
+  })
+}
+
+/** An attendance date (a DATE column, no time) as "30 Sep 2026". Built from
+ * parts because en-GB renders September as the four-letter "Sept", and read in
+ * UTC because a bare date string has no zone to shift. */
+export function formatAttendanceDate(value: string | Date | null | undefined): string {
+  if (value == null) return '—'
+  const date = parseTimestamp(typeof value === 'string' ? `${value}T00:00:00Z` : value)
+  if (!date) return '—'
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).formatToParts(date)
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('day')} ${part('month').slice(0, 3)} ${part('year')}`
+}
+
+/** Date + punch time together, e.g. "30 Sep 2026, 09:00 AM". */
+export function formatAttendanceDateTime(
+  dateValue: string | Date | null | undefined,
+  timeValue: string | Date | null | undefined,
+): string {
+  const time = formatCheckInTime(timeValue)
+  const date = formatAttendanceDate(dateValue)
+  if (date === '—') return time
+  if (time === '—') return date
+  return `${date}, ${time}`
 }

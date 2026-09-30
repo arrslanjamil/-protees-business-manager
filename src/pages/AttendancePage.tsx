@@ -7,8 +7,8 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AttendanceEntryModal } from '@/components/attendance/AttendanceEntryModal'
 import { ATTENDANCE_STATUS_LABELS, type Attendance, type AttendanceStatus } from '@/lib/types'
-import { formatHours } from '@/lib/attendance'
-import { classNames, formatDate, todayISO } from '@/lib/utils'
+import { formatHours, formatCheckInTime, formatAttendanceDate } from '@/lib/attendance'
+import { classNames, todayISO } from '@/lib/utils'
 
 const STATUS_BADGE: Record<string, 'green' | 'red' | 'amber' | 'purple' | 'cyan' | 'slate'> = {
   present: 'green',
@@ -132,14 +132,10 @@ export function AttendancePage() {
             <tbody>
               {filtered.map((rec) => (
                 <tr key={rec.id} className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-white/[0.02]" onClick={() => openEdit(rec)}>
-                  <td className="px-5 py-3.5 text-slate-500">{formatDate(rec.date)}</td>
+                  <td className="px-5 py-3.5 text-slate-500">{formatAttendanceDate(rec.date)}</td>
                   <td className="px-5 py-3.5 font-medium text-white">{employeeNameById.get(rec.employee_id) ?? '—'}</td>
-                  <td className="px-5 py-3.5 text-slate-400">
-                    {rec.check_in ? new Date(rec.check_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-slate-400">
-                    {rec.check_out ? new Date(rec.check_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
-                  </td>
+                  <td className="px-5 py-3.5 text-slate-400">{formatCheckInTime(rec.check_in)}</td>
+                  <td className="px-5 py-3.5 text-slate-400">{formatCheckInTime(rec.check_out)}</td>
                   <td className="px-5 py-3.5 text-slate-300">{formatHours(rec.working_hours)}</td>
                   <td className="px-5 py-3.5">{rec.late_minutes ? <span className="text-neon-amber">{rec.late_minutes}m</span> : <span className="text-slate-600">—</span>}</td>
                   <td className="px-5 py-3.5">{rec.overtime_hours ? <span className="text-neon-cyan">+{formatHours(rec.overtime_hours)}</span> : <span className="text-slate-600">—</span>}</td>

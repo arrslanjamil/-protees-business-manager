@@ -13,6 +13,50 @@ interface AttendanceRecord {
   photo_url?: string
 }
 
+/** The devices are on-site in Pakistan and report bare wall-clock times with
+ * no zone. Pakistan has observed no DST since 2009, so a fixed offset is safe
+ * and keeps this arithmetic deterministic without a tz database lookup. */
+const BUSINESS_TIME_ZONE = "Asia/Karachi"
+const BUSINESS_UTC_OFFSET = "+05:00"
+
+/** The attendance `date` column is the business-local calendar day of the
+ * punch, not its UTC day: a 02:00 punch in Karachi is 21:00 UTC the previous
+ * day, and bucketing by UTC would file it under the wrong date. */
+function businessDate(instantISO: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(instantISO))
+  const part = (type: string) => parts.find((p) => p.type === type)!.value
+  return `${part("year")}-${part("month")}-${part("day")}`
+}
+
+/** attendance.check_in / check_out are TIMESTAMPTZ (migration 032), so a bare
+ * "09:00:00" cannot be stored as-is — it has no date. Pin the wall clock to
+ * the punch's business-local day and offset so the stored instant renders back
+ * as the same wall-clock time. Firmware that already sends a full datetime is
+ * passed through. Returns null when the value is absent or unparseable, which
+ * is preferable to writing a value that reads as "Invalid Date" in the UI. */
+function toPunchTimestamp(dateISO: string, wallClock?: string | null): string | null {
+  const raw = wallClock?.trim()
+  if (!raw) return null
+
+  if (raw.includes("T") || raw.includes(" ")) {
+    const full = new Date(raw)
+    return Number.isNaN(full.getTime()) ? null : full.toISOString()
+  }
+
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/)
+  if (!match) return null
+  const [, hour, minute, second = "00"] = match
+  const stamped = new Date(
+    `${dateISO}T${hour.padStart(2, "0")}:${minute}:${second}${BUSINESS_UTC_OFFSET}`,
+  )
+  return Number.isNaN(stamped.getTime()) ? null : stamped.toISOString()
+}
+
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
@@ -40,6 +84,10 @@ serve(async (req) => {
         { status: 400, headers: { "Content-Type": "application/json" } }
       )
     }
+
+    // Business-local day of this punch. Computed before the mapping branches
+    // because the unmapped fallback needs it too.
+    const date = businessDate(payload.timestamp)
 
     // Determine employee by matching device_employee_id first, then fall back to zkteco_user_mapping
     let employeeId: number | null = null
@@ -79,8 +127,8 @@ serve(async (req) => {
           device_employee_id: payload.device_employee_id || payload.user_id || "unknown",
           device_id: payload.device_id,
           device_name: payload.device_name || "ZKTeco SenseFace",
-          check_in: payload.check_in ? new Date(`${new Date().toISOString().split('T')[0]}T${payload.check_in}`).toISOString() : null,
-          check_out: payload.check_out ? new Date(`${new Date().toISOString().split('T')[0]}T${payload.check_out}`).toISOString() : null,
+          check_in: toPunchTimestamp(date, payload.check_in),
+          check_out: toPunchTimestamp(date, payload.check_out),
           raw_payload: payload,
           sync_time: new Date().toISOString(),
           status: "unmapped",
@@ -100,7 +148,6 @@ serve(async (req) => {
         { status: 202, headers: { "Content-Type": "application/json" } }
       )
     }
-    const date = new Date(payload.timestamp).toISOString().split("T")[0]
 
     // Get or create attendance record for the day
     const { data: existingRecords } = await supabase
@@ -127,33 +174,47 @@ serve(async (req) => {
     }
 
     if (isCheckIn) {
-      attendanceData.check_in = payload.check_in
+      attendanceData.check_in = toPunchTimestamp(date, payload.check_in)
       attendanceData.status = "present"
     } else if (isCheckOut) {
-      attendanceData.check_out = payload.check_out
+      let checkOut = toPunchTimestamp(date, payload.check_out)
+
+      // A shift that crossed midnight punches out on the following calendar
+      // day, while `date` stays the day the shift began. Roll the timestamp
+      // forward so the instant is right and working_hours stays positive —
+      // migration 032's check_out > check_in constraint rejects it otherwise.
+      if (checkOut && existing?.check_in && new Date(checkOut) <= new Date(existing.check_in)) {
+        const rolled = new Date(checkOut)
+        rolled.setUTCDate(rolled.getUTCDate() + 1)
+        checkOut = rolled.toISOString()
+      }
+
+      attendanceData.check_out = checkOut
     }
 
-    // Add temperature if provided (health screening)
-    if (payload.temperature) {
-      attendanceData.temperature = payload.temperature
-    }
+    // NOTE: the device may also report `temperature` and `photo_url`, but the
+    // attendance table has no such columns — writing them made PostgREST
+    // reject the whole upsert. They stay in raw_payload on the unmapped path
+    // until columns exist to hold them.
 
-    // Add photo if provided
-    if (payload.photo_url) {
-      attendanceData.photo_url = payload.photo_url
-    }
-
-    // Upsert attendance record
-    const { data: attendance, error: attendanceError } = await supabase
-      .from("attendance")
-      .upsert(
-        existing
-          ? { ...existing, ...attendanceData }
-          : attendanceData,
-        { onConflict: "employee_id,date" }
-      )
-      .select()
-      .single()
+    // Write the punch. Spreading `existing` into an upsert used to re-send its
+    // `id`, which attendance declares GENERATED ALWAYS AS IDENTITY — Postgres
+    // rejects that with "cannot insert a non-DEFAULT value into column id", so
+    // every second punch of the day (i.e. every check-out) failed with a 500.
+    // Updating by id touches only the fields this punch actually carries and
+    // leaves check_in, created_at and the created_by audit columns intact.
+    const { data: attendance, error: attendanceError } = existing
+      ? await supabase
+          .from("attendance")
+          .update(attendanceData)
+          .eq("id", existing.id)
+          .select()
+          .single()
+      : await supabase
+          .from("attendance")
+          .insert(attendanceData)
+          .select()
+          .single()
 
     if (attendanceError) {
       console.error("Attendance insert error:", attendanceError)

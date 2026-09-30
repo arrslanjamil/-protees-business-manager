@@ -3,7 +3,7 @@ import { useData } from '@/context/DataContext'
 import { useAttendance } from '@/context/AttendanceContext'
 import { Modal } from '@/components/ui/Modal'
 import { ATTENDANCE_STATUS_LABELS, LEAVE_TYPE_LABELS, type Attendance, type AttendanceStatus, type LeaveType } from '@/lib/types'
-import { computeLateMinutes, computeOvertimeHours, computeShortageHours, computeWorkingHours, deriveAttendanceStatus } from '@/lib/attendance'
+import { BUSINESS_TIME_ZONE, BUSINESS_UTC_OFFSET, computeLateMinutes, computeOvertimeHours, computeShortageHours, computeWorkingHours, deriveAttendanceStatus } from '@/lib/attendance'
 import { classNames, errorMessage, todayISO } from '@/lib/utils'
 
 interface AttendanceEntryModalProps {
@@ -16,15 +16,42 @@ interface AttendanceEntryModalProps {
   editing?: Attendance | null
 }
 
+/** A stored punch (TIMESTAMPTZ) back into a `<input type="time">` value. Read
+ * in the business timezone so the field shows the same wall clock the
+ * Attendance table does, and blank rather than "NaN:NaN" if the value is bad. */
 function toTimeInput(iso: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  if (Number.isNaN(d.getTime())) return ''
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: BUSINESS_TIME_ZONE,
+  }).formatToParts(d)
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '00'
+  return `${part('hour')}:${part('minute')}`
 }
 
+/** A typed wall-clock time into a TIMESTAMPTZ. Pinned to the business offset,
+ * not the browser's, so the instant stored matches what was typed regardless of
+ * where the entry was made. */
 function toISOFromTime(dateISO: string, time: string): string | null {
   if (!time) return null
-  return new Date(`${dateISO}T${time}:00`).toISOString()
+  const d = new Date(`${dateISO}T${time}:00${BUSINESS_UTC_OFFSET}`)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+/** A shift that ran past midnight punches out on the next calendar day, while
+ * the attendance date stays the day it began. Roll the check-out forward so the
+ * hours stay positive — migration 032's check_out > check_in constraint rejects
+ * it otherwise. */
+function rollOvernight(checkInISO: string | null, checkOutISO: string | null): string | null {
+  if (!checkInISO || !checkOutISO) return checkOutISO
+  if (new Date(checkOutISO).getTime() > new Date(checkInISO).getTime()) return checkOutISO
+  const rolled = new Date(checkOutISO)
+  rolled.setUTCDate(rolled.getUTCDate() + 1)
+  return rolled.toISOString()
 }
 
 export function AttendanceEntryModal({ open, onClose, defaultEmployeeId, defaultDate, editing }: AttendanceEntryModalProps) {
@@ -79,7 +106,7 @@ export function AttendanceEntryModal({ open, onClose, defaultEmployeeId, default
     setError(null)
     try {
       const checkInISO = toISOFromTime(date, checkIn)
-      const checkOutISO = toISOFromTime(date, checkOut)
+      const checkOutISO = rollOvernight(checkInISO, toISOFromTime(date, checkOut))
       const settings = attendanceSettings
       let workingHours: number | null = null
       let lateMinutes: number | null = null
@@ -126,7 +153,7 @@ export function AttendanceEntryModal({ open, onClose, defaultEmployeeId, default
   function applySuggestedStatus() {
     if (!checkIn || !attendanceSettings) return
     const checkInISO = toISOFromTime(date, checkIn)
-    const checkOutISO = toISOFromTime(date, checkOut)
+    const checkOutISO = rollOvernight(checkInISO, toISOFromTime(date, checkOut))
     if (!checkInISO) return
     const late = computeLateMinutes(checkInISO, date, attendanceSettings.standard_start_time, attendanceSettings.late_grace_minutes)
     const hours = checkOutISO ? computeWorkingHours(checkInISO, checkOutISO, attendanceSettings.break_minutes) : 0

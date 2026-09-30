@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AttendanceEntryModal } from '@/components/attendance/AttendanceEntryModal'
 import { ATTENDANCE_STATUS_LABELS, type Attendance } from '@/lib/types'
-import { formatHours, summarizeAttendance } from '@/lib/attendance'
-import { formatDate, todayISO } from '@/lib/utils'
+import { formatAttendanceDate, formatCheckInTime, formatHours, summarizeAttendance } from '@/lib/attendance'
+import { todayISO } from '@/lib/utils'
 
 const STATUS_BADGE: Record<string, 'green' | 'red' | 'amber' | 'purple' | 'cyan' | 'slate'> = {
   present: 'green',
@@ -75,15 +75,15 @@ export function AttendanceDashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard label="Total Employees" value={String(activeEmployees.length)} icon={Users} accent="cyan" hint="Active roster" />
-        <StatCard label="Present" value={String(summary.presentDays)} icon={UserCheck} accent="green" hint={date === todayISO() ? 'Today' : formatDate(date)} />
+        <StatCard label="Present" value={String(summary.presentDays)} icon={UserCheck} accent="green" hint={date === todayISO() ? 'Today' : formatAttendanceDate(date)} />
         <StatCard label="Absent" value={String(summary.absentDays + unmarkedCount)} icon={UserX} accent="red" hint={`${unmarkedCount} unmarked`} />
-        <StatCard label="Late Employees" value={String(summary.lateDays)} icon={Clock} accent="amber" hint={date === todayISO() ? 'Today' : formatDate(date)} />
+        <StatCard label="Late Employees" value={String(summary.lateDays)} icon={Clock} accent="amber" hint={date === todayISO() ? 'Today' : formatAttendanceDate(date)} />
         <StatCard label="On Leave" value={String(onLeaveCount)} icon={CalendarCheck} accent="purple" hint="Paid + Unpaid" />
-        <StatCard label="Overtime Hours" value={formatHours(summary.totalOvertimeHours)} icon={Clock} accent="cyan" hint={date === todayISO() ? 'Today' : formatDate(date)} />
+        <StatCard label="Overtime Hours" value={formatHours(summary.totalOvertimeHours)} icon={Clock} accent="cyan" hint={date === todayISO() ? 'Today' : formatAttendanceDate(date)} />
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">{date === todayISO() ? "Today's" : formatDate(date)} Roster</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">{date === todayISO() ? "Today's" : formatAttendanceDate(date)} Roster</h2>
         {activeEmployees.length === 0 ? (
           <EmptyState icon={Users} title="No active employees" description="Add employees first." />
         ) : (
@@ -112,12 +112,8 @@ export function AttendanceDashboardPage() {
                     >
                       <td className="px-5 py-3.5 font-medium text-white">{emp.name}</td>
                       <td className="px-5 py-3.5 text-slate-400">{emp.department || '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-400">
-                        {rec?.check_in ? new Date(rec.check_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
-                      </td>
-                      <td className="px-5 py-3.5 text-slate-400">
-                        {rec?.check_out ? new Date(rec.check_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
-                      </td>
+                      <td className="px-5 py-3.5 text-slate-400">{formatCheckInTime(rec?.check_in)}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{formatCheckInTime(rec?.check_out)}</td>
                       <td className="px-5 py-3.5 text-slate-300">{formatHours(rec?.working_hours)}</td>
                       <td className="px-5 py-3.5">{rec?.overtime_hours ? <span className="text-neon-cyan">+{formatHours(rec.overtime_hours)}</span> : <span className="text-slate-600">—</span>}</td>
                       <td className="px-5 py-3.5">
