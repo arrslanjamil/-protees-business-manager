@@ -44,7 +44,11 @@ export function SalaryPage() {
   const ratePerPiece = selectedEmployee?.rate_per_piece ?? 0
 
   const sortedPayments = useMemo(
-    () => [...salaryPayments].sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()),
+    () => [...salaryPayments].sort((a, b) => {
+      const dateCompare = new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
+      // If dates are the same, sort by ID descending (latest entries first)
+      return dateCompare !== 0 ? dateCompare : (b.id - a.id)
+    }),
     [salaryPayments]
   )
   const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
