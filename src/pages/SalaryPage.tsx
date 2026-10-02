@@ -72,6 +72,14 @@ export function SalaryPage() {
   const hourlyRate = !isContract && attendanceSettings && selectedEmployee ? Number(selectedEmployee.salary) / (daysInMonth * attendanceSettings.standard_working_hours) : 0
   const computedOvertimeAmount = Math.round(attendanceSummary.totalOvertimeHours * hourlyRate)
 
+  /** The attendance checkbox is a shortcut, not a separate input path: it
+   * fills the Overtime (Rs) field so what gets paid is always the number on
+   * screen, and the user can still edit it afterwards. */
+  function applyAttendanceOvertime(checked: boolean) {
+    setIncludeOvertime(checked)
+    setOvertimeAmount(checked ? String(computedOvertimeAmount) : '')
+  }
+
   function openCreate() {
     setEmployeeName('')
     setBaseAmount('')
@@ -96,7 +104,11 @@ export function SalaryPage() {
     const emp = employeesWithBalance.find((e) => e.name === name)
     if (!emp) return
     setPiecesCompleted('')
+    // Clear the amount too, not just the checkbox: now that the typed field is
+    // what actually gets paid, leaving it behind would carry one employee's
+    // overtime onto the next one picked in the same modal.
     setIncludeOvertime(false)
+    setOvertimeAmount('')
     if (emp.employee_type === 'contract') {
       setBaseAmount('')
       setDeduction('0')
@@ -117,9 +129,13 @@ export function SalaryPage() {
   const currentBalance = employeeName ? balanceFor(employeeName, 'cutting_department') : 0
   const pieces = Number(piecesCompleted) || 0
   const base = isContract ? pieces * ratePerPiece : Number(baseAmount) || 0
-  // For monthly employees the checkbox drives the Rs amount; contract
-  // employees still type it in manually (unchanged from before).
-  const overtime = isContract ? Number(overtimeAmount) || 0 : includeOvertime ? computedOvertimeAmount : 0
+  // The typed Overtime (Rs) field is the source of truth for every employee
+  // type. Monthly employees briefly had no manual field at all — overtime was
+  // driven solely by an attendance checkbox that needs attendance_settings to
+  // price the hours, and that table does not exist, so hourlyRate was always 0
+  // and the checkbox never even rendered. Attendance now pre-fills this field
+  // when it has hours to offer, and stays out of the way when it does not.
+  const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
   const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
   const net = Math.max(0, base + overtime - ded - attendanceDeductionTotal)
@@ -176,7 +192,7 @@ export function SalaryPage() {
         referenceNumber: isCash ? undefined : referenceNumber.trim() || undefined,
         allowNegativeCash,
         overtimeHours: isContract ? null : attendanceSummary.totalOvertimeHours || null,
-        overtimeIncluded: isContract ? overtime > 0 : includeOvertime,
+        overtimeIncluded: overtime > 0,
         absentDeduction: deductionBreakdown?.absentDeduction ?? 0,
         lateDeduction: deductionBreakdown?.lateDeduction ?? 0,
         leaveDeduction: deductionBreakdown?.leaveDeduction ?? 0,
@@ -350,12 +366,20 @@ export function SalaryPage() {
             </div>
           )}
 
-          {isContract && (
-            <div>
-              <label className="label-field">Overtime (Rs)</label>
-              <input type="number" className="input-field" value={overtimeAmount} onChange={(e) => setOvertimeAmount(e.target.value)} placeholder="0" />
-            </div>
-          )}
+          <div>
+            <label className="label-field">Overtime (Rs)</label>
+            <input
+              type="number"
+              className="input-field"
+              value={overtimeAmount}
+              onChange={(e) => {
+                setOvertimeAmount(e.target.value)
+                setIncludeOvertime(false)
+              }}
+              placeholder="0"
+            />
+            <p className="mt-1 text-xs text-slate-500">Added to the net salary. Leave at 0 if there is none.</p>
+          </div>
 
           {employeeName && (
             <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
@@ -390,8 +414,8 @@ export function SalaryPage() {
               {!isContract && attendanceSummary.totalOvertimeHours > 0 && (
                 <label className="flex items-center justify-between gap-3 rounded-lg bg-white/[0.02] px-3 py-2">
                   <span className="flex items-center gap-2 text-xs text-slate-300">
-                    <input type="checkbox" checked={includeOvertime} onChange={(e) => setIncludeOvertime(e.target.checked)} />
-                    Include Overtime In Salary ({formatHours(attendanceSummary.totalOvertimeHours)} available)
+                    <input type="checkbox" checked={includeOvertime} onChange={(e) => applyAttendanceOvertime(e.target.checked)} />
+                    Use Attendance Overtime ({formatHours(attendanceSummary.totalOvertimeHours)} available)
                   </span>
                   <span className="text-xs font-semibold text-neon-cyan">+{formatCurrency(computedOvertimeAmount)}</span>
                 </label>
