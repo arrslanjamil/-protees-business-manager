@@ -21,6 +21,7 @@ export function SalaryPage() {
   const [employeeName, setEmployeeName] = useState('')
   const [baseAmount, setBaseAmount] = useState('')
   const [piecesCompleted, setPiecesCompleted] = useState('')
+  const [overtimeHoursInput, setOvertimeHoursInput] = useState('')
   const [overtimeAmount, setOvertimeAmount] = useState('')
   const [includeOvertime, setIncludeOvertime] = useState(false)
   const [deduction, setDeduction] = useState('')
@@ -69,12 +70,14 @@ export function SalaryPage() {
         : null,
     [attendanceSummary, attendanceSettings, selectedEmployee, daysInMonth]
   )
-  // Overtime Rs available if the checkbox is checked — derived from the
-  // employee's monthly salary (hourly rate = salary / (days × standard
-  // hours)). Only meaningful for monthly employees; contract employees
-  // keep the plain manual Overtime field below, unchanged.
-  const hourlyRate = !isContract && attendanceSettings && selectedEmployee ? Number(selectedEmployee.salary) / (daysInMonth * attendanceSettings.standard_working_hours) : 0
-  const computedOvertimeAmount = Math.round(attendanceSummary.totalOvertimeHours * hourlyRate)
+  // Hourly rate from monthly salary (8 hours standard working day by default)
+  const STANDARD_HOURS_PER_DAY = 8
+  const hourlyRate = !isContract && selectedEmployee ? Number(selectedEmployee.salary) / (daysInMonth * STANDARD_HOURS_PER_DAY) : 0
+
+  // Overtime from manual hours input
+  const overtimeHours = Number(overtimeHoursInput) || 0
+  const calculateOvertimeAmount = (hours: number) => Math.round(hours * hourlyRate)
+  const overtimeAmountFromHours = calculateOvertimeAmount(overtimeHours)
 
   /** The attendance checkbox is a shortcut, not a separate input path: it
    * fills the Overtime (Rs) field so what gets paid is always the number on
@@ -88,6 +91,7 @@ export function SalaryPage() {
     setEmployeeName('')
     setBaseAmount('')
     setPiecesCompleted('')
+    setOvertimeHoursInput('')
     setOvertimeAmount('')
     setIncludeOvertime(false)
     setDeduction('')
@@ -370,19 +374,43 @@ export function SalaryPage() {
             </div>
           )}
 
-          <div>
-            <label className="label-field">Overtime (Rs)</label>
-            <input
-              type="number"
-              className="input-field"
-              value={overtimeAmount}
-              onChange={(e) => {
-                setOvertimeAmount(e.target.value)
-                setIncludeOvertime(false)
-              }}
-              placeholder="0"
-            />
-            <p className="mt-1 text-xs text-slate-500">Added to the net salary. Leave at 0 if there is none.</p>
+          <div className="space-y-3">
+            <div>
+              <label className="label-field">Overtime Hours</label>
+              <input
+                type="number"
+                className="input-field"
+                value={overtimeHoursInput}
+                onChange={(e) => {
+                  setOvertimeHoursInput(e.target.value)
+                  const hours = Number(e.target.value) || 0
+                  setOvertimeAmount(String(calculateOvertimeAmount(hours)))
+                }}
+                placeholder="0"
+                step="0.5"
+              />
+              <p className="mt-1 text-xs text-slate-500">Hourly rate: {formatCurrency(Math.round(hourlyRate))}/hour</p>
+            </div>
+
+            <div>
+              <label className="label-field">Overtime Amount (Rs)</label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number"
+                  className="input-field"
+                  value={overtimeAmount}
+                  onChange={(e) => {
+                    setOvertimeAmount(e.target.value)
+                    setIncludeOvertime(false)
+                  }}
+                  placeholder="0"
+                />
+                {overtimeHoursInput && overtimeAmountFromHours > 0 && (
+                  <span className="text-xs text-neon-cyan font-semibold">({overtimeHoursInput}h × {formatCurrency(Math.round(hourlyRate))} = {formatCurrency(overtimeAmountFromHours)})</span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Auto-calculated from hours, or edit manually</p>
+            </div>
           </div>
 
           {employeeName && (
