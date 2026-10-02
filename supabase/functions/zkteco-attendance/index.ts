@@ -104,27 +104,33 @@ serve(async (req) => {
 
     // Strategy 1: Match by device_employee_id (direct SenseFace mapping)
     if (payload.device_employee_id) {
-      const { data: employee } = await supabase
+      const { data: employee, error: employeeError } = await supabase
         .from("employees")
         .select("id")
         .eq("device_employee_id", payload.device_employee_id)
         .single()
 
-      if (employee) {
+      if (employeeError) {
+        console.error(`Strategy 1 employee lookup failed for device_employee_id "${payload.device_employee_id}":`, employeeError)
+      } else if (employee) {
         employeeId = Number(employee.id)
+        console.log(`Strategy 1 matched device_employee_id "${payload.device_employee_id}" to employee_id ${employeeId}`)
       }
     }
 
     // Strategy 2: Fall back to zkteco_user_mapping (for K40 compatibility)
     if (!employeeId && payload.user_id) {
-      const { data: mapping } = await supabase
+      const { data: mapping, error: mappingError } = await supabase
         .from("zkteco_user_mapping")
         .select("employee_id")
         .eq("zkteco_user_id", payload.user_id)
         .single()
 
-      if (mapping) {
+      if (mappingError) {
+        console.error(`Strategy 2 mapping lookup failed for user_id "${payload.user_id}":`, mappingError)
+      } else if (mapping) {
         employeeId = Number(mapping.employee_id)
+        console.log(`Strategy 2 matched user_id "${payload.user_id}" to employee_id ${employeeId}`)
       }
     }
 
