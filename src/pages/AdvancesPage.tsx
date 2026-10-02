@@ -33,6 +33,8 @@ export function AdvancesPage() {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedPerson, setExpandedPerson] = useState<string | null>(null)
 
   const isCash = isCashPaymentMethod(paymentMethod)
   const amountNum = Number(amount) || 0
@@ -163,6 +165,17 @@ export function AdvancesPage() {
 
   const totalOutstanding = people.reduce((sum, p) => sum + Math.max(0, p.advanceBalance), 0)
 
+  const filteredPeople = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return people
+    return people.filter((p) => p.name.toLowerCase().includes(q))
+  }, [people, searchQuery])
+
+  const personAdvancesHistory = useMemo(() => {
+    if (!expandedPerson) return []
+    return filteredCombinedAdvances.filter((a) => a.employee_name === expandedPerson)
+  }, [expandedPerson, filteredCombinedAdvances])
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -179,36 +192,90 @@ export function AdvancesPage() {
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Outstanding Balances</h2>
+        <div className="mb-4 flex items-center gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Outstanding Balances</h2>
+          <div className="relative flex-1 max-w-xs">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              className="input-field pl-10"
+              placeholder="Search employee…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
         {people.length === 0 ? (
           <EmptyState icon={HandCoins} title="No people yet" description="Add employees or a supervisor first to give an advance." />
+        ) : filteredPeople.length === 0 ? (
+          <EmptyState icon={Search} title="No matches" description="No employee found matching your search." />
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {people
-              .slice()
-              .sort((a, b) => b.advanceBalance - a.advanceBalance)
-              .map((p) => {
-                const warning = advanceWarningLevel(p.advanceBalance, p.payAmount)
-                return (
-                  <div key={`${p.department}-${p.name}`} className="card">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-white">{p.name}</p>
-                        <Badge color={p.department === 'cutting_department' ? 'cyan' : 'purple'}>{DEPARTMENT_LABELS[p.department]}</Badge>
-                      </div>
-                      <div className="text-right">
-                        <span className="block font-display text-sm font-bold text-white">{formatCurrency(p.advanceBalance)}</span>
-                        {warning === 'red' && <Badge color="red">At limit</Badge>}
-                      </div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredPeople
+                .slice()
+                .sort((a, b) => b.advanceBalance - a.advanceBalance)
+                .map((p) => {
+                  const warning = advanceWarningLevel(p.advanceBalance, p.payAmount)
+                  const isExpanded = expandedPerson === p.name
+                  return (
+                    <div key={`${p.department}-${p.name}`}>
+                      <button
+                        onClick={() => setExpandedPerson(isExpanded ? null : p.name)}
+                        className="card w-full text-left transition hover:border-white/20"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-white">{p.name}</p>
+                            <Badge color={p.department === 'cutting_department' ? 'cyan' : 'purple'}>{DEPARTMENT_LABELS[p.department]}</Badge>
+                          </div>
+                          <div className="text-right">
+                            <span className="block font-display text-sm font-bold text-white">{formatCurrency(p.advanceBalance)}</span>
+                            {warning === 'red' && <Badge color="red">At limit</Badge>}
+                          </div>
+                        </div>
+                        {p.payAmount > 0 && (
+                          <div className="mt-3">
+                            <AdvanceProgressBar balance={p.advanceBalance} monthlySalary={p.payAmount} />
+                          </div>
+                        )}
+                        <p className="mt-2 text-xs text-slate-400">{isExpanded ? 'Click to close' : 'Click to view history'}</p>
+                      </button>
+
+                      {isExpanded && personAdvancesHistory.length > 0 && (
+                        <div className="card mt-4 border-neon-cyan/30 bg-neon-cyan/5 p-4">
+                          <h3 className="mb-3 text-sm font-semibold text-neon-cyan">Advance History</h3>
+                          <div className="space-y-2 text-xs">
+                            {personAdvancesHistory.map((adv) => (
+                              <div key={`${adv.type}-${adv.id}`} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-2.5">
+                                <div>
+                                  <p className="font-medium text-white">
+                                    {adv.type === 'grand' ? '💼 Grand Advance' : '💰 Advance'}
+                                  </p>
+                                  <p className="text-slate-400">{formatDate(adv.payment_date)}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-semibold text-neon-amber">{formatCurrency(adv.amount)}</p>
+                                  {adv.type === 'grand' && (
+                                    <p className={`text-xs ${adv.outstanding_balance === 0 ? 'text-neon-green' : 'text-neon-amber'}`}>
+                                      {adv.outstanding_balance === 0 ? 'Completed' : `Outstanding: ${formatCurrency(adv.outstanding_balance)}`}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {isExpanded && personAdvancesHistory.length === 0 && (
+                        <div className="card mt-4 border-slate-600 bg-slate-700/20 p-4">
+                          <p className="text-sm text-slate-400">No advance history for this person.</p>
+                        </div>
+                      )}
                     </div>
-                    {p.payAmount > 0 && (
-                      <div className="mt-3">
-                        <AdvanceProgressBar balance={p.advanceBalance} monthlySalary={p.payAmount} />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                })}
+            </div>
           </div>
         )}
       </div>
