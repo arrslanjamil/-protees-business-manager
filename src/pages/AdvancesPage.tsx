@@ -218,10 +218,10 @@ export function AdvancesPage() {
                   const warning = advanceWarningLevel(p.advanceBalance, p.payAmount)
                   const isExpanded = expandedPerson === p.name
                   return (
-                    <div key={`${p.department}-${p.name}`}>
+                    <div key={`${p.department}-${p.name}`} className="flex flex-col">
                       <button
                         onClick={() => setExpandedPerson(isExpanded ? null : p.name)}
-                        className="card w-full text-left transition hover:border-white/20"
+                        className="card h-40 w-full text-left transition hover:border-white/20"
                       >
                         <div className="flex items-center justify-between">
                           <div>
