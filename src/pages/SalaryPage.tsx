@@ -70,9 +70,10 @@ export function SalaryPage() {
         : null,
     [attendanceSummary, attendanceSettings, selectedEmployee, daysInMonth]
   )
-  // Hourly rate from monthly salary (8 hours standard working day by default)
+  // Hourly rate from monthly salary (8 hours standard working day, 30 days standard month)
   const STANDARD_HOURS_PER_DAY = 8
-  const hourlyRate = !isContract && selectedEmployee ? Number(selectedEmployee.salary) / (daysInMonth * STANDARD_HOURS_PER_DAY) : 0
+  const STANDARD_DAYS_PER_MONTH = 30
+  const hourlyRate = !isContract && selectedEmployee ? Number(selectedEmployee.salary) / STANDARD_DAYS_PER_MONTH / STANDARD_HOURS_PER_DAY : 0
 
   // Overtime from manual hours input
   const overtimeHours = Number(overtimeHoursInput) || 0
