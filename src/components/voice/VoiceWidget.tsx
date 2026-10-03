@@ -10,7 +10,7 @@ import { DEPARTMENT_LABELS, type Department } from '@/lib/types'
 import { classNames, errorMessage as getErrorMessage, formatCurrency } from '@/lib/utils'
 
 type Phase = 'listening' | 'review' | 'done'
-type SelectableIntent = Exclude<VoiceIntent, 'unit_payment'>
+type SelectableIntent = VoiceIntent
 
 export function VoiceWidget() {
   const [open, setOpen] = useState(false)
@@ -19,7 +19,7 @@ export function VoiceWidget() {
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const { status, transcript, errorMessage, start, stop, reset } = useVoiceCommand()
-  const { employees, supervisors, addAdvance, addExpense, addExpenseCategory, expenseCategoryNames, recordSalaryPayment, suggestedDeduction, balanceFor } = useData()
+  const { employees, supervisors, addAdvance, addExpense, addExpenseCategory, expenseCategoryNames, recordSalaryPayment, recordUnitPayment, suggestedDeduction, balanceFor } = useData()
 
   const people = useMemo<NamedPerson[]>(
     () => [
@@ -35,6 +35,7 @@ export function VoiceWidget() {
   const [amount, setAmount] = useState<number>(0)
   const [overtime, setOvertime] = useState<number>(0)
   const [deduction, setDeduction] = useState<number>(0)
+  const [advanceGiven, setAdvanceGiven] = useState<number>(0)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<string>('')
   const [notes, setNotes] = useState('')
@@ -43,12 +44,13 @@ export function VoiceWidget() {
 
   useEffect(() => {
     if (status === 'processing' && parsed) {
-      const resolvedIntent: SelectableIntent = parsed.intent === 'unit_payment' ? 'unknown' : parsed.intent
+      const resolvedIntent: SelectableIntent = parsed.intent
       setIntent(resolvedIntent)
       setDepartment(parsed.person?.department ?? 'cutting_department')
       setPersonName(parsed.person?.name ?? '')
       setAmount(parsed.amount ?? 0)
       setOvertime(0)
+      setAdvanceGiven(0)
       setTitle(parsed.title ?? '')
       setCategory(expenseCategoryNames[expenseCategoryNames.length - 1] ?? '')
       setNotes('')
@@ -108,6 +110,15 @@ export function VoiceWidget() {
           deductionAmount: deduction,
           month: now.getMonth() + 1,
           year: now.getFullYear(),
+          notes: notes || undefined,
+        })
+      } else if (intent === 'unit_payment') {
+        if (!personName || amount <= 0) throw new Error('Pick a supervisor and enter a valid amount.')
+        await recordUnitPayment({
+          supervisorName: personName,
+          totalAmount: amount,
+          overtimeAmount: overtime,
+          advanceGiven: advanceGiven,
           notes: notes || undefined,
         })
       } else {
@@ -191,8 +202,8 @@ export function VoiceWidget() {
 
                 <div>
                   <label className="label-field">Command type</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['salary', 'advance', 'expense'] as SelectableIntent[]).map((opt) => (
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['salary', 'advance', 'expense', 'unit_payment'] as SelectableIntent[]).map((opt) => (
                       <button
                         key={opt}
                         onClick={() => setIntent(opt)}
@@ -255,8 +266,22 @@ export function VoiceWidget() {
                   </>
                 )}
 
+                {intent === 'unit_payment' && (
+                  <div>
+                    <label className="label-field">Supervisor</label>
+                    <SearchableSelect
+                      value={personName}
+                      onChange={setPersonName}
+                      options={supervisors.map((s) => ({ value: s.name, label: s.name }))}
+                      placeholder="Select…"
+                      searchPlaceholder="Search name…"
+                      emptyMessage="No match found"
+                    />
+                  </div>
+                )}
+
                 <div>
-                  <label className="label-field">{intent === 'salary' ? 'Base salary amount' : 'Amount'}</label>
+                  <label className="label-field">{intent === 'salary' ? 'Base salary amount' : intent === 'unit_payment' ? 'Total amount' : 'Amount'}</label>
                   <input
                     type="number"
                     className="input-field"
@@ -266,7 +291,7 @@ export function VoiceWidget() {
                   />
                 </div>
 
-                {intent === 'salary' && (
+                {(intent === 'salary' || intent === 'unit_payment') && (
                   <div>
                     <label className="label-field">Overtime</label>
                     <input
@@ -274,6 +299,19 @@ export function VoiceWidget() {
                       className="input-field"
                       value={overtime || ''}
                       onChange={(e) => setOvertime(Number(e.target.value))}
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+
+                {intent === 'unit_payment' && personName && (
+                  <div>
+                    <label className="label-field">Advance given</label>
+                    <input
+                      type="number"
+                      className="input-field"
+                      value={advanceGiven || ''}
+                      onChange={(e) => setAdvanceGiven(Number(e.target.value))}
                       placeholder="0"
                     />
                   </div>

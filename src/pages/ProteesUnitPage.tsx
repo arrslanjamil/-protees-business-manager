@@ -157,7 +157,7 @@ export function ProteesUnitPage() {
     setSavingAdvance(true)
     setAdvanceError(null)
     try {
-      await addAdvance({ name: supervisor.name, department: 'protees_unit', amount: amt, paymentDate: advanceDate, notes: advanceNotes.trim() || undefined })
+      await addAdvance({ name: supervisor.name, department: 'protees_unit', amount: amt, paymentDate: advanceDate, notes: advanceNotes.trim() || undefined, paymentMethod: 'Cash' })
       setAdvanceModalOpen(false)
     } catch (err) {
       setAdvanceError(errorMessage(err, 'Failed to save advance.'))
