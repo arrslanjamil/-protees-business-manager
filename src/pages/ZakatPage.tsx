@@ -26,6 +26,38 @@ export function ZakatPage() {
     [zakatTransactions]
   )
   const periodTransactions = useMemo(() => sortedTransactions.filter((t) => isWithinRange(t.date, start, end)), [sortedTransactions, start, end])
+
+  // Generate monthly accrual entries for the selected period
+  const monthlyAccrualEntries = useMemo(() => {
+    const entries: Array<{ type: 'accrual' | 'distribution'; date: string; amount: number; recipientName: string; notes: string }> = []
+    const rangeStart = new Date(start)
+    const rangeEnd = new Date(end)
+
+    let current = new Date(openingMonth)
+    while (current <= rangeEnd) {
+      const monthStart = new Date(current)
+      if (monthStart >= rangeStart && monthStart <= rangeEnd) {
+        entries.push({
+          type: 'accrual',
+          date: monthStart.toISOString().split('T')[0],
+          amount: monthlyBudget,
+          recipientName: 'Monthly Accrual',
+          notes: ''
+        })
+      }
+      current.setMonth(current.getMonth() + 1)
+    }
+    return entries
+  }, [start, end, openingMonth, monthlyBudget])
+
+  // Combine accruals and distributions, sort by date (newest first)
+  const combinedHistory = useMemo(() => {
+    const combined = [
+      ...periodTransactions.map(t => ({ type: 'distribution' as const, date: t.date, amount: t.amount, recipientName: t.recipient_name, notes: t.notes || '', id: t.id })),
+      ...monthlyAccrualEntries.map((e, idx) => ({ ...e, id: -1 - idx }))
+    ]
+    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [periodTransactions, monthlyAccrualEntries])
   const distributedInPeriod = periodTransactions.reduce((s, t) => s + Number(t.amount), 0)
   const monthlyAddedInPeriod = monthsAccruedInRange(start, end, openingMonth) * monthlyBudget
 
@@ -205,34 +237,40 @@ export function ZakatPage() {
       />
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Recipient History</h2>
-        {periodTransactions.length === 0 ? (
-          <EmptyState icon={HeartHandshake} title="No Zakat distributions" description="Recorded distributions in this period will show up here." />
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Transaction History</h2>
+        {combinedHistory.length === 0 ? (
+          <EmptyState icon={HeartHandshake} title="No Zakat activity" description="Accruals and distributions in this period will show up here." />
         ) : (
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
+                  <th className="px-5 py-3.5">Type</th>
                   <th className="px-5 py-3.5">Recipient</th>
                   <th className="px-5 py-3.5">Amount</th>
                   <th className="px-5 py-3.5">Date</th>
                   <th className="px-5 py-3.5">Notes</th>
-                  <th className="px-5 py-3.5">Recorded By</th>
                   <th className="px-5 py-3.5" />
                 </tr>
               </thead>
               <tbody>
-                {periodTransactions.map((t) => (
-                  <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                    <td className="px-5 py-3.5 font-medium text-white">{t.recipient_name}</td>
-                    <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(t.amount)}</td>
-                    <td className="px-5 py-3.5 text-slate-500">{formatDate(t.date)}</td>
-                    <td className="px-5 py-3.5 text-slate-400">{t.notes || '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-500">{t.created_by_username ?? '—'}</td>
+                {combinedHistory.map((entry) => (
+                  <tr key={`${entry.type}-${entry.date}-${entry.amount}`} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                    <td className="px-5 py-3.5">
+                      <span className={classNames('text-xs font-semibold px-2 py-1 rounded-md', entry.type === 'accrual' ? 'bg-neon-cyan/10 text-neon-cyan' : 'bg-neon-green/10 text-neon-green')}>
+                        {entry.type === 'accrual' ? 'Accrual' : 'Distribution'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 font-medium text-white">{entry.recipientName}</td>
+                    <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(entry.amount)}</td>
+                    <td className="px-5 py-3.5 text-slate-500">{formatDate(entry.date)}</td>
+                    <td className="px-5 py-3.5 text-slate-400">{entry.notes || '—'}</td>
                     <td className="px-5 py-3.5 text-right">
-                      <button className="rounded-lg p-1.5 text-slate-500 hover:bg-neon-red/10 hover:text-neon-red" onClick={() => handleDelete(t.id)}>
-                        <Trash2 size={15} />
-                      </button>
+                      {entry.type === 'distribution' && (
+                        <button className="rounded-lg p-1.5 text-slate-500 hover:bg-neon-red/10 hover:text-neon-red" onClick={() => handleDelete(entry.id as number)}>
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
