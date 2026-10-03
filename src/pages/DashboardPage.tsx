@@ -534,7 +534,6 @@ export function DashboardPage() {
             fullValue={formatCurrency(totalMoneyOut)}
             icon={Wallet}
             accent="red"
-            hint="Expenses + Salary + Advances + Grand Advances + Zakat + Creditor Payments · Selected period"
             onClick={() => toggleCard('total-money-out')}
             selected={isSelected}
           />
