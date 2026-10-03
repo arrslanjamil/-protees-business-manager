@@ -95,7 +95,7 @@ interface CollectionDrillRow {
 }
 
 export function DashboardPage() {
-  const { employeesWithBalance, supervisorsWithBalance, advances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, advances, grandAdvances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
   const { shopifyOrders, shopifyStores, courierCollections, couriers, cashBalance, bankAccountsWithBalance, creditors, creditorPayments } = useCollections()
   const { order, setOrder, loaded } = useDashboardLayout()
 
@@ -143,6 +143,10 @@ export function DashboardPage() {
   const periodCreditorPaymentsRows = useMemo(
     () => creditorPayments.filter((p) => isWithinRange(p.payment_date, start, end)),
     [creditorPayments, start, end]
+  )
+  const periodGrandAdvancesRows = useMemo(
+    () => grandAdvances.filter((a) => isWithinRange(a.issue_date, start, end)),
+    [grandAdvances, start, end]
   )
 
   // Total Expenses is business-only — Unit Expenses are excluded and get
@@ -206,12 +210,15 @@ export function DashboardPage() {
   // anything already inside Total Expenses / Unit Expenses.
   const periodCreditorPaid = periodCreditorPaymentsRows.reduce((s, p) => s + Number(p.amount), 0)
 
+  // Grand Advances — long-term employee loans issued in the selected period.
+  const periodGrandAdvancesGiven = periodGrandAdvancesRows.reduce((s, a) => s + Number(a.original_amount), 0)
+
   // Total Money Out — every distinct money-out category combined into one
   // figure, so nothing needs to be mentally added up across cards. Khadim
   // is a subset of Total Expenses/Unit Expenses (derived from the same
   // expense records), so it is not added again.
   const totalMoneyOut =
-    totalExpenses + unitExpensesTotal + salaryPaid + periodAdvancesGiven + periodZakatDistributed + periodCreditorPaid
+    totalExpenses + unitExpensesTotal + salaryPaid + periodAdvancesGiven + periodGrandAdvancesGiven + periodZakatDistributed + periodCreditorPaid
 
   // --- Collections (Shopify + Courier) — period-scoped, same treatment as
   // Total Advance Given / Zakat Distributed above.
@@ -435,6 +442,11 @@ export function DashboardPage() {
     [periodCreditorPaymentsRows, creditorNameById]
   )
 
+  const grandAdvancesDrillRows = useMemo<LedgerDrillRow[]>(
+    () => periodGrandAdvancesRows.map((a) => ({ id: `gra-${a.id}`, date: a.issue_date, type: 'Grand Advance', name: employeesWithBalance.find((e) => e.id === a.employee_id)?.name ?? '—', amount: Number(a.original_amount), notes: a.notes ?? '' })),
+    [periodGrandAdvancesRows, employeesWithBalance]
+  )
+
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
   const shopifyStoreNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
   const collectionDrillRows = useMemo<CollectionDrillRow[]>(
@@ -463,12 +475,13 @@ export function DashboardPage() {
       [
         ...salaryPaidDrillRows,
         ...advancesGivenDrillRows,
+        ...grandAdvancesDrillRows,
         ...totalExpensesDrillRows,
         ...unitExpensesDrillRows,
         ...zakatDrillRows,
         ...creditorPaymentsDrillRows,
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [salaryPaidDrillRows, advancesGivenDrillRows, totalExpensesDrillRows, unitExpensesDrillRows, zakatDrillRows, creditorPaymentsDrillRows]
+    [salaryPaidDrillRows, advancesGivenDrillRows, grandAdvancesDrillRows, totalExpensesDrillRows, unitExpensesDrillRows, zakatDrillRows, creditorPaymentsDrillRows]
   )
 
   // =========================================================================
@@ -521,7 +534,7 @@ export function DashboardPage() {
             fullValue={formatCurrency(totalMoneyOut)}
             icon={Wallet}
             accent="red"
-            hint="Expenses + Salary + Advances + Zakat + Creditor Payments · Selected period"
+            hint="Expenses + Salary + Advances + Grand Advances + Zakat + Creditor Payments · Selected period"
             onClick={() => toggleCard('total-money-out')}
             selected={isSelected}
           />
