@@ -948,7 +948,7 @@ export function DashboardPage() {
             </button>
           </div>
           <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 auto-rows-fr">
               {cardOrder.map((id) => (
                 <SortableWidget key={id} id={id}>
                   {renderKpiCard(id)}
@@ -974,7 +974,7 @@ export function DashboardPage() {
 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Financial Summary</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 auto-rows-fr">
           <StatCard label="Courier Collections" value={formatCurrencyCompact(periodCourierCollections)} fullValue={formatCurrency(periodCourierCollections)} icon={HandCoins} accent="green" hint="Selected period" />
           <StatCard label="Shopify Collections" value={formatCurrencyCompact(periodShopifyCollections)} fullValue={formatCurrency(periodShopifyCollections)} icon={Receipt} accent="purple" hint="Selected period" />
           <StatCard label="Office Cash Balance" value={formatCurrencyCompact(cashBalance)} fullValue={formatCurrency(cashBalance)} icon={Wallet} accent="amber" hint="Live balance" />
