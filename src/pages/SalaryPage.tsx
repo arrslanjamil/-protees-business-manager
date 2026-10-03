@@ -482,9 +482,12 @@ export function SalaryPage() {
           {employeeName && (
             <div>
               <label className="label-field">
-                Auto deduction from advance <span className="text-slate-600">(outstanding: {formatCurrency(currentBalance)})</span>
+                Deduct this month from advance <span className="text-slate-600">(outstanding: {formatCurrency(currentBalance)})</span>
               </label>
               <input type="number" className="input-field" value={deduction} onChange={(e) => setDeduction(e.target.value)} placeholder="0" />
+              <p className="mt-2 text-xs text-slate-400">
+                Remaining for next month: <span className="font-semibold text-neon-cyan">{formatCurrency(Math.max(0, currentBalance - Number(deduction) || 0))}</span>
+              </p>
               <div className="mt-2 space-y-1.5 rounded-xl bg-white/[0.02] px-3.5 py-2.5 text-xs text-slate-400">
                 {isContract && (
                   <div className="flex items-center justify-between">
