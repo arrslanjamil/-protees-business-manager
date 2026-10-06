@@ -85,6 +85,8 @@ interface RecordSalaryInput {
   absentDeduction?: number
   lateDeduction?: number
   leaveDeduction?: number
+  /** Date to mark 5-day security deduction as applied (for cutting dept) */
+  securityDeductedDate?: string | null
 }
 
 interface AddSalaryIncrementInput {
@@ -773,6 +775,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     absentDeduction,
     lateDeduction,
     leaveDeduction,
+    securityDeductedDate,
   }) => {
     const attendanceDeduction = (absentDeduction ?? 0) + (lateDeduction ?? 0) + (leaveDeduction ?? 0)
     const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount - attendanceDeduction)
@@ -850,6 +853,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw bankErr
         }
       }
+    }
+
+    // Mark security deduction as applied for cutting department
+    if (securityDeductedDate) {
+      const { error: secErr } = await supabase.from('employees').update({ security_deducted_date: securityDeductedDate }).eq('name', employeeName)
+      if (secErr) console.error('Failed to mark security deduction date:', secErr.message)
     }
 
     await refreshAll()
