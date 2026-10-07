@@ -153,9 +153,9 @@ export function SalaryPage() {
   // when it has hours to offer, and stays out of the way when it does not.
   const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
-  const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
-  const net = Math.max(0, base + overtime - ded - attendanceDeductionTotal)
   const securityDeductionAmount = selectedEmployee && !selectedEmployee.security_deducted_date ? Math.round(Number(selectedEmployee.salary) / 30 * 5) : 0
+  const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
+  const net = Math.max(0, base + overtime - ded - securityDeductionAmount - attendanceDeductionTotal)
   const isCash = isCashPaymentMethod(paymentMethod)
   const projectedCashBalance = cashBalance - net
   const wouldGoNegative = isCash && net > 0 && projectedCashBalance < 0
