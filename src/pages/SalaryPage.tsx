@@ -126,10 +126,9 @@ export function SalaryPage() {
     } else {
       setBaseAmount(String(emp.salary))
       const advanceDeduction = suggestedDeduction(name, 'cutting_department', Number(emp.salary))
-      // Add 5-day security deduction for cutting department if not already deducted
+      setDeduction(String(advanceDeduction))
+      // Mark security deduction date if not already deducted
       const securityDeduction = emp.security_deducted_date ? 0 : Math.round(Number(emp.salary) / 30 * 5)
-      setDeduction(String(advanceDeduction + securityDeduction))
-      // Mark security deduction date if being applied
       setSecurityDeductedDate(securityDeduction > 0 ? paymentDate : null)
     }
   }
