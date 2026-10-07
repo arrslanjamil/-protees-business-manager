@@ -36,6 +36,8 @@ export function SalaryPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [securityDeductedDate, setSecurityDeductedDate] = useState<string | null>(null)
+  const [otherDeductionReason, setOtherDeductionReason] = useState('')
+  const [otherDeductionAmount, setOtherDeductionAmount] = useState('')
 
   // Only active employees can be picked for a NEW payment — historical
   // payments to someone since marked inactive stay untouched below.
@@ -119,6 +121,8 @@ export function SalaryPage() {
     // overtime onto the next one picked in the same modal.
     setIncludeOvertime(false)
     setOvertimeAmount('')
+    setOtherDeductionReason('')
+    setOtherDeductionAmount('')
     if (emp.employee_type === 'contract') {
       setBaseAmount('')
       setDeduction('0')
@@ -152,9 +156,10 @@ export function SalaryPage() {
   // when it has hours to offer, and stays out of the way when it does not.
   const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
+  const otherDeduction = Number(otherDeductionAmount) || 0
   const securityDeductionAmount = selectedEmployee && !selectedEmployee.security_deducted_date ? Math.round(Number(selectedEmployee.salary) / 30 * 5) : 0
   const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
-  const net = Math.max(0, base + overtime - ded - securityDeductionAmount - attendanceDeductionTotal)
+  const net = Math.max(0, base + overtime - ded - securityDeductionAmount - attendanceDeductionTotal - otherDeduction)
   const isCash = isCashPaymentMethod(paymentMethod)
   const projectedCashBalance = cashBalance - net
   const wouldGoNegative = isCash && net > 0 && projectedCashBalance < 0
@@ -192,7 +197,7 @@ export function SalaryPage() {
     setSaving(true)
     setError(null)
     try {
-      const totalDeduction = ded + securityDeductionAmount
+      const totalDeduction = ded + securityDeductionAmount + otherDeduction
       await recordSalaryPayment({
         employeeName,
         baseAmount: base,
@@ -497,6 +502,18 @@ export function SalaryPage() {
               <p className="mt-2 text-xs text-slate-400">
                 Remaining for next month: <span className="font-semibold text-neon-cyan">{formatCurrency(Math.max(0, currentBalance - Number(deduction) || 0))}</span>
               </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-field text-xs">Other Deduction Reason</label>
+                  <input type="text" className="input-field" value={otherDeductionReason} onChange={(e) => setOtherDeductionReason(e.target.value)} placeholder="e.g. Tax, Fine" />
+                </div>
+                <div>
+                  <label className="label-field text-xs">Amount</label>
+                  <input type="number" className="input-field" value={otherDeductionAmount} onChange={(e) => setOtherDeductionAmount(e.target.value)} placeholder="0" />
+                </div>
+              </div>
+
               <div className="mt-2 space-y-1.5 rounded-xl bg-white/[0.02] px-3.5 py-2.5 text-xs text-slate-400">
                 {isContract && (
                   <div className="flex items-center justify-between">
@@ -526,6 +543,12 @@ export function SalaryPage() {
                   <div className="flex items-center justify-between">
                     <span>Attendance Deductions</span>
                     <span className="text-neon-red">-{formatCurrency(attendanceDeductionTotal)}</span>
+                  </div>
+                )}
+                {otherDeduction > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span>{otherDeductionReason || 'Other Deduction'}</span>
+                    <span className="text-neon-red">-{formatCurrency(otherDeduction)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between border-t border-white/5 pt-1.5 font-semibold">
