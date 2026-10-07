@@ -157,7 +157,7 @@ export function SalaryPage() {
   const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
   const otherDeduction = Number(otherDeductionAmount) || 0
-  const securityDeductionAmount = selectedEmployee && !selectedEmployee.security_deducted_date ? Math.round(Number(selectedEmployee.salary) / 30 * 5) : 0
+  const securityDeductionAmount = securityDeductedDate ? Math.round(Number(selectedEmployee?.salary ?? 0) / 30 * 5) : 0
   const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
   const net = Math.max(0, base + overtime - ded - securityDeductionAmount - attendanceDeductionTotal - otherDeduction)
   const isCash = isCashPaymentMethod(paymentMethod)
