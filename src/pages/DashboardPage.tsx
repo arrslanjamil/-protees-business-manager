@@ -167,7 +167,7 @@ export function DashboardPage() {
   // salaries count toward Unit Payroll/Unit Cost instead (see Unit Payroll
   // report and the Protees Unit page's Unit Overview card).
   const periodSalaryListRegular = useMemo(
-    () => periodSalaryList.filter((p) => employeesWithBalance.find((e) => e.name === p.employee_name)?.employee_group !== 'unit'),
+    () => periodSalaryList.filter((p) => employeesWithBalance.find((e) => e.name.toLowerCase() === p.employee_name.toLowerCase())?.employee_group !== 'unit'),
     [periodSalaryList, employeesWithBalance]
   )
   const periodSalaryNet = periodSalaryListRegular.reduce((s, p) => s + Number(p.net_amount), 0)
@@ -238,7 +238,7 @@ export function DashboardPage() {
   const monthlyEmployees = useMemo(() => regularEmployees.filter((e) => e.employee_type === 'monthly'), [regularEmployees])
   const totalMonthlyPayroll = monthlyEmployees.reduce((s, e) => s + Number(e.salary), 0)
   const contractPeriodPayments = useMemo(
-    () => periodSalaryListRegular.filter((p) => employeesWithBalance.find((e) => e.name === p.employee_name)?.employee_type === 'contract'),
+    () => periodSalaryListRegular.filter((p) => employeesWithBalance.find((e) => e.name.toLowerCase() === p.employee_name.toLowerCase())?.employee_type === 'contract'),
     [periodSalaryListRegular, employeesWithBalance]
   )
   const totalContractPayroll = contractPeriodPayments.reduce((s, p) => s + Number(p.base_amount), 0)
@@ -303,7 +303,7 @@ export function DashboardPage() {
         if (emp.employee_type === 'monthly') {
           return { id: emp.id, name: emp.name, type: 'Monthly', group, expectedLabel: formatCurrency(emp.salary), expectedAmount: Number(emp.salary) }
         }
-        const payment = periodSalaryList.find((p) => p.employee_name === emp.name)
+        const payment = periodSalaryList.find((p) => p.employee_name.toLowerCase() === emp.name.toLowerCase())
         if (payment && payment.pieces_completed != null) {
           const rate = Number(payment.rate_per_piece ?? emp.rate_per_piece ?? 0)
           const amount = payment.pieces_completed * rate
@@ -376,7 +376,7 @@ export function DashboardPage() {
           const settled = monthlySettledByName.get(emp.name) ?? 0
           return { id: emp.id, name: emp.name, expected, paid: settled, due: Math.max(0, expected - settled) }
         }
-        const paid = periodSalaryListRegular.filter((p) => p.employee_name === emp.name).reduce((s, p) => s + Number(p.net_amount), 0)
+        const paid = periodSalaryListRegular.filter((p) => p.employee_name.toLowerCase() === emp.name.toLowerCase()).reduce((s, p) => s + Number(p.net_amount), 0)
         return { id: emp.id, name: emp.name, expected, paid, due: Math.max(0, expected - paid) }
       }),
     [regularEmployees, expectedSalaryRows, periodSalaryListRegular, monthlySettledByName]
