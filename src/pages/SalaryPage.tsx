@@ -192,11 +192,12 @@ export function SalaryPage() {
     setSaving(true)
     setError(null)
     try {
+      const totalDeduction = ded + securityDeductionAmount
       await recordSalaryPayment({
         employeeName,
         baseAmount: base,
         overtimeAmount: overtime,
-        deductionAmount: ded,
+        deductionAmount: totalDeduction,
         month,
         year,
         paymentDate,
