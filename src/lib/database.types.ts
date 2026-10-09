@@ -118,6 +118,7 @@ export type Database = {
           updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
+          paid_date: string | null
         }
         Insert: {
           amount?: number | null
@@ -135,6 +136,7 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          paid_date?: string | null
         }
         Update: {
           amount?: number | null
@@ -152,6 +154,7 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          paid_date?: string | null
         }
         Relationships: [
           {
@@ -995,6 +998,7 @@ export type Database = {
           updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
+          security_deducted_date: string | null
         }
         Insert: {
           created_at?: string | null
@@ -1017,6 +1021,7 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          security_deducted_date?: string | null
         }
         Update: {
           created_at?: string | null
@@ -1039,6 +1044,7 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          security_deducted_date?: string | null
         }
         Relationships: []
       }
@@ -1690,6 +1696,65 @@ export type Database = {
           },
         ]
       }
+      employee_item_purchases: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          created_by_username: string | null
+          employee_name: string
+          id: number
+          item_name: string
+          item_type: string
+          notes: string | null
+          price: number
+          purchase_date: string
+          salary_payment_id: number | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+          updated_by_username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          employee_name: string
+          id?: number
+          item_name: string
+          item_type: string
+          notes?: string | null
+          price: number
+          purchase_date?: string
+          salary_payment_id?: number | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          created_by_username?: string | null
+          employee_name?: string
+          id?: number
+          item_name?: string
+          item_type?: string
+          notes?: string | null
+          price?: number
+          purchase_date?: string
+          salary_payment_id?: number | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+          updated_by_username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_item_purchases_salary_payment_id_fkey"
+            columns: ["salary_payment_id"]
+            isOneToOne: false
+            referencedRelation: "salary_payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       salary_payments: {
         Row: {
           absent_deduction: number
@@ -1699,6 +1764,10 @@ export type Database = {
           created_by_user_id: string | null
           created_by_username: string | null
           deduction_amount: number
+          item_deduction: number
+          other_deduction: number
+          other_deduction_reason: string | null
+          security_deduction: number
           employee_name: string
           id: number
           late_deduction: number
@@ -1727,6 +1796,10 @@ export type Database = {
           created_by_user_id?: string | null
           created_by_username?: string | null
           deduction_amount?: number
+          item_deduction?: number
+          other_deduction?: number
+          other_deduction_reason?: string | null
+          security_deduction?: number
           employee_name: string
           id?: number
           late_deduction?: number
@@ -1755,6 +1828,10 @@ export type Database = {
           created_by_user_id?: string | null
           created_by_username?: string | null
           deduction_amount?: number
+          item_deduction?: number
+          other_deduction?: number
+          other_deduction_reason?: string | null
+          security_deduction?: number
           employee_name?: string
           id?: number
           late_deduction?: number

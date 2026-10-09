@@ -14,7 +14,7 @@ import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '
 const now = new Date()
 
 export function SalaryPage() {
-  const { employeesWithBalance, salaryPayments, recordSalaryPayment, deleteSalaryPayment, suggestedDeduction, balanceFor } = useData()
+  const { employeesWithBalance, salaryPayments, itemPurchases, recordSalaryPayment, deleteSalaryPayment, suggestedDeduction, balanceFor } = useData()
   const { cashBalance, bankAccountsWithBalance } = useCollections()
   const { attendance, attendanceSettings } = useAttendance()
   const [modalOpen, setModalOpen] = useState(false)
@@ -82,6 +82,7 @@ export function SalaryPage() {
   const overtimeHours = Number(overtimeHoursInput) || 0
   const calculateOvertimeAmount = (hours: number) => Math.round(hours * hourlyRate)
   const overtimeAmountFromHours = calculateOvertimeAmount(overtimeHours)
+  const computedOvertimeAmount = Math.round(attendanceSummary.totalOvertimeHours * hourlyRate)
 
   /** The attendance checkbox is a shortcut, not a separate input path: it
    * fills the Overtime (Rs) field so what gets paid is always the number on
@@ -159,7 +160,13 @@ export function SalaryPage() {
   const otherDeduction = Number(otherDeductionAmount) || 0
   const securityDeductionAmount = securityDeductedDate ? Math.round(Number(selectedEmployee?.salary ?? 0) / 30 * 5) : 0
   const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
-  const net = Math.max(0, base + overtime - ded - securityDeductionAmount - attendanceDeductionTotal - otherDeduction)
+  const outstandingItems = useMemo(
+    () => itemPurchases.filter((i) => i.employee_name === employeeName && i.salary_payment_id == null),
+    [itemPurchases, employeeName]
+  )
+  const itemDeductionTotal = outstandingItems.reduce((sum, i) => sum + Number(i.price), 0)
+  const totalDeductions = ded + securityDeductionAmount + otherDeduction + itemDeductionTotal + attendanceDeductionTotal
+  const net = Math.max(0, base + overtime - totalDeductions)
   const isCash = isCashPaymentMethod(paymentMethod)
   const projectedCashBalance = cashBalance - net
   const wouldGoNegative = isCash && net > 0 && projectedCashBalance < 0
@@ -190,6 +197,10 @@ export function SalaryPage() {
       setError(`Deduction can't exceed the outstanding advance balance (${formatCurrency(currentBalance)}).`)
       return
     }
+    if (totalDeductions > base + overtime) {
+      setError('Total deductions cannot exceed the gross amount + overtime.')
+      return
+    }
     if (!isCash && !bankAccountId) {
       setError('Select a bank account for an Online payment.')
       return
@@ -197,12 +208,11 @@ export function SalaryPage() {
     setSaving(true)
     setError(null)
     try {
-      const totalDeduction = ded + securityDeductionAmount + otherDeduction
       await recordSalaryPayment({
         employeeName,
         baseAmount: base,
         overtimeAmount: overtime,
-        deductionAmount: totalDeduction,
+        deductionAmount: ded,
         month,
         year,
         paymentDate,
@@ -218,7 +228,11 @@ export function SalaryPage() {
         absentDeduction: deductionBreakdown?.absentDeduction ?? 0,
         lateDeduction: deductionBreakdown?.lateDeduction ?? 0,
         leaveDeduction: deductionBreakdown?.leaveDeduction ?? 0,
+        securityDeduction: securityDeductionAmount,
         securityDeductedDate,
+        otherDeduction,
+        otherDeductionReason: otherDeductionReason.trim() || null,
+        itemPurchaseIds: outstandingItems.map((i) => i.id),
       })
       setModalOpen(false)
     } catch (err) {
@@ -229,7 +243,7 @@ export function SalaryPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm('Delete this salary payment record? Linked advance deductions will also be removed.')) return
+    if (!confirm('Delete this salary payment record? Linked advance deductions will be removed and item purchases will be due again.')) return
     await deleteSalaryPayment(id)
   }
 
@@ -266,7 +280,14 @@ export function SalaryPage() {
             </thead>
             <tbody>
               {sortedPayments.map((p) => {
-                const totalDeduction = Number(p.deduction_amount) + Number(p.absent_deduction) + Number(p.late_deduction) + Number(p.leave_deduction)
+                const totalDeduction =
+                  Number(p.deduction_amount) +
+                  Number(p.security_deduction) +
+                  Number(p.other_deduction) +
+                  Number(p.item_deduction) +
+                  Number(p.absent_deduction) +
+                  Number(p.late_deduction) +
+                  Number(p.leave_deduction)
                 return (
                   <tr key={p.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                     <td className="px-5 py-3.5 font-medium text-white">{p.employee_name}</td>
@@ -299,6 +320,9 @@ export function SalaryPage() {
                           <p className="mt-0.5 text-[11px] text-slate-500">
                             {[
                               Number(p.deduction_amount) > 0 && `Advance ${formatCurrency(p.deduction_amount)}`,
+                              Number(p.security_deduction) > 0 && `Security ${formatCurrency(p.security_deduction)}`,
+                              Number(p.item_deduction) > 0 && `Items ${formatCurrency(p.item_deduction)}`,
+                              Number(p.other_deduction) > 0 && `${p.other_deduction_reason || 'Other'} ${formatCurrency(p.other_deduction)}`,
                               Number(p.absent_deduction) > 0 && `Absent ${formatCurrency(p.absent_deduction)}`,
                               Number(p.late_deduction) > 0 && `Late ${formatCurrency(p.late_deduction)}`,
                               Number(p.leave_deduction) > 0 && `Leave ${formatCurrency(p.leave_deduction)}`,
@@ -551,6 +575,14 @@ export function SalaryPage() {
                     <span className="text-neon-red">-{formatCurrency(otherDeduction)}</span>
                   </div>
                 )}
+                {outstandingItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between">
+                    <span>
+                      Item · {item.item_type} · {item.item_name}
+                    </span>
+                    <span className="text-neon-red">-{formatCurrency(item.price)}</span>
+                  </div>
+                ))}
                 <div className="flex items-center justify-between border-t border-white/5 pt-1.5 font-semibold">
                   <span className="text-slate-300">Final Payable Amount</span>
                   <span className="text-neon-green">{formatCurrency(net)}</span>

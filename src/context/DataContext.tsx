@@ -28,6 +28,7 @@ import type {
   KhadimTransactionType,
   SalaryIncrement,
   SalaryPayment,
+  EmployeeItemPurchase,
   Supervisor,
   SupervisorWithBalance,
   Unit,
@@ -57,6 +58,7 @@ interface RecordSalaryInput {
   employeeName: string
   baseAmount: number
   overtimeAmount: number
+  /** Advance repayment only — allocated against the employee's advances. */
   deductionAmount: number
   month: number
   year: number
@@ -85,8 +87,21 @@ interface RecordSalaryInput {
   absentDeduction?: number
   lateDeduction?: number
   leaveDeduction?: number
-  /** Date to mark 5-day security deduction as applied (for cutting dept) */
+  securityDeduction?: number
   securityDeductedDate?: string | null
+  otherDeduction?: number
+  otherDeductionReason?: string | null
+  /** employee_item_purchases rows being settled by this payment. */
+  itemPurchaseIds?: number[]
+}
+
+interface AddItemPurchaseInput {
+  employeeName: string
+  itemType: 'Fresh' | 'B'
+  itemName: string
+  price: number
+  purchaseDate?: string
+  notes?: string
 }
 
 interface AddSalaryIncrementInput {
@@ -125,6 +140,7 @@ interface DataContextValue {
   grandAdvances: GrandAdvance[]
   grandAdvanceRecoveries: GrandAdvanceRecovery[]
   salaryPayments: SalaryPayment[]
+  itemPurchases: EmployeeItemPurchase[]
   salaryIncrements: SalaryIncrement[]
   unitPayments: UnitPayment[]
   advanceDeductions: AdvanceDeduction[]
@@ -210,6 +226,7 @@ interface DataContextValue {
 
   recordSalaryPayment: (input: RecordSalaryInput) => Promise<void>
   deleteSalaryPayment: (id: number) => Promise<void>
+  addItemPurchase: (input: AddItemPurchaseInput) => Promise<void>
 
   addSalaryIncrement: (input: AddSalaryIncrementInput) => Promise<void>
 
@@ -249,6 +266,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [grandAdvances, setGrandAdvances] = useState<GrandAdvance[]>([])
   const [grandAdvanceRecoveries, setGrandAdvanceRecoveries] = useState<GrandAdvanceRecovery[]>([])
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([])
+  const [itemPurchases, setItemPurchases] = useState<EmployeeItemPurchase[]>([])
   const [salaryIncrements, setSalaryIncrements] = useState<SalaryIncrement[]>([])
   const [unitPayments, setUnitPayments] = useState<UnitPayment[]>([])
   const [advanceDeductions, setAdvanceDeductions] = useState<AdvanceDeduction[]>([])
@@ -275,7 +293,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs, ga, gar] = await Promise.all([
+      const [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs, ga, gar, ip] = await Promise.all([
         supabase.from('units').select('*').order('name'),
         supabase.from('employees').select('*').order('created_at', { ascending: false }),
         supabase.from('supervisors').select('*').order('created_at', { ascending: false }),
@@ -291,8 +309,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         supabase.from('zakat_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('grand_advances').select('*').order('issue_date', { ascending: false }),
         supabase.from('grand_advance_recoveries').select('*').order('recovery_date', { ascending: false }),
+        supabase.from('employee_item_purchases').select('*').order('purchase_date', { ascending: false }),
       ])
-      const firstError = [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs, ga, gar].find((r) => r.error)?.error
+      const firstError = [u, e, sup, a, sp, si, up, ad, ex, kh, ec, zt, zs, ga, gar, ip].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setUnits(u.data ?? [])
@@ -300,6 +319,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setSupervisors(sup.data ?? [])
       setAdvances(a.data ?? [])
       setSalaryPayments(sp.data ?? [])
+      setItemPurchases(ip.data ?? [])
       setSalaryIncrements(si.data ?? [])
       setUnitPayments(up.data ?? [])
       setAdvanceDeductions(ad.data ?? [])
@@ -775,10 +795,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     absentDeduction,
     lateDeduction,
     leaveDeduction,
+    securityDeduction,
     securityDeductedDate,
+    otherDeduction,
+    otherDeductionReason,
+    itemPurchaseIds,
   }) => {
     const attendanceDeduction = (absentDeduction ?? 0) + (lateDeduction ?? 0) + (leaveDeduction ?? 0)
-    const netAmount = Math.max(0, baseAmount + overtimeAmount - deductionAmount - attendanceDeduction)
+    const settledItems = itemPurchases.filter((i) => i.salary_payment_id == null && itemPurchaseIds?.includes(i.id))
+    const itemDeduction = settledItems.reduce((sum, i) => sum + Number(i.price), 0)
+    const netAmount = Math.max(
+      0,
+      baseAmount + overtimeAmount - deductionAmount - (securityDeduction ?? 0) - (otherDeduction ?? 0) - itemDeduction - attendanceDeduction
+    )
     const date = paymentDate ?? todayISO()
     const method = paymentMethod ?? 'Cash'
     const isCash = isCashPaymentMethod(method)
@@ -812,6 +841,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         absent_deduction: absentDeduction ?? 0,
         late_deduction: lateDeduction ?? 0,
         leave_deduction: leaveDeduction ?? 0,
+        security_deduction: securityDeduction ?? 0,
+        other_deduction: otherDeduction ?? 0,
+        other_deduction_reason: otherDeduction ? otherDeductionReason ?? null : null,
+        item_deduction: itemDeduction,
       })
       .select()
       .single()
@@ -824,6 +857,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       date,
       salaryPaymentId: payment.id,
     })
+
+    if (settledItems.length > 0) {
+      const { error: itemErr } = await supabase
+        .from('employee_item_purchases')
+        .update({ salary_payment_id: payment.id })
+        .in('id', settledItems.map((i) => i.id))
+      if (itemErr) throw itemErr
+    }
 
     if (netAmount > 0) {
       if (isCash) {
@@ -864,11 +905,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
+  const addItemPurchase: DataContextValue['addItemPurchase'] = async ({ employeeName, itemType, itemName, price, purchaseDate, notes }) => {
+    const { error: err } = await supabase.from('employee_item_purchases').insert({
+      employee_name: employeeName,
+      item_type: itemType,
+      item_name: itemName.trim(),
+      price,
+      purchase_date: purchaseDate ?? todayISO(),
+      notes: notes?.trim() || null,
+    })
+    if (err) throw err
+    await refreshAll()
+  }
+
   const deleteSalaryPayment: DataContextValue['deleteSalaryPayment'] = async (id) => {
+    const payment = salaryPayments.find((p) => p.id === id)
     await supabase.from('cash_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
     await supabase.from('bank_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
     const { error: err } = await supabase.from('salary_payments').delete().eq('id', id)
     if (err) throw err
+    if (payment && Number(payment.security_deduction) > 0) {
+      await supabase.from('employees').update({ security_deducted_date: null }).eq('name', payment.employee_name)
+    }
     await refreshAll()
   }
 
@@ -1085,6 +1143,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     grandAdvances,
     grandAdvanceRecoveries,
     salaryPayments,
+    itemPurchases,
     salaryIncrements,
     unitPayments,
     advanceDeductions,
@@ -1116,6 +1175,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     recordGrandAdvanceRecovery,
     recordSalaryPayment,
     deleteSalaryPayment,
+    addItemPurchase,
     addSalaryIncrement,
     recordUnitPayment,
     deleteUnitPayment,

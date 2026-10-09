@@ -15,7 +15,7 @@ type AdvanceType = 'normal' | 'grand'
 type HistoryFilter = 'all' | 'normal' | 'grand'
 
 export function AdvancesPage() {
-  const { employeesWithBalance, supervisorsWithBalance, employees, advances, grandAdvances, addAdvance, deleteAdvance, addGrandAdvance, deleteGrandAdvance } = useData()
+  const { employeesWithBalance, supervisorsWithBalance, employees, advances, grandAdvances, addAdvance, addItemPurchase, deleteAdvance, addGrandAdvance, deleteGrandAdvance } = useData()
   const { cashBalance, bankAccountsWithBalance } = useCollections()
   const { itemsFor, addItem } = useMasterData()
   const [advanceType, setAdvanceType] = useState<AdvanceType>('normal')
@@ -31,6 +31,9 @@ export function AdvancesPage() {
   const [referenceNumber, setReferenceNumber] = useState('')
   const [allowNegativeCash, setAllowNegativeCash] = useState(false)
   const [notes, setNotes] = useState('')
+  const [itemType, setItemType] = useState<'' | 'Fresh' | 'B'>('')
+  const [itemName, setItemName] = useState('')
+  const [itemPrice, setItemPrice] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -108,6 +111,9 @@ export function AdvancesPage() {
     setReferenceNumber('')
     setAllowNegativeCash(false)
     setNotes('')
+    setItemType('')
+    setItemName('')
+    setItemPrice('')
     setError(null)
     setAdvanceType('normal')
   }
@@ -116,6 +122,9 @@ export function AdvancesPage() {
     setDepartment(dept)
     setName('')
     setEmployeeSearch('')
+    setItemType('')
+    setItemName('')
+    setItemPrice('')
   }
 
   function handleSelectPerson(personName: string) {
@@ -125,36 +134,59 @@ export function AdvancesPage() {
 
   async function handleSave() {
     const amt = Number(amount)
+    const priceNum = Number(itemPrice)
+    const hasItem = department === 'cutting_department' && itemType !== ''
     if (!name) {
       setError(`Select a ${department === 'cutting_department' ? 'employee' : 'supervisor'}.`)
       return
     }
-    if (Number.isNaN(amt) || amt <= 0) {
+    if (amount && (Number.isNaN(amt) || amt <= 0)) {
       setError('Enter a valid amount.')
       return
     }
-    if (!paymentMethod) {
+    if (hasItem && (!itemName.trim() || Number.isNaN(priceNum) || priceNum <= 0)) {
+      setError('Enter the item name and a valid item price.')
+      return
+    }
+    const hasAdvance = amt > 0
+    if (!hasAdvance && !hasItem) {
+      setError('Enter an amount or an item.')
+      return
+    }
+    if (hasAdvance && !paymentMethod) {
       setError('Select a payment method.')
       return
     }
-    if (!isCash && !referenceNumber.trim()) {
+    if (hasAdvance && !isCash && !referenceNumber.trim()) {
       setError('Enter a transaction reference for a non-cash payment.')
       return
     }
     setSaving(true)
     setError(null)
     try {
-      await addAdvance({
-        name,
-        department,
-        amount: amt,
-        paymentDate,
-        notes: notes.trim() || undefined,
-        paymentMethod,
-        referenceNumber: isCash ? undefined : referenceNumber.trim(),
-        bankAccountId: isCash ? undefined : bankAccountId ?? undefined,
-        allowNegativeCash,
-      })
+      if (hasAdvance) {
+        await addAdvance({
+          name,
+          department,
+          amount: amt,
+          paymentDate,
+          notes: notes.trim() || undefined,
+          paymentMethod,
+          referenceNumber: isCash ? undefined : referenceNumber.trim(),
+          bankAccountId: isCash ? undefined : bankAccountId ?? undefined,
+          allowNegativeCash,
+        })
+      }
+      if (hasItem) {
+        await addItemPurchase({
+          employeeName: name,
+          itemType: itemType as 'Fresh' | 'B',
+          itemName,
+          price: priceNum,
+          purchaseDate: paymentDate,
+          notes: hasAdvance ? undefined : notes.trim() || undefined,
+        })
+      }
       setModalOpen(false)
     } catch (err) {
       setError(errorMessage(err, 'Failed to record advance.'))
@@ -520,6 +552,30 @@ export function AdvancesPage() {
               <label className="label-field">Notes (optional)</label>
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />
             </div>
+            {department === 'cutting_department' && (
+              <div className="space-y-3 rounded-xl border border-white/10 bg-base-900/40 p-3.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Item purchased (optional)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="label-field">Type</label>
+                    <select className="input-field" value={itemType} onChange={(e) => setItemType(e.target.value as '' | 'Fresh' | 'B')}>
+                      <option value="">None</option>
+                      <option value="Fresh">Fresh</option>
+                      <option value="B">B</option>
+                    </select>
+                  </div>
+                  <div className="col-span-1">
+                    <label className="label-field">Item name</label>
+                    <input className="input-field" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Shirt" disabled={!itemType} />
+                  </div>
+                  <div>
+                    <label className="label-field">Price</label>
+                    <input type="number" className="input-field" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="0" disabled={!itemType} />
+                  </div>
+                </div>
+                {itemType && <p className="text-[11px] text-slate-500">Deducted from this employee's next salary payment.</p>}
+              </div>
+            )}
             {wouldGoNegative && (
               <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
                 <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).</p>
@@ -535,7 +591,7 @@ export function AdvancesPage() {
                 Cancel
               </button>
               <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
-                {saving ? 'Saving…' : 'Give Advance'}
+                {saving ? 'Saving…' : amountNum > 0 ? 'Give Advance' : 'Save'}
               </button>
             </div>
           </div>
