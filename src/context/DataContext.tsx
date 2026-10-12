@@ -87,8 +87,6 @@ interface RecordSalaryInput {
   absentDeduction?: number
   lateDeduction?: number
   leaveDeduction?: number
-  securityDeduction?: number
-  securityDeductedDate?: string | null
   otherDeduction?: number
   otherDeductionReason?: string | null
   /** employee_item_purchases rows being settled by this payment. */
@@ -795,8 +793,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     absentDeduction,
     lateDeduction,
     leaveDeduction,
-    securityDeduction,
-    securityDeductedDate,
     otherDeduction,
     otherDeductionReason,
     itemPurchaseIds,
@@ -806,7 +802,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const itemDeduction = settledItems.reduce((sum, i) => sum + Number(i.price), 0)
     const netAmount = Math.max(
       0,
-      baseAmount + overtimeAmount - deductionAmount - (securityDeduction ?? 0) - (otherDeduction ?? 0) - itemDeduction - attendanceDeduction
+      baseAmount + overtimeAmount - deductionAmount - (otherDeduction ?? 0) - itemDeduction - attendanceDeduction
     )
     const date = paymentDate ?? todayISO()
     const method = paymentMethod ?? 'Cash'
@@ -841,7 +837,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         absent_deduction: absentDeduction ?? 0,
         late_deduction: lateDeduction ?? 0,
         leave_deduction: leaveDeduction ?? 0,
-        security_deduction: securityDeduction ?? 0,
         other_deduction: otherDeduction ?? 0,
         other_deduction_reason: otherDeduction ? otherDeductionReason ?? null : null,
         item_deduction: itemDeduction,
@@ -896,12 +891,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Mark security deduction as applied for cutting department
-    if (securityDeductedDate) {
-      const { error: secErr } = await supabase.from('employees').update({ security_deducted_date: securityDeductedDate }).eq('name', employeeName)
-      if (secErr) console.error('Failed to mark security deduction date:', secErr.message)
-    }
-
     await refreshAll()
   }
 
@@ -919,14 +908,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteSalaryPayment: DataContextValue['deleteSalaryPayment'] = async (id) => {
-    const payment = salaryPayments.find((p) => p.id === id)
     await supabase.from('cash_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
     await supabase.from('bank_transactions').delete().eq('reference_type', 'salary_payment').eq('reference_id', id)
     const { error: err } = await supabase.from('salary_payments').delete().eq('id', id)
     if (err) throw err
-    if (payment && Number(payment.security_deduction) > 0) {
-      await supabase.from('employees').update({ security_deducted_date: null }).eq('name', payment.employee_name)
-    }
     await refreshAll()
   }
 

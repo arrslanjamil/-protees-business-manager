@@ -35,7 +35,6 @@ export function SalaryPage() {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [securityDeductedDate, setSecurityDeductedDate] = useState<string | null>(null)
   const [otherDeductionReason, setOtherDeductionReason] = useState('')
   const [otherDeductionAmount, setOtherDeductionAmount] = useState('')
 
@@ -127,14 +126,10 @@ export function SalaryPage() {
     if (emp.employee_type === 'contract') {
       setBaseAmount('')
       setDeduction('0')
-      setSecurityDeductedDate(null)
     } else {
       setBaseAmount(String(emp.salary))
       const advanceDeduction = suggestedDeduction(name, 'cutting_department', Number(emp.salary))
       setDeduction(String(advanceDeduction))
-      // Mark security deduction date if not already deducted
-      const securityDeduction = emp.security_deducted_date ? 0 : Math.round(Number(emp.salary) / 30 * 5)
-      setSecurityDeductedDate(securityDeduction > 0 ? paymentDate : null)
     }
   }
 
@@ -158,14 +153,13 @@ export function SalaryPage() {
   const overtime = Number(overtimeAmount) || 0
   const ded = Number(deduction) || 0
   const otherDeduction = Number(otherDeductionAmount) || 0
-  const securityDeductionAmount = securityDeductedDate ? Math.round(Number(selectedEmployee?.salary ?? 0) / 30 * 5) : 0
   const attendanceDeductionTotal = deductionBreakdown?.totalDeduction ?? 0
   const outstandingItems = useMemo(
     () => itemPurchases.filter((i) => i.employee_name === employeeName && i.salary_payment_id == null),
     [itemPurchases, employeeName]
   )
   const itemDeductionTotal = outstandingItems.reduce((sum, i) => sum + Number(i.price), 0)
-  const totalDeductions = ded + securityDeductionAmount + otherDeduction + itemDeductionTotal + attendanceDeductionTotal
+  const totalDeductions = ded + otherDeduction + itemDeductionTotal + attendanceDeductionTotal
   const net = Math.max(0, base + overtime - totalDeductions)
   const isCash = isCashPaymentMethod(paymentMethod)
   const projectedCashBalance = cashBalance - net
@@ -228,8 +222,6 @@ export function SalaryPage() {
         absentDeduction: deductionBreakdown?.absentDeduction ?? 0,
         lateDeduction: deductionBreakdown?.lateDeduction ?? 0,
         leaveDeduction: deductionBreakdown?.leaveDeduction ?? 0,
-        securityDeduction: securityDeductionAmount,
-        securityDeductedDate,
         otherDeduction,
         otherDeductionReason: otherDeductionReason.trim() || null,
         itemPurchaseIds: outstandingItems.map((i) => i.id),
@@ -557,12 +549,6 @@ export function SalaryPage() {
                   <span>Advances Deducted</span>
                   <span className="text-neon-red">-{formatCurrency(ded)}</span>
                 </div>
-                {securityDeductionAmount > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span>5-Day Security Deduction</span>
-                    <span className="text-neon-red">-{formatCurrency(securityDeductionAmount)}</span>
-                  </div>
-                )}
                 {attendanceDeductionTotal > 0 && (
                   <div className="flex items-center justify-between">
                     <span>Attendance Deductions</span>
