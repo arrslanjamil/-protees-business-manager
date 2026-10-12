@@ -48,6 +48,8 @@ interface ExpenseInput {
   notes?: string
   expenseScope?: ExpenseScope
   paymentSource: ExpensePaymentSource
+  /** Set with paymentSource 'online' to debit that bank account. */
+  bankAccountId?: number | null
   /** Explicit acknowledgement to let a cash expense push Office Cash
    * negative — off by default (see requirement: "prevented unless admin
    * override is enabled"). */
@@ -975,7 +977,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // balance accurate without a separate manual step; 'online' expenses
   // are recorded but never touch cash. A cash expense that would push
   // Office Cash negative is blocked unless allowNegativeCash is set.
-  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope, paymentSource, allowNegativeCash }) => {
+  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope, paymentSource, bankAccountId, allowNegativeCash }) => {
     const expenseDate = date ?? todayISO()
 
     if (paymentSource === 'cash' && !allowNegativeCash && amount > cashBalance) {
@@ -999,6 +1001,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         reference_id: expense.id,
       })
       if (cashErr) console.error('Failed to post linked cash-out for expense:', cashErr.message)
+    } else if (bankAccountId) {
+      const { error: bankErr } = await supabase.from('bank_transactions').insert({
+        bank_account_id: bankAccountId,
+        type: 'debit',
+        amount,
+        date: expenseDate,
+        notes: `Expense — ${title}`,
+        reference_type: 'manual',
+        reference_id: expense.id,
+      })
+      if (bankErr) throw bankErr
     }
 
     await refreshAll()
