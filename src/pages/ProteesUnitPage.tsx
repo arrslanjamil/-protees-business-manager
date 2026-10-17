@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Boxes, HandCoins, MapPin, Pencil, Plus, Receipt, Trash2, UserCog, Users, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatCard } from '@/components/ui/StatCard'
-import { errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 interface TimelineEntry {
   id: string
@@ -39,6 +41,7 @@ export function ProteesUnitPage() {
     balanceFor,
   } = useData()
   const { showToast } = useToast()
+  const { cashBalance, bankAccountsWithBalance } = useCollections()
 
   const unitInfo = units[0]
   const supervisor = supervisors[0]
@@ -139,10 +142,18 @@ export function ProteesUnitPage() {
   const [savingAdvance, setSavingAdvance] = useState(false)
   const [advanceError, setAdvanceError] = useState<string | null>(null)
 
+  const [advanceMethod, setAdvanceMethod] = useState<'cash' | 'bank'>('bank')
+  const [advanceBankId, setAdvanceBankId] = useState<number | null>(null)
+  const [advanceReference, setAdvanceReference] = useState('')
+  const effectiveAdvanceBankId = advanceBankId ?? bankAccountsWithBalance[0]?.id ?? null
+
   function openAdvanceModal() {
     setAdvanceDate(todayISO())
     setAdvanceAmount('')
     setAdvanceNotes('')
+    setAdvanceMethod('bank')
+    setAdvanceBankId(null)
+    setAdvanceReference('')
     setAdvanceError(null)
     setAdvanceModalOpen(true)
   }
@@ -154,10 +165,24 @@ export function ProteesUnitPage() {
       setAdvanceError('Enter a valid amount.')
       return
     }
+    const isBank = advanceMethod === 'bank'
+    if (isBank && !effectiveAdvanceBankId) {
+      setAdvanceError('Select a bank account, or switch to Cash.')
+      return
+    }
     setSavingAdvance(true)
     setAdvanceError(null)
     try {
-      await addAdvance({ name: supervisor.name, department: 'protees_unit', amount: amt, paymentDate: advanceDate, notes: advanceNotes.trim() || undefined, paymentMethod: 'Cash' })
+      await addAdvance({
+        name: supervisor.name,
+        department: 'protees_unit',
+        amount: amt,
+        paymentDate: advanceDate,
+        notes: advanceNotes.trim() || undefined,
+        paymentMethod: isBank ? 'Bank Transfer' : 'Cash',
+        bankAccountId: isBank ? effectiveAdvanceBankId : undefined,
+        referenceNumber: isBank ? advanceReference.trim() || undefined : undefined,
+      })
       setAdvanceModalOpen(false)
     } catch (err) {
       setAdvanceError(errorMessage(err, 'Failed to save advance.'))
@@ -400,6 +425,47 @@ export function ProteesUnitPage() {
           <div>
             <label className="label-field">Amount</label>
             <input type="number" className="input-field" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} placeholder="0" />
+          </div>
+          <div className="space-y-3">
+            <label className="label-field">Payment</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['cash', 'bank'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setAdvanceMethod(m)}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-xs font-semibold transition',
+                    advanceMethod === m
+                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {m === 'cash' ? 'Cash' : 'Bank Transfer'}
+                </button>
+              ))}
+            </div>
+            {advanceMethod === 'cash' ? (
+              <p className="text-[11px] text-slate-500">Deducted from Office Cash (current balance: {formatCurrency(cashBalance)}).</p>
+            ) : (
+              <>
+                <SearchableSelect
+                  value={effectiveAdvanceBankId != null ? String(effectiveAdvanceBankId) : ''}
+                  onChange={(v) => setAdvanceBankId(Number(v))}
+                  options={bankAccountsWithBalance.map((b) => ({ value: String(b.id), label: `${b.name} (${formatCurrency(b.balance)})` }))}
+                  placeholder="Select bank account…"
+                  searchPlaceholder="Search bank…"
+                  emptyMessage="No bank account found"
+                />
+                <input
+                  type="text"
+                  className="input-field"
+                  value={advanceReference}
+                  onChange={(e) => setAdvanceReference(e.target.value)}
+                  placeholder="Transaction reference (optional)"
+                />
+              </>
+            )}
           </div>
           <div>
             <label className="label-field">Notes (optional)</label>
