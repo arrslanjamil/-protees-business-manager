@@ -145,7 +145,10 @@ export function ProteesUnitPage() {
   const [advanceMethod, setAdvanceMethod] = useState<'cash' | 'bank'>('bank')
   const [advanceBankId, setAdvanceBankId] = useState<number | null>(null)
   const [advanceReference, setAdvanceReference] = useState('')
+  const [advanceAllowNegative, setAdvanceAllowNegative] = useState(false)
   const effectiveAdvanceBankId = advanceBankId ?? bankAccountsWithBalance[0]?.id ?? null
+  const advanceAmountNum = Number(advanceAmount) || 0
+  const advanceWouldGoNegative = advanceMethod === 'cash' && advanceAmountNum > 0 && advanceAmountNum > cashBalance
 
   function openAdvanceModal() {
     setAdvanceDate(todayISO())
@@ -154,6 +157,7 @@ export function ProteesUnitPage() {
     setAdvanceMethod('bank')
     setAdvanceBankId(null)
     setAdvanceReference('')
+    setAdvanceAllowNegative(false)
     setAdvanceError(null)
     setAdvanceModalOpen(true)
   }
@@ -182,6 +186,7 @@ export function ProteesUnitPage() {
         paymentMethod: isBank ? 'Bank Transfer' : 'Cash',
         bankAccountId: isBank ? effectiveAdvanceBankId : undefined,
         referenceNumber: isBank ? advanceReference.trim() || undefined : undefined,
+        allowNegativeCash: advanceAllowNegative,
       })
       setAdvanceModalOpen(false)
     } catch (err) {
@@ -471,12 +476,21 @@ export function ProteesUnitPage() {
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={advanceNotes} onChange={(e) => setAdvanceNotes(e.target.value)} placeholder="Optional" />
           </div>
+          {advanceWouldGoNegative && (
+            <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
+              <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(cashBalance - advanceAmountNum)} (negative).</p>
+              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={advanceAllowNegative} onChange={(e) => setAdvanceAllowNegative(e.target.checked)} />
+                Allow negative Office Cash balance and save anyway
+              </label>
+            </div>
+          )}
           {advanceError && <p className="text-xs text-neon-red">{advanceError}</p>}
           <div className="flex gap-3 pt-2">
             <button className="btn-secondary flex-1" onClick={() => setAdvanceModalOpen(false)}>
               Cancel
             </button>
-            <button className="btn-primary flex-1" onClick={handleSaveAdvance} disabled={savingAdvance}>
+            <button className="btn-primary flex-1" onClick={handleSaveAdvance} disabled={savingAdvance || (advanceWouldGoNegative && !advanceAllowNegative)}>
               {savingAdvance ? 'Saving…' : 'Save Advance'}
             </button>
           </div>
