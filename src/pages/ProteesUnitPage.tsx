@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { StatCard } from '@/components/ui/StatCard'
-import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
+import { classNames, errorMessage, formatCurrency, formatDate, isWithinRange, todayISO } from '@/lib/utils'
 
 interface TimelineEntry {
   id: string
@@ -50,6 +50,24 @@ export function ProteesUnitPage() {
   const outstandingBalance = supervisor ? balanceFor(supervisor.name, 'protees_unit') : 0
 
   const totalAdvancesGiven = unitAdvances.reduce((sum, a) => sum + Number(a.amount), 0)
+  const lastPaymentDate = useMemo(
+    () =>
+      unitPayments
+        .filter((p) => !supervisor || p.supervisor_name === supervisor.name)
+        .reduce<string | null>((latest, p) => (!latest || p.payment_date > latest ? p.payment_date : latest), null),
+    [unitPayments, supervisor]
+  )
+  const advancesSinceLastPayment = unitAdvances
+    .filter((a) => isWithinRange(a.payment_date, lastPaymentDate ?? '0001-01-01', '9999-12-31'))
+    .reduce((sum, a) => sum + Number(a.amount), 0)
+
+  type HistoryRange = 'since_payment' | 'all' | 'custom'
+  const [historyRange, setHistoryRange] = useState<HistoryRange>('since_payment')
+  const [historyStart, setHistoryStart] = useState(todayISO())
+  const [historyEnd, setHistoryEnd] = useState(todayISO())
+  const historyFrom =
+    historyRange === 'since_payment' ? (lastPaymentDate ?? '0001-01-01') : historyRange === 'custom' ? historyStart : '0001-01-01'
+  const historyTo = historyRange === 'custom' ? historyEnd : '9999-12-31'
   const totalPaymentsMade = unitPayments.reduce((sum, p) => sum + Number(p.net_amount), 0)
 
   // Unit Overview — the single source of truth for this page's summary
@@ -94,6 +112,11 @@ export function ProteesUnitPage() {
     }
     return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [unitAdvances, unitPayments])
+
+  const filteredTimeline = useMemo(
+    () => timeline.filter((e) => isWithinRange(e.date, historyFrom, historyTo)),
+    [timeline, historyFrom, historyTo]
+  )
 
   // --- Supervisor modal ---------------------------------------------------------
   const [supervisorModalOpen, setSupervisorModalOpen] = useState(false)
@@ -319,7 +342,13 @@ export function ProteesUnitPage() {
       <div>
         <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Unit Overview</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <StatCard label="Total Advances Given" value={formatCurrency(totalAdvancesGiven)} icon={HandCoins} accent="amber" />
+          <StatCard
+            label="Advances Since Last Payment"
+            value={formatCurrency(advancesSinceLastPayment)}
+            icon={HandCoins}
+            accent="amber"
+            hint={`All time: ${formatCurrency(totalAdvancesGiven)}`}
+          />
           <StatCard label="Total Payments Made" value={formatCurrency(totalPaymentsMade)} icon={Wallet} accent="green" hint={`${unitPayments.length} payments`} />
           <StatCard label="Total Unit Expenses" value={formatCurrency(totalUnitExpenses)} icon={Receipt} accent="purple" />
           <StatCard label="Total Unit Employee Salaries" value={formatCurrency(totalUnitEmployeeSalaries)} icon={Users} accent="cyan" />
@@ -350,11 +379,48 @@ export function ProteesUnitPage() {
 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Unit History</h2>
-        {timeline.length === 0 ? (
+        <div className="card mb-3 flex flex-wrap items-center gap-2">
+          {lastPaymentDate && (
+            <button
+              type="button"
+              onClick={() => setHistoryRange('since_payment')}
+              className={classNames(
+                'rounded-xl border px-3 py-1.5 text-xs font-semibold transition',
+                historyRange === 'since_payment' ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+              )}
+            >
+              Since last payment
+            </button>
+          )}
+          {(['all', 'custom'] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setHistoryRange(r)}
+              className={classNames(
+                'rounded-xl border px-3 py-1.5 text-xs font-semibold transition',
+                historyRange === r ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+              )}
+            >
+              {r === 'all' ? 'All time' : 'Custom range'}
+            </button>
+          ))}
+          {historyRange === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input type="date" className="input-field py-1.5 text-xs" value={historyStart} onChange={(e) => setHistoryStart(e.target.value)} />
+              <span className="text-xs text-slate-500">to</span>
+              <input type="date" className="input-field py-1.5 text-xs" value={historyEnd} onChange={(e) => setHistoryEnd(e.target.value)} />
+            </div>
+          )}
+          <span className="ml-auto text-xs text-slate-500">
+            {historyRange === 'all' ? 'All records' : `From ${formatDate(historyFrom)}${historyRange === 'custom' ? ` to ${formatDate(historyTo)}` : ''}`}
+          </span>
+        </div>
+        {filteredTimeline.length === 0 ? (
           <EmptyState icon={Receipt} title="No transactions yet" description="Advances and payments will show up here, latest first." />
         ) : (
           <div className="space-y-3">
-            {timeline.map((entry) => (
+            {filteredTimeline.map((entry) => (
               <div key={entry.id} className="card group flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
