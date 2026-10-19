@@ -19,6 +19,8 @@ interface TimelineEntry {
   gross?: number
   overtime?: number
   deduction?: number
+  pieces?: number | null
+  rate?: number | null
   createdByUsername: string | null
 }
 
@@ -57,10 +59,6 @@ export function ProteesUnitPage() {
         .reduce<string | null>((latest, p) => (!latest || p.payment_date > latest ? p.payment_date : latest), null),
     [unitPayments, supervisor]
   )
-  const advancesSinceLastPayment = unitAdvances
-    .filter((a) => isWithinRange(a.payment_date, lastPaymentDate ?? '0001-01-01', '9999-12-31'))
-    .reduce((sum, a) => sum + Number(a.amount), 0)
-
   type HistoryRange = 'since_payment' | 'all' | 'custom'
   const [historyRange, setHistoryRange] = useState<HistoryRange>('since_payment')
   const [historyStart, setHistoryStart] = useState(todayISO())
@@ -68,7 +66,12 @@ export function ProteesUnitPage() {
   const historyFrom =
     historyRange === 'since_payment' ? (lastPaymentDate ?? '0001-01-01') : historyRange === 'custom' ? historyStart : '0001-01-01'
   const historyTo = historyRange === 'custom' ? historyEnd : '9999-12-31'
-  const totalPaymentsMade = unitPayments.reduce((sum, p) => sum + Number(p.net_amount), 0)
+
+  const periodAdvances = unitAdvances
+    .filter((a) => isWithinRange(a.payment_date, historyFrom, historyTo))
+    .reduce((sum, a) => sum + Number(a.amount), 0)
+  const periodPayments = unitPayments.filter((p) => isWithinRange(p.payment_date, historyFrom, historyTo))
+  const totalPaymentsMade = periodPayments.reduce((sum, p) => sum + Number(p.net_amount), 0)
 
   // Unit Overview — the single source of truth for this page's summary
   // stats (no duplicate KPI row above it). Total Unit Cost = Total
@@ -76,13 +79,18 @@ export function ProteesUnitPage() {
   // alongside as its own figure, not folded into that formula, since Unit
   // Employee payroll is tracked separately via the Unit Payroll report).
   const totalUnitExpenses = useMemo(
-    () => expenses.filter((e) => e.expense_scope === 'unit').reduce((sum, e) => sum + Number(e.amount), 0),
-    [expenses]
+    () =>
+      expenses
+        .filter((e) => e.expense_scope === 'unit' && isWithinRange(e.date, historyFrom, historyTo))
+        .reduce((sum, e) => sum + Number(e.amount), 0),
+    [expenses, historyFrom, historyTo]
   )
   const totalUnitEmployeeSalaries = useMemo(() => {
     const unitEmployeeNames = new Set(employeesWithBalance.filter((e) => e.employee_group === 'unit').map((e) => e.name))
-    return salaryPayments.filter((p) => unitEmployeeNames.has(p.employee_name)).reduce((sum, p) => sum + Number(p.net_amount), 0)
-  }, [salaryPayments, employeesWithBalance])
+    return salaryPayments
+      .filter((p) => unitEmployeeNames.has(p.employee_name) && isWithinRange(p.payment_date, historyFrom, historyTo))
+      .reduce((sum, p) => sum + Number(p.net_amount), 0)
+  }, [salaryPayments, employeesWithBalance, historyFrom, historyTo])
   const totalUnitCost = totalPaymentsMade + totalUnitExpenses
 
   const timeline = useMemo<TimelineEntry[]>(() => {
@@ -107,6 +115,8 @@ export function ProteesUnitPage() {
         gross: Number(p.total_amount),
         overtime: Number(p.overtime_amount),
         deduction: Number(p.advance_given),
+        pieces: p.pieces_completed,
+        rate: p.rate_per_piece,
         createdByUsername: p.created_by_username,
       })
     }
@@ -223,6 +233,8 @@ export function ProteesUnitPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [paymentDate, setPaymentDate] = useState(todayISO())
   const [grossAmount, setGrossAmount] = useState('')
+  const [piecesInput, setPiecesInput] = useState('')
+  const [pieceRateInput, setPieceRateInput] = useState('2')
   const [overtimeAmount, setOvertimeAmount] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
@@ -231,21 +243,30 @@ export function ProteesUnitPage() {
   function openPaymentModal() {
     setPaymentDate(todayISO())
     setGrossAmount('')
+    setPiecesInput('')
+    setPieceRateInput('2')
     setOvertimeAmount('')
     setPaymentNotes('')
     setPaymentError(null)
     setPaymentModalOpen(true)
   }
 
-  const gross = Number(grossAmount) || 0
+  const piecesNum = Number(piecesInput) || 0
+  const pieceRateNum = Number(pieceRateInput) || 0
+  const pieceGross = piecesNum > 0 ? piecesNum * pieceRateNum : 0
+  const gross = piecesNum > 0 ? pieceGross : Number(grossAmount) || 0
   const overtime = Number(overtimeAmount) || 0
   const advanceDeduction = Math.min(outstandingBalance, gross + overtime)
   const netPayment = Math.max(0, gross + overtime - advanceDeduction)
 
   async function handleSavePayment() {
     if (!supervisor) return
-    if (Number.isNaN(gross) || gross <= 0) {
-      setPaymentError('Enter a valid gross payment amount.')
+    if (piecesNum < 0 || Number.isNaN(gross) || gross <= 0) {
+      setPaymentError('Enter the pieces made (or a valid gross amount).')
+      return
+    }
+    if (piecesNum > 0 && pieceRateNum <= 0) {
+      setPaymentError('Enter a valid rate per piece.')
       return
     }
     if (overtime < 0) {
@@ -262,6 +283,8 @@ export function ProteesUnitPage() {
         overtimeAmount: overtime,
         advanceGiven: advanceDeduction,
         notes: paymentNotes.trim() || undefined,
+        piecesCompleted: piecesNum > 0 ? piecesNum : null,
+        ratePerPiece: piecesNum > 0 ? pieceRateNum : null,
       })
       setPaymentModalOpen(false)
     } catch (err) {
@@ -339,47 +362,7 @@ export function ProteesUnitPage() {
         </div>
       )}
 
-      <div>
-        <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Unit Overview</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <StatCard
-            label="Advances Since Last Payment"
-            value={formatCurrency(advancesSinceLastPayment)}
-            icon={HandCoins}
-            accent="amber"
-            hint={`All time: ${formatCurrency(totalAdvancesGiven)}`}
-          />
-          <StatCard label="Total Payments Made" value={formatCurrency(totalPaymentsMade)} icon={Wallet} accent="green" hint={`${unitPayments.length} payments`} />
-          <StatCard label="Total Unit Expenses" value={formatCurrency(totalUnitExpenses)} icon={Receipt} accent="purple" />
-          <StatCard label="Total Unit Employee Salaries" value={formatCurrency(totalUnitEmployeeSalaries)} icon={Users} accent="cyan" />
-          <StatCard label="Outstanding Balance" value={formatCurrency(outstandingBalance)} icon={HandCoins} accent={outstandingBalance > 0 ? 'red' : 'green'} />
-          <StatCard label="Total Unit Cost" value={formatCurrency(totalUnitCost)} icon={Wallet} accent="cyan" hint="Payments + Unit Expenses" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <button
-          onClick={openAdvanceModal}
-          disabled={!supervisor}
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-neon-red/30 bg-neon-red/5 px-4 py-6 text-neon-red transition hover:bg-neon-red/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <HandCoins size={26} />
-          <span className="text-base font-semibold">Give Advance</span>
-        </button>
-        <button
-          onClick={openPaymentModal}
-          disabled={!supervisor}
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-neon-green/30 bg-neon-green/5 px-4 py-6 text-neon-green transition hover:bg-neon-green/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Wallet size={26} />
-          <span className="text-base font-semibold">Make Payment</span>
-        </button>
-      </div>
-      {!supervisor && <p className="text-center text-xs text-slate-500">Add a supervisor first to give advances or record payments.</p>}
-
-      <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Unit History</h2>
-        <div className="card mb-3 flex flex-wrap items-center gap-2">
+      <div className="card flex flex-wrap items-center gap-2">
           {lastPaymentDate && (
             <button
               type="button"
@@ -415,7 +398,48 @@ export function ProteesUnitPage() {
           <span className="ml-auto text-xs text-slate-500">
             {historyRange === 'all' ? 'All records' : `From ${formatDate(historyFrom)}${historyRange === 'custom' ? ` to ${formatDate(historyTo)}` : ''}`}
           </span>
+      </div>
+
+      <div>
+        <h2 className="mb-4 font-display text-sm font-semibold uppercase tracking-wider text-slate-300">Unit Overview</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <StatCard
+            label="Advances (Selected Period)"
+            value={formatCurrency(periodAdvances)}
+            icon={HandCoins}
+            accent="amber"
+            hint={`All time: ${formatCurrency(totalAdvancesGiven)}`}
+          />
+          <StatCard label="Total Payments Made" value={formatCurrency(totalPaymentsMade)} icon={Wallet} accent="green" hint={`${periodPayments.length} payments in period`} />
+          <StatCard label="Total Unit Expenses" value={formatCurrency(totalUnitExpenses)} icon={Receipt} accent="purple" />
+          <StatCard label="Total Unit Employee Salaries" value={formatCurrency(totalUnitEmployeeSalaries)} icon={Users} accent="cyan" />
+          <StatCard label="Outstanding Balance" value={formatCurrency(outstandingBalance)} icon={HandCoins} accent={outstandingBalance > 0 ? 'red' : 'green'} />
+          <StatCard label="Total Unit Cost" value={formatCurrency(totalUnitCost)} icon={Wallet} accent="cyan" hint="Payments + Unit Expenses" />
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <button
+          onClick={openAdvanceModal}
+          disabled={!supervisor}
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-neon-red/30 bg-neon-red/5 px-4 py-6 text-neon-red transition hover:bg-neon-red/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <HandCoins size={26} />
+          <span className="text-base font-semibold">Give Advance</span>
+        </button>
+        <button
+          onClick={openPaymentModal}
+          disabled={!supervisor}
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-neon-green/30 bg-neon-green/5 px-4 py-6 text-neon-green transition hover:bg-neon-green/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Wallet size={26} />
+          <span className="text-base font-semibold">Make Payment</span>
+        </button>
+      </div>
+      {!supervisor && <p className="text-center text-xs text-slate-500">Add a supervisor first to give advances or record payments.</p>}
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Unit History</h2>
         {filteredTimeline.length === 0 ? (
           <EmptyState icon={Receipt} title="No transactions yet" description="Advances and payments will show up here, latest first." />
         ) : (
@@ -430,20 +454,27 @@ export function ProteesUnitPage() {
                   </div>
 
                   {entry.type === 'Payment' ? (
-                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-400 sm:grid-cols-4">
-                      <span>
-                        Gross <span className="text-slate-300">{formatCurrency(entry.gross ?? 0)}</span>
-                      </span>
-                      <span>
-                        Overtime <span className="text-neon-cyan">+{formatCurrency(entry.overtime ?? 0)}</span>
-                      </span>
-                      <span>
-                        Deduction <span className="text-neon-red">-{formatCurrency(entry.deduction ?? 0)}</span>
-                      </span>
-                      <span>
-                        Net <span className="font-semibold text-neon-green">{formatCurrency(entry.amount)}</span>
-                      </span>
-                    </div>
+                    <>
+                      {entry.pieces ? (
+                        <p className="mt-2 text-xs text-slate-400">
+                          Pieces made <span className="text-slate-300">{entry.pieces}</span> × {formatCurrency(entry.rate ?? 0)}
+                        </p>
+                      ) : null}
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-400 sm:grid-cols-4">
+                        <span>
+                          Gross <span className="text-slate-300">{formatCurrency(entry.gross ?? 0)}</span>
+                        </span>
+                        <span>
+                          Overtime <span className="text-neon-cyan">+{formatCurrency(entry.overtime ?? 0)}</span>
+                        </span>
+                        <span>
+                          Deduction <span className="text-neon-red">-{formatCurrency(entry.deduction ?? 0)}</span>
+                        </span>
+                        <span>
+                          Net <span className="font-semibold text-neon-green">{formatCurrency(entry.amount)}</span>
+                        </span>
+                      </div>
+                    </>
                   ) : (
                     <p className="mt-2 text-sm font-semibold text-neon-red">-{formatCurrency(entry.amount)}</p>
                   )}
@@ -569,9 +600,26 @@ export function ProteesUnitPage() {
             <label className="label-field">Date</label>
             <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-field">Pieces made</label>
+              <input type="number" className="input-field" value={piecesInput} onChange={(e) => setPiecesInput(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="label-field">Rate per piece (Rs)</label>
+              <input type="number" className="input-field" value={pieceRateInput} onChange={(e) => setPieceRateInput(e.target.value)} placeholder="2" />
+            </div>
+          </div>
           <div>
-            <label className="label-field">Gross payment amount</label>
-            <input type="number" className="input-field" value={grossAmount} onChange={(e) => setGrossAmount(e.target.value)} placeholder="0" />
+            <label className="label-field">Gross payment amount {piecesNum > 0 && '(from pieces)'}</label>
+            <input
+              type="number"
+              className="input-field"
+              value={piecesNum > 0 ? String(pieceGross) : grossAmount}
+              onChange={(e) => setGrossAmount(e.target.value)}
+              disabled={piecesNum > 0}
+              placeholder="0"
+            />
           </div>
           <div>
             <label className="label-field">Overtime amount (optional)</label>
@@ -583,6 +631,14 @@ export function ProteesUnitPage() {
               <span>Total Outstanding Advances</span>
               <span className="text-slate-300">{formatCurrency(outstandingBalance)}</span>
             </div>
+            {piecesNum > 0 && (
+              <div className="flex items-center justify-between">
+                <span>Pieces × Rate</span>
+                <span className="text-slate-300">
+                  {piecesNum} × {formatCurrency(pieceRateNum)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span>Gross Payment</span>
               <span className="text-slate-300">{formatCurrency(gross)}</span>

@@ -121,6 +121,8 @@ interface RecordUnitPaymentInput {
   overtimeAmount: number
   advanceGiven: number
   notes?: string
+  piecesCompleted?: number | null
+  ratePerPiece?: number | null
 }
 
 export interface KhadimTotals {
@@ -925,6 +927,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     overtimeAmount,
     advanceGiven,
     notes,
+    piecesCompleted,
+    ratePerPiece,
   }) => {
     const netAmount = Math.max(0, totalAmount + overtimeAmount - advanceGiven)
     const date = paymentDate ?? todayISO()
@@ -946,6 +950,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         net_amount: netAmount,
         unit_expenses_during_period: 0,
         notes: notes ?? null,
+        pieces_completed: piecesCompleted ?? null,
+        rate_per_piece: ratePerPiece ?? null,
         month: asOf.getMonth() + 1,
         year: asOf.getFullYear(),
       })

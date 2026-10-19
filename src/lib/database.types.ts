@@ -2041,6 +2041,8 @@ export type Database = {
           updated_by_user_id: string | null
           updated_by_username: string | null
           year: number
+          pieces_completed: number | null
+          rate_per_piece: number | null
         }
         Insert: {
           advance_given?: number
@@ -2062,6 +2064,8 @@ export type Database = {
           updated_by_user_id?: string | null
           updated_by_username?: string | null
           year: number
+          pieces_completed?: number | null
+          rate_per_piece?: number | null
         }
         Update: {
           advance_given?: number
@@ -2083,6 +2087,8 @@ export type Database = {
           updated_by_user_id?: string | null
           updated_by_username?: string | null
           year?: number
+          pieces_completed?: number | null
+          rate_per_piece?: number | null
         }
         Relationships: []
       }
