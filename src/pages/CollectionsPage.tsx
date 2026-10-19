@@ -1,19 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ArrowRightLeft,
-  Banknote,
-  CheckCircle2,
-  Landmark,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Settings,
-  ShoppingBag,
-  Truck,
-  Wallet,
-  XCircle,
-} from 'lucide-react'
+import { Banknote, CheckCircle2, Landmark, Pencil, Plus, Receipt, RefreshCw, Settings, ShoppingBag, Truck, Wallet, XCircle } from 'lucide-react'
 import { useCollections, type ShopifyConnectionTestResult } from '@/context/CollectionsContext'
+import { useData } from '@/context/DataContext'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { StatCard } from '@/components/ui/StatCard'
@@ -31,8 +19,8 @@ type DetailSelection =
   | { kind: 'total-collections' }
   | { kind: 'courier-collections' }
   | { kind: 'shopify-collections' }
-  | { kind: 'office-cash' }
-  | { kind: 'total-bank' }
+  | { kind: 'cash-received' }
+  | { kind: 'online-received' }
   | { kind: 'courier'; id: number }
   | { kind: 'bank'; id: number }
   | { kind: 'shopify-store'; key: string }
@@ -50,7 +38,7 @@ function selectionKey(s: DetailSelection | null): string | null {
  * inline inside their own AccountCard instead — both draw from the same
  * `selection` state, so only one of either surface is ever open. */
 function isTopSummaryKind(kind: DetailSelection['kind']): boolean {
-  return kind === 'total-collections' || kind === 'courier-collections' || kind === 'shopify-collections' || kind === 'office-cash' || kind === 'total-bank'
+  return kind === 'total-collections' || kind === 'cash-received' || kind === 'online-received'
 }
 
 export function CollectionsPage() {
@@ -60,9 +48,8 @@ export function CollectionsPage() {
     courierCollections,
     bankAccountsWithBalance,
     bankTransactions,
-    cashTransactions,
-    cashBalance,
     shopifyOrders,
+    creditorPayments,
     shopifyStores,
     shopifySyncing,
     addCourier,
@@ -70,12 +57,12 @@ export function CollectionsPage() {
     addCourierCollection,
     deleteCourierCollection,
     addBankAccount,
-    transferCashToOffice,
     updateShopifyStoreDomain,
     syncShopifyNow,
     testShopifyConnection,
   } = useCollections()
   const { showToast } = useToast()
+  const { expenses, salaryPayments, unitPayments, advances, grandAdvances, zakatTransactions } = useData()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('monthly')
   const [customStart, setCustomStart] = useState<string>(() => dashboardDateRange('15d').start)
@@ -93,7 +80,36 @@ export function CollectionsPage() {
   )
   const shopifyCollectionsTotal = periodShopifyOrders.reduce((s, o) => s + Number(o.total_amount), 0)
   const totalCollections = courierCollectionsTotal + shopifyCollectionsTotal
-  const totalBankBalance = useMemo(() => bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0), [bankAccountsWithBalance])
+
+  const cashCourierIds = useMemo(() => new Set(couriers.filter((c) => c.payment_method !== 'bank_transfer').map((c) => c.id)), [couriers])
+  const periodCashCollections = useMemo(() => periodCourierCollections.filter((c) => cashCourierIds.has(c.courier_id)), [periodCourierCollections, cashCourierIds])
+  const periodOnlineCourierCollections = useMemo(
+    () => periodCourierCollections.filter((c) => !cashCourierIds.has(c.courier_id)),
+    [periodCourierCollections, cashCourierIds]
+  )
+  const cashReceivedTotal = periodCashCollections.reduce((s, c) => s + Number(c.amount), 0)
+  const onlineReceivedTotal = periodOnlineCourierCollections.reduce((s, c) => s + Number(c.amount), 0) + shopifyCollectionsTotal
+
+  const totalExpensesInPeriod = useMemo(() => {
+    const inPeriod = (d: string) => isWithinRange(d, start, end)
+    const expensesTotal = expenses.filter((e) => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount), 0)
+    const salariesNet = salaryPayments.filter((p) => inPeriod(p.payment_date)).reduce((s, p) => s + Number(p.net_amount), 0)
+    const unitPaymentsNet = unitPayments.filter((p) => inPeriod(p.payment_date)).reduce((s, p) => s + Number(p.net_amount), 0)
+    const advancesTotal = advances.filter((a) => inPeriod(a.payment_date)).reduce((s, a) => s + Number(a.amount), 0)
+    const grandAdvancesTotal = grandAdvances.filter((g) => inPeriod(g.issue_date)).reduce((s, g) => s + Number(g.original_amount), 0)
+    const zakatTotal = zakatTransactions.filter((z) => inPeriod(z.date)).reduce((s, z) => s + Number(z.amount), 0)
+    const creditorTotal = creditorPayments.filter((p) => inPeriod(p.payment_date)).reduce((s, p) => s + Number(p.amount), 0)
+    return expensesTotal + salariesNet + unitPaymentsNet + advancesTotal + grandAdvancesTotal + zakatTotal + creditorTotal
+  }, [start, end, expenses, salaryPayments, unitPayments, advances, grandAdvances, zakatTransactions, creditorPayments])
+
+  const bankReceivedById = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const t of bankTransactions) {
+      if (t.type === 'credit') map.set(t.bank_account_id, (map.get(t.bank_account_id) ?? 0) + Number(t.amount))
+    }
+    return map
+  }, [bankTransactions])
+  const totalBankReceived = bankAccountsWithBalance.reduce((s, b) => s + (bankReceivedById.get(b.id) ?? 0), 0)
 
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
   const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
@@ -143,17 +159,6 @@ export function CollectionsPage() {
       addedBy: 'Shopify Sync',
       notes: [o.order_number, o.customer_name].filter(Boolean).join(' · '),
     })
-    const cashRow = (t: (typeof cashTransactions)[number]): CollectionsDetailRow => ({
-      id: `ct-${t.id}`,
-      date: t.date,
-      type: t.type === 'cash_in' ? 'Cash In' : 'Cash Out',
-      typeColor: t.type === 'cash_in' ? 'green' : 'red',
-      source: t.category,
-      amount: Number(t.amount),
-      amountKind: t.type === 'cash_in' ? 'in' : 'out',
-      addedBy: t.created_by_username ?? '—',
-      notes: t.notes || '',
-    })
     const bankRow = (t: (typeof bankTransactions)[number]): CollectionsDetailRow => ({
       id: `bt-${t.id}`,
       date: t.date,
@@ -199,31 +204,26 @@ export function CollectionsPage() {
           emptyMessage: 'No Shopify orders in this period.',
         }
       }
-      case 'office-cash': {
-        const ascending = [...cashTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        let running = 0
-        const rows = ascending
-          .map((t) => {
-            running += t.type === 'cash_in' ? Number(t.amount) : -Number(t.amount)
-            return { ...cashRow(t), runningBalance: running }
-          })
-          .reverse()
+      case 'cash-received': {
+        const rows = [...periodCashCollections].sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime()).map(courierRow)
         return {
-          title: 'Office Cash',
-          subtitle: `Complete cash ledger · Live balance: ${formatCurrency(cashBalance)}`,
+          title: 'Cash Received',
+          subtitle: `${periodLabel} · ${formatCurrency(cashReceivedTotal)} received in cash`,
           rows,
-          filenameBase: 'protees-office-cash-ledger',
-          emptyMessage: 'No cash transactions yet.',
+          filenameBase: `protees-cash-received-${start}-to-${end}`,
+          emptyMessage: 'No cash received in this period.',
         }
       }
-      case 'total-bank': {
-        const rows = [...bankTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(bankRow)
+      case 'online-received': {
+        const rows = [...periodOnlineCourierCollections.map(courierRow), ...periodShopifyOrders.map(shopifyRow)].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        )
         return {
-          title: 'Total Bank Balance',
-          subtitle: `All bank transactions · Live balance: ${formatCurrency(totalBankBalance)}`,
+          title: 'Online Received',
+          subtitle: `${periodLabel} · ${formatCurrency(onlineReceivedTotal)} received online`,
           rows,
-          filenameBase: 'protees-bank-transactions',
-          emptyMessage: 'No bank transactions yet.',
+          filenameBase: `protees-online-received-${start}-to-${end}`,
+          emptyMessage: 'No online receipts in this period.',
         }
       }
       case 'bank': {
@@ -240,7 +240,7 @@ export function CollectionsPage() {
           .reverse()
         return {
           title: bank?.name ?? 'Bank Account',
-          subtitle: `Transaction history · Current balance: ${formatCurrency(bank?.balance ?? 0)}`,
+          subtitle: `Transaction history · Received: ${formatCurrency(bankReceivedById.get(selection.id) ?? 0)}`,
           rows,
           filenameBase: `protees-bank-${(bank?.name ?? 'account').toLowerCase().replace(/\s+/g, '-')}`,
           emptyMessage: 'No transactions on this account yet.',
@@ -293,9 +293,14 @@ export function CollectionsPage() {
     selection,
     periodCourierCollections,
     periodShopifyOrders,
-    cashTransactions,
     bankTransactions,
     courierCollections,
+    cashReceivedTotal,
+    onlineReceivedTotal,
+    periodCashCollections,
+    periodOnlineCourierCollections,
+    bankReceivedById,
+    couriers,
     shopifyOrders,
     bankAccountsWithBalance,
     couriersWithBalance,
@@ -396,7 +401,7 @@ export function CollectionsPage() {
   const selectedCourierDestination = selectedCollectionCourier
     ? selectedCollectionCourier.payment_method === 'bank_transfer'
       ? bankAccountsWithBalance.find((b) => b.id === selectedCollectionCourier.bank_account_id)?.name ?? 'its configured bank'
-      : 'Office Cash'
+      : 'Cash'
     : null
 
   async function handleAddCollection() {
@@ -420,40 +425,6 @@ export function CollectionsPage() {
       showToast('error', errorMessage(err, 'Failed to record collection.'))
     } finally {
       setSavingCollection(false)
-    }
-  }
-
-  // --- Transfer Cash to Office modal ------------------------------------------
-  const [transferModalOpen, setTransferModalOpen] = useState(false)
-  const [transferBankId, setTransferBankId] = useState<number | ''>('')
-  const [transferAmount, setTransferAmount] = useState('')
-  const [transferDate, setTransferDate] = useState(todayISO())
-  const [transferNotes, setTransferNotes] = useState('')
-  const [savingTransfer, setSavingTransfer] = useState(false)
-
-  function openTransferModal() {
-    setTransferBankId(bankAccountsWithBalance[0]?.id ?? '')
-    setTransferAmount('')
-    setTransferDate(todayISO())
-    setTransferNotes('')
-    setTransferModalOpen(true)
-  }
-
-  async function handleTransfer() {
-    const amt = Number(transferAmount)
-    if (!transferBankId || Number.isNaN(amt) || amt <= 0) {
-      showToast('error', 'Select a bank and enter a valid amount.')
-      return
-    }
-    setSavingTransfer(true)
-    try {
-      await transferCashToOffice({ bankAccountId: Number(transferBankId), amount: amt, date: transferDate, notes: transferNotes.trim() || undefined })
-      showToast('success', 'Cash transferred to Office.')
-      setTransferModalOpen(false)
-    } catch (err) {
-      showToast('error', errorMessage(err, 'Failed to transfer cash.'))
-    } finally {
-      setSavingTransfer(false)
     }
   }
 
@@ -519,12 +490,9 @@ export function CollectionsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Collections</h1>
-          <p className="mt-1 text-sm text-slate-400">Courier and Shopify collections, bank balances, and office cash — all in one place.</p>
+          <p className="mt-1 text-sm text-slate-400">Cash and online money received, and total expenses for the selected period.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-secondary" onClick={openTransferModal} disabled={bankAccountsWithBalance.length === 0}>
-            <ArrowRightLeft size={16} /> Transfer Cash
-          </button>
           <button className="btn-primary" onClick={openCollectionModal} disabled={couriers.length === 0}>
             <Plus size={16} /> Add Collection
           </button>
@@ -542,53 +510,36 @@ export function CollectionsPage() {
         rangeEnd={end}
       />
 
-      {/* --- Top summary: 5 premium, equal-size, clickable cards --- */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      {/* --- Top summary: received vs expenses --- */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Total Collections"
+          label="Total Received"
           value={formatCurrency(totalCollections)}
           icon={Wallet}
           accent="cyan"
-          hint="Selected period"
+          hint="Courier + Shopify · Selected period"
           onClick={() => toggleSelection({ kind: 'total-collections' })}
           selected={selectionKey(selection) === 'total-collections'}
         />
         <StatCard
-          label="Courier Collections"
-          value={formatCurrency(courierCollectionsTotal)}
-          icon={Truck}
-          accent="green"
-          hint="Selected period"
-          onClick={() => toggleSelection({ kind: 'courier-collections' })}
-          selected={selectionKey(selection) === 'courier-collections'}
-        />
-        <StatCard
-          label="Shopify Collections"
-          value={formatCurrency(shopifyCollectionsTotal)}
-          icon={ShoppingBag}
-          accent="purple"
-          hint="Selected period"
-          onClick={() => toggleSelection({ kind: 'shopify-collections' })}
-          selected={selectionKey(selection) === 'shopify-collections'}
-        />
-        <StatCard
-          label="Office Cash Balance"
-          value={formatCurrency(cashBalance)}
+          label="Cash Received"
+          value={formatCurrency(cashReceivedTotal)}
           icon={Banknote}
           accent="amber"
-          hint="Live balance"
-          onClick={() => toggleSelection({ kind: 'office-cash' })}
-          selected={selectionKey(selection) === 'office-cash'}
+          hint="Cash couriers · Selected period"
+          onClick={() => toggleSelection({ kind: 'cash-received' })}
+          selected={selectionKey(selection) === 'cash-received'}
         />
         <StatCard
-          label="Total Bank Balance"
-          value={formatCurrency(totalBankBalance)}
+          label="Online Received"
+          value={formatCurrency(onlineReceivedTotal)}
           icon={Landmark}
-          accent="cyan"
-          hint="Live balance"
-          onClick={() => toggleSelection({ kind: 'total-bank' })}
-          selected={selectionKey(selection) === 'total-bank'}
+          accent="purple"
+          hint="Bank couriers + Shopify · Selected period"
+          onClick={() => toggleSelection({ kind: 'online-received' })}
+          selected={selectionKey(selection) === 'online-received'}
         />
+        <StatCard label="Total Expenses" value={formatCurrency(totalExpensesInPeriod)} icon={Receipt} accent="red" hint="Selected period" />
       </div>
 
       {/* --- Detail panel: opens below the top-5 cards for KPI/mixed views --- */}
@@ -660,7 +611,7 @@ export function CollectionsPage() {
       </CollapsibleSection>
 
       {/* --- Bank Accounts --- */}
-      <CollapsibleSection title="Bank Accounts" summary={`${bankAccountsWithBalance.length} banks · ${formatCurrency(totalBankBalance)}`} defaultOpen>
+      <CollapsibleSection title="Bank Accounts" summary={`${bankAccountsWithBalance.length} banks · ${formatCurrency(totalBankReceived)} received`} defaultOpen>
         {bankAccountsWithBalance.length === 0 ? (
           <EmptyState icon={Landmark} title="No bank accounts yet" description="Add one from Manage Couriers, or when giving a courier a bank payment method." />
         ) : (
@@ -672,9 +623,8 @@ export function CollectionsPage() {
                   key={b.id}
                   icon={<BankLogo name={b.name} />}
                   name={b.name}
-                  subtitle="Current Balance"
-                  balance={formatCurrency(b.balance)}
-                  balanceTone={b.balance < 0 ? 'negative' : 'default'}
+                  subtitle="Received"
+                  balance={formatCurrency(bankReceivedById.get(b.id) ?? 0)}
                   expanded={expanded}
                   onToggle={() => toggleSelection({ kind: 'bank', id: b.id })}
                 >
@@ -893,44 +843,6 @@ export function CollectionsPage() {
             </button>
             <button className="btn-primary flex-1" onClick={handleAddCollection} disabled={savingCollection}>
               {savingCollection ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* --- Transfer Cash to Office --- */}
-      <Modal open={transferModalOpen} onClose={() => setTransferModalOpen(false)} title="Transfer Cash to Office" subtitle="Moves money from a bank account into Office Cash.">
-        <div className="space-y-4">
-          <div>
-            <label className="label-field">Source Bank</label>
-            <select className="input-field" value={transferBankId} onChange={(e) => setTransferBankId(Number(e.target.value))}>
-              {bankAccountsWithBalance.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} ({formatCurrency(b.balance)})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label-field">Amount</label>
-              <input type="number" className="input-field" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <label className="label-field">Date</label>
-              <input type="date" className="input-field" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="label-field">Notes (optional)</label>
-            <input className="input-field" value={transferNotes} onChange={(e) => setTransferNotes(e.target.value)} placeholder="Details" />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button className="btn-secondary flex-1" onClick={() => setTransferModalOpen(false)}>
-              Cancel
-            </button>
-            <button className="btn-primary flex-1" onClick={handleTransfer} disabled={savingTransfer}>
-              {savingTransfer ? 'Transferring…' : 'Transfer'}
             </button>
           </div>
         </div>

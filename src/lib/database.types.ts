@@ -844,7 +844,7 @@ export type Database = {
           id: number
           notes: string | null
           payment_date: string
-          payment_type: string
+          payment_type: string | null
           updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
@@ -859,7 +859,7 @@ export type Database = {
           id?: number
           notes?: string | null
           payment_date?: string
-          payment_type: string
+          payment_type?: string | null
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
@@ -874,7 +874,7 @@ export type Database = {
           id?: number
           notes?: string | null
           payment_date?: string
-          payment_type?: string
+          payment_type?: string | null
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
@@ -1092,7 +1092,7 @@ export type Database = {
           expense_scope: string
           id: number
           notes: string | null
-          payment_source: string
+          payment_source: string | null
           title: string
           updated_at: string | null
           updated_by_user_id: string | null
@@ -1108,7 +1108,7 @@ export type Database = {
           expense_scope?: string
           id?: never
           notes?: string | null
-          payment_source?: string
+          payment_source?: string | null
           title: string
           updated_at?: string | null
           updated_by_user_id?: string | null
@@ -1124,7 +1124,7 @@ export type Database = {
           expense_scope?: string
           id?: never
           notes?: string | null
-          payment_source?: string
+          payment_source?: string | null
           title?: string
           updated_at?: string | null
           updated_by_user_id?: string | null

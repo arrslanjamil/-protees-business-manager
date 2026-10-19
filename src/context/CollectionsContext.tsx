@@ -40,21 +40,6 @@ interface AddCourierCollectionInput {
   notes?: string
 }
 
-interface RecordCashTransactionInput {
-  type: CashTransactionType
-  category: string
-  amount: number
-  date?: string
-  notes?: string
-}
-
-interface TransferCashToOfficeInput {
-  bankAccountId: number
-  amount: number
-  date?: string
-  notes?: string
-}
-
 interface AddCreditorInput {
   name: string
   category?: string | null
@@ -81,8 +66,6 @@ interface AddCreditorPaymentInput {
   creditorId: number
   amount: number
   paymentDate?: string
-  paymentType: PaymentType
-  bankAccountId?: number | null
   notes?: string
 }
 
@@ -137,9 +120,6 @@ interface CollectionsContextValue {
   bankTransactions: BankTransaction[]
 
   cashTransactions: CashTransaction[]
-  cashTransfers: CashTransfer[]
-  cashSettings: CashSettings | null
-  cashBalance: number
 
   shopifyOrders: ShopifyOrder[]
   shopifySettings: ShopifySettings | null
@@ -163,11 +143,7 @@ interface CollectionsContextValue {
   deleteCourierCollection: (id: number) => Promise<void>
 
   addBankAccount: (name: string) => Promise<BankAccount>
-  recordCashTransaction: (input: RecordCashTransactionInput) => Promise<void>
   deleteCashTransaction: (id: number) => Promise<void>
-  updateCashOpeningBalance: (amount: number, date?: string) => Promise<void>
-  transferCashToOffice: (input: TransferCashToOfficeInput) => Promise<void>
-  deleteCashTransfer: (id: number) => Promise<void>
 
   addCreditor: (input: AddCreditorInput) => Promise<Creditor>
   updateCreditor: (id: number, input: AddCreditorInput) => Promise<void>
@@ -191,8 +167,6 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([])
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([])
-  const [cashTransfers, setCashTransfers] = useState<CashTransfer[]>([])
-  const [cashSettings, setCashSettings] = useState<CashSettings | null>(null)
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([])
   const [shopifySettings, setShopifySettings] = useState<ShopifySettings | null>(null)
   const [shopifyStores, setShopifyStores] = useState<ShopifyStore[]>([])
@@ -211,14 +185,12 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     if (!hasLoadedOnceRef.current) setLoading(true)
     setError(null)
     try {
-      const [c, cc, ba, bt, ct, cf, cs, so, ss, sst, cr, crb, crp] = await Promise.all([
+      const [c, cc, ba, bt, ct, so, ss, sst, cr, crb, crp] = await Promise.all([
         supabase.from('couriers').select('*').order('name'),
         supabase.from('courier_collections').select('*').order('invoice_date', { ascending: false }),
         supabase.from('bank_accounts').select('*').order('name'),
         supabase.from('bank_transactions').select('*').order('date', { ascending: false }),
         supabase.from('cash_transactions').select('*').order('date', { ascending: false }),
-        supabase.from('cash_transfers').select('*').order('date', { ascending: false }),
-        supabase.from('cash_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('shopify_orders').select('*').order('order_date', { ascending: false }),
         supabase.from('shopify_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('shopify_stores').select('*').order('store_key'),
@@ -226,7 +198,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
         supabase.from('creditor_bills').select('*').order('bill_date', { ascending: false }),
         supabase.from('creditor_payments').select('*').order('payment_date', { ascending: false }),
       ])
-      const firstError = [c, cc, ba, bt, ct, cf, cs, so, ss, sst, cr, crb, crp].find((r) => r.error)?.error
+      const firstError = [c, cc, ba, bt, ct, so, ss, sst, cr, crb, crp].find((r) => r.error)?.error
       if (firstError) throw firstError
 
       setCouriers(c.data ?? [])
@@ -234,8 +206,6 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
       setBankAccounts(ba.data ?? [])
       setBankTransactions(bt.data ?? [])
       setCashTransactions(ct.data ?? [])
-      setCashTransfers(cf.data ?? [])
-      setCashSettings(cs.data ?? null)
       setShopifyOrders(so.data ?? [])
       setShopifySettings(ss.data ?? null)
       setShopifyStores(sst.data ?? [])
@@ -294,14 +264,6 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
       }),
     [bankAccounts, bankTransactions]
   )
-
-  // --- Computed: Cash balance ---------------------------------------------------
-  const cashBalance = useMemo(() => {
-    const opening = cashSettings?.opening_balance ?? DEFAULT_CASH_OPENING_BALANCE
-    const cashIn = cashTransactions.filter((t) => t.type === 'cash_in').reduce((s, t) => s + Number(t.amount), 0)
-    const cashOut = cashTransactions.filter((t) => t.type === 'cash_out').reduce((s, t) => s + Number(t.amount), 0)
-    return opening + cashIn - cashOut
-  }, [cashSettings, cashTransactions])
 
   // --- Computed: Creditor outstanding balances ------------------------------
   // Never stored — same ledger-derivation pattern as advances/couriers:
@@ -410,75 +372,8 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     return data
   }
 
-  /** Manual Cash In / Cash Out — for entries with no dedicated flow of
-   * their own (bank-to-cash movements use transferCashToOffice; expenses
-   * post their own linked cash-out automatically). */
-  const recordCashTransaction: CollectionsContextValue['recordCashTransaction'] = async ({ type, category, amount, date, notes }) => {
-    const { error: err } = await supabase.from('cash_transactions').insert({
-      type,
-      category,
-      amount,
-      date: date ?? todayISO(),
-      reference_type: 'other',
-      notes: notes ?? null,
-    })
-    if (err) throw err
-    await refreshAll()
-  }
-
   const deleteCashTransaction: CollectionsContextValue['deleteCashTransaction'] = async (id) => {
     const { error: err } = await supabase.from('cash_transactions').delete().eq('id', id)
-    if (err) throw err
-    await refreshAll()
-  }
-
-  const updateCashOpeningBalance: CollectionsContextValue['updateCashOpeningBalance'] = async (amount, date) => {
-    const { error: err } = await supabase
-      .from('cash_settings')
-      .upsert({ id: 1, opening_balance: amount, opening_date: date ?? todayISO(), updated_at: new Date().toISOString() })
-    if (err) throw err
-    await refreshAll()
-  }
-
-  /** Transfer Cash To Office — moves money from a bank account into
-   * Office Cash. Debits the bank, credits cash, atomically. */
-  const transferCashToOffice: CollectionsContextValue['transferCashToOffice'] = async ({ bankAccountId, amount, date, notes }) => {
-    const txnDate = date ?? todayISO()
-    const { data: transfer, error: transferErr } = await supabase
-      .from('cash_transfers')
-      .insert({ bank_account_id: bankAccountId, amount, date: txnDate, notes: notes ?? null })
-      .select()
-      .single()
-    if (transferErr) throw transferErr
-
-    const { error: bankErr } = await supabase.from('bank_transactions').insert({
-      bank_account_id: bankAccountId,
-      type: 'debit',
-      amount,
-      date: txnDate,
-      reference_type: 'cash_transfer',
-      reference_id: transfer.id,
-    })
-    if (bankErr) throw bankErr
-
-    const { error: cashErr } = await supabase.from('cash_transactions').insert({
-      type: 'cash_in',
-      category: 'Bank Transfer to Office',
-      amount,
-      date: txnDate,
-      reference_type: 'cash_transfer',
-      reference_id: transfer.id,
-      bank_account_id: bankAccountId,
-    })
-    if (cashErr) throw cashErr
-
-    await refreshAll()
-  }
-
-  const deleteCashTransfer: CollectionsContextValue['deleteCashTransfer'] = async (id) => {
-    await supabase.from('bank_transactions').delete().eq('reference_type', 'cash_transfer').eq('reference_id', id)
-    await supabase.from('cash_transactions').delete().eq('reference_type', 'cash_transfer').eq('reference_id', id)
-    const { error: err } = await supabase.from('cash_transfers').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
   }
@@ -564,55 +459,18 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
-  /** A payment reduces what the business owes AND posts a matching
-   * cash-out (Office Cash) or bank debit — the chosen payment method is
-   * per-payment, not fixed on the creditor (unlike couriers, where WE
-   * receive money on a fixed configured channel; here WE choose how to
-   * pay each time). */
-  const addCreditorPayment: CollectionsContextValue['addCreditorPayment'] = async ({ creditorId, amount, paymentDate, paymentType, bankAccountId, notes }) => {
-    const date = paymentDate ?? todayISO()
-    const { data: payment, error: payErr } = await supabase
-      .from('creditor_payments')
-      .insert({
-        creditor_id: creditorId,
-        amount,
-        payment_date: date,
-        payment_type: paymentType,
-        bank_account_id: paymentType === 'bank_transfer' ? (bankAccountId ?? null) : null,
-        notes: notes ?? null,
-      })
-      .select()
-      .single()
-    if (payErr) throw payErr
-
-    if (paymentType === 'bank_transfer' && bankAccountId) {
-      const { error: bankErr } = await supabase.from('bank_transactions').insert({
-        bank_account_id: bankAccountId,
-        type: 'debit',
-        amount,
-        date,
-        reference_type: 'creditor_payment',
-        reference_id: payment.id,
-      })
-      if (bankErr) throw bankErr
-    } else {
-      const { error: cashErr } = await supabase.from('cash_transactions').insert({
-        type: 'cash_out',
-        category: 'Creditor Payment',
-        amount,
-        date,
-        reference_type: 'creditor_payment',
-        reference_id: payment.id,
-      })
-      if (cashErr) throw cashErr
-    }
-
+  const addCreditorPayment: CollectionsContextValue['addCreditorPayment'] = async ({ creditorId, amount, paymentDate, notes }) => {
+    const { error: err } = await supabase.from('creditor_payments').insert({
+      creditor_id: creditorId,
+      amount,
+      payment_date: paymentDate ?? todayISO(),
+      notes: notes ?? null,
+    })
+    if (err) throw err
     await refreshAll()
   }
 
   const deleteCreditorPayment: CollectionsContextValue['deleteCreditorPayment'] = async (id) => {
-    await supabase.from('bank_transactions').delete().eq('reference_type', 'creditor_payment').eq('reference_id', id)
-    await supabase.from('cash_transactions').delete().eq('reference_type', 'creditor_payment').eq('reference_id', id)
     const { error: err } = await supabase.from('creditor_payments').delete().eq('id', id)
     if (err) throw err
     await refreshAll()
@@ -736,9 +594,6 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     bankAccountsWithBalance,
     bankTransactions,
     cashTransactions,
-    cashTransfers,
-    cashSettings,
-    cashBalance,
     shopifyOrders,
     shopifySettings,
     shopifyStores,
@@ -757,11 +612,7 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     addCourierCollection,
     deleteCourierCollection,
     addBankAccount,
-    recordCashTransaction,
     deleteCashTransaction,
-    updateCashOpeningBalance,
-    transferCashToOffice,
-    deleteCashTransfer,
     addCreditor,
     updateCreditor,
     setCreditorActive,

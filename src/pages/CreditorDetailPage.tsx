@@ -7,7 +7,6 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { PAYMENT_TYPE_LABELS, type PaymentType } from '@/lib/types'
 import { getInvoiceUrl, INVOICE_ACCEPT } from '@/lib/invoiceStorage'
 import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
@@ -56,8 +55,6 @@ export function CreditorDetailPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(todayISO())
-  const [paymentType, setPaymentType] = useState<PaymentType>('cash')
-  const [paymentBankId, setPaymentBankId] = useState<number | ''>('')
   const [paymentNotes, setPaymentNotes] = useState('')
   const [paymentSaving, setPaymentSaving] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
@@ -83,12 +80,12 @@ export function CreditorDetailPage() {
         date: p.payment_date,
         kind: 'payment' as const,
         amount: Number(p.amount),
-        description: p.payment_type === 'bank_transfer' ? `Payment — ${bankAccountsWithBalance.find((b) => b.id === p.bank_account_id)?.name ?? 'Bank'}` : 'Payment — Cash',
+        description: 'Payment',
         deleteId: p.id,
       })),
     ]
     return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [bills, payments, bankAccountsWithBalance])
+  }, [bills, payments])
 
   if (!creditor) {
     return (
@@ -140,8 +137,6 @@ export function CreditorDetailPage() {
   function openPaymentModal() {
     setPaymentAmount('')
     setPaymentDate(todayISO())
-    setPaymentType('cash')
-    setPaymentBankId(bankAccountsWithBalance[0]?.id ?? '')
     setPaymentNotes('')
     setPaymentError(null)
     setPaymentModalOpen(true)
@@ -153,10 +148,6 @@ export function CreditorDetailPage() {
       setPaymentError('Enter a valid amount.')
       return
     }
-    if (paymentType === 'bank_transfer' && !paymentBankId) {
-      setPaymentError('Select a bank account.')
-      return
-    }
     setPaymentSaving(true)
     setPaymentError(null)
     try {
@@ -164,8 +155,6 @@ export function CreditorDetailPage() {
         creditorId: creditor!.id,
         amount: amt,
         paymentDate,
-        paymentType,
-        bankAccountId: paymentType === 'bank_transfer' ? Number(paymentBankId) : null,
         notes: paymentNotes.trim() || undefined,
       })
       setPaymentModalOpen(false)
@@ -407,7 +396,7 @@ export function CreditorDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Record Payment" subtitle="Reduces what you owe and posts to Office Cash or the selected bank.">
+      <Modal open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Record Payment" subtitle="Reduces what you owe.">
         <div className="space-y-4">
           <div>
             <label className="label-field">Amount</label>
@@ -417,37 +406,6 @@ export function CreditorDetailPage() {
             <label className="label-field">Date</label>
             <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
           </div>
-          <div>
-            <label className="label-field">Paid From</label>
-            <div className="grid grid-cols-2 gap-3">
-              {(['cash', 'bank_transfer'] as PaymentType[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setPaymentType(m)}
-                  className={classNames(
-                    'rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition',
-                    paymentType === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-                  )}
-                >
-                  {m === 'cash' ? 'Office Cash' : PAYMENT_TYPE_LABELS[m]}
-                </button>
-              ))}
-            </div>
-          </div>
-          {paymentType === 'bank_transfer' && (
-            <div>
-              <label className="label-field">Bank Account</label>
-              <select className="input-field" value={paymentBankId} onChange={(e) => setPaymentBankId(Number(e.target.value))}>
-                {bankAccountsWithBalance.length === 0 && <option value="">No bank accounts yet — add one from Collections</option>}
-                {bankAccountsWithBalance.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} ({formatCurrency(b.balance)})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} />

@@ -1,14 +1,12 @@
 import { useMemo, useState } from 'react'
 import { HandCoins, Plus, Search, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
-import { useCollections } from '@/context/CollectionsContext'
 import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { AdvanceProgressBar } from '@/components/ui/ProgressBar'
-import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { DEPARTMENT_LABELS, isCashPaymentMethod, type Department } from '@/lib/types'
+import { DEPARTMENT_LABELS, type Department } from '@/lib/types'
 import { advanceWarningLevel, classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type AdvanceType = 'normal' | 'grand'
@@ -16,8 +14,6 @@ type HistoryFilter = 'all' | 'normal' | 'grand'
 
 export function AdvancesPage() {
   const { employeesWithBalance, supervisorsWithBalance, employees, advances, grandAdvances, addAdvance, addItemPurchase, deleteAdvance, addGrandAdvance, deleteGrandAdvance } = useData()
-  const { cashBalance, bankAccountsWithBalance } = useCollections()
-  const { itemsFor, addItem } = useMasterData()
   const [advanceType, setAdvanceType] = useState<AdvanceType>('normal')
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
   const [modalOpen, setModalOpen] = useState(false)
@@ -26,10 +22,7 @@ export function AdvancesPage() {
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(todayISO())
-  const [paymentMethod, setPaymentMethod] = useState('Cash')
-  const [bankAccountId, setBankAccountId] = useState<number | null>(null)
-  const [referenceNumber, setReferenceNumber] = useState('')
-  const [allowNegativeCash, setAllowNegativeCash] = useState(false)
+  const [grandMonthlyRecovery, setGrandMonthlyRecovery] = useState('')
   const [notes, setNotes] = useState('')
   const [itemType, setItemType] = useState<'' | 'Fresh' | 'B'>('')
   const [itemName, setItemName] = useState('')
@@ -39,12 +32,8 @@ export function AdvancesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedPerson, setExpandedPerson] = useState<string | null>(null)
 
-  const isCash = isCashPaymentMethod(paymentMethod)
   const amountNum = Number(amount) || 0
-  const projectedCashBalance = cashBalance - amountNum
-  const wouldGoNegative = isCash && amountNum > 0 && projectedCashBalance < 0
 
-  const paymentMethodNames = itemsFor('payment_method').map((i) => i.name)
 
   // Outstanding Balances shows every active person, plus any inactive
   // person who still has a real balance to settle — inactive staff with
@@ -106,10 +95,7 @@ export function AdvancesPage() {
     setEmployeeSearch('')
     setAmount('')
     setPaymentDate(todayISO())
-    setPaymentMethod('Cash')
-    setBankAccountId(null)
-    setReferenceNumber('')
-    setAllowNegativeCash(false)
+    setGrandMonthlyRecovery('')
     setNotes('')
     setItemType('')
     setItemName('')
@@ -153,14 +139,6 @@ export function AdvancesPage() {
       setError('Enter an amount or an item.')
       return
     }
-    if (hasAdvance && !paymentMethod) {
-      setError('Select a payment method.')
-      return
-    }
-    if (hasAdvance && !isCash && !referenceNumber.trim()) {
-      setError('Enter a transaction reference for a non-cash payment.')
-      return
-    }
     setSaving(true)
     setError(null)
     try {
@@ -171,10 +149,6 @@ export function AdvancesPage() {
           amount: amt,
           paymentDate,
           notes: notes.trim() || undefined,
-          paymentMethod,
-          referenceNumber: isCash ? undefined : referenceNumber.trim(),
-          bankAccountId: isCash ? undefined : bankAccountId ?? undefined,
-          allowNegativeCash,
         })
       }
       if (hasItem) {
@@ -511,43 +485,6 @@ export function AdvancesPage() {
                 <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
               </div>
             </div>
-            <CategoryPicker
-              label="Payment Method"
-              value={paymentMethod}
-              onChange={setPaymentMethod}
-              categories={paymentMethodNames}
-              onAddCategory={(n) => addItem('payment_method', n).then(() => {})}
-            />
-            {isCash ? (
-              <p className="text-[11px] text-slate-500">Deducted from Office Cash immediately (current balance: {formatCurrency(cashBalance)}).</p>
-            ) : (
-              <>
-                <div>
-                  <label className="label-field">Bank Account</label>
-                  <select
-                    className="input-field"
-                    value={bankAccountId ?? ''}
-                    onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">Select a bank account</option>
-                    {bankAccountsWithBalance.map((bank) => (
-                      <option key={bank.id} value={bank.id}>
-                        {bank.name} ({formatCurrency(bank.balance)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label-field">Transaction Reference</label>
-                  <input
-                    className="input-field"
-                    value={referenceNumber}
-                    onChange={(e) => setReferenceNumber(e.target.value)}
-                    placeholder="e.g. Bank transfer ID, Easypaisa TID"
-                  />
-                </div>
-              </>
-            )}
             <div>
               <label className="label-field">Notes (optional)</label>
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />
@@ -576,21 +513,12 @@ export function AdvancesPage() {
                 {itemType && <p className="text-[11px] text-slate-500">Deducted from this employee's next salary payment.</p>}
               </div>
             )}
-            {wouldGoNegative && (
-              <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
-                <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).</p>
-                <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-                  <input type="checkbox" checked={allowNegativeCash} onChange={(e) => setAllowNegativeCash(e.target.checked)} />
-                  Allow negative Office Cash balance and save anyway
-                </label>
-              </div>
-            )}
             {error && <p className="text-xs text-neon-red">{error}</p>}
             <div className="flex gap-3 pt-2">
               <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
                 Cancel
               </button>
-              <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
+              <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving…' : amountNum > 0 ? 'Give Advance' : 'Save'}
               </button>
             </div>
@@ -660,13 +588,13 @@ export function AdvancesPage() {
               <input
                 type="number"
                 className="input-field"
-                value={referenceNumber}
-                onChange={(e) => setReferenceNumber(e.target.value)}
+                value={grandMonthlyRecovery}
+                onChange={(e) => setGrandMonthlyRecovery(e.target.value)}
                 placeholder="e.g. 5000"
               />
               <p className="mt-1 text-xs text-slate-500">
-                {Number(amount) > 0 && Number(referenceNumber) > 0
-                  ? `Recovery period: ~${Math.ceil(Number(amount) / Number(referenceNumber))} months`
+                {Number(amount) > 0 && Number(grandMonthlyRecovery) > 0
+                  ? `Recovery period: ~${Math.ceil(Number(amount) / Number(grandMonthlyRecovery))} months`
                   : 'This is optional and can be changed during salary processing'}
               </p>
             </div>
@@ -704,7 +632,7 @@ export function AdvancesPage() {
                     setError('Enter a valid grand advance amount.')
                     return
                   }
-                  const monthly = Number(referenceNumber) || 0
+                  const monthly = Number(grandMonthlyRecovery) || 0
                   if (monthly < 0) {
                     setError('Monthly recovery amount cannot be negative.')
                     return

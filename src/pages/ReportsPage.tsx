@@ -3,7 +3,7 @@ import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { useCollections } from '@/context/CollectionsContext'
 import { CategoryBarChart } from '@/components/dashboard/CategoryBarChart'
-import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_PAYMENT_SOURCE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS, type ExpensePaymentSource } from '@/lib/types'
+import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
 import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
 import { classNames, formatCurrency, formatDate, isWithinRange, presetDateRange, todayISO, type DateRangePreset } from '@/lib/utils'
@@ -31,7 +31,7 @@ const REPORT_VIEWS: { key: ReportView; label: string; periodScoped: boolean }[] 
   { key: 'shopify-collections', label: 'Shopify Collection Report', periodScoped: true },
   { key: 'courier-collections', label: 'Courier Collection Report', periodScoped: true },
   { key: 'bank-summary', label: 'Bank Ledger', periodScoped: true },
-  { key: 'cash-ledger', label: 'Cash Ledger', periodScoped: true },
+  { key: 'cash-ledger', label: 'Cash Received', periodScoped: true },
   { key: 'monthly-collections', label: 'Monthly Collection Summary', periodScoped: true },
 ]
 
@@ -74,14 +74,13 @@ export function ReportsPage() {
     employeesWithBalance,
     supervisorsWithBalance,
   } = useData()
-  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions, cashSettings, cashBalance } =
+  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions } =
     useCollections()
 
   const [view, setView] = useState<ReportView>('overview')
   const [preset, setPreset] = useState<DateRangePreset>('month')
   const [customStart, setCustomStart] = useState(todayISO())
   const [customEnd, setCustomEnd] = useState(todayISO())
-  const [unitExpenseSourceFilter, setUnitExpenseSourceFilter] = useState<'all' | ExpensePaymentSource>('all')
 
   const { start, end } = useMemo(() => presetDateRange(preset, customStart, customEnd), [preset, customStart, customEnd])
   const activeView = REPORT_VIEWS.find((v) => v.key === view)!
@@ -256,16 +255,7 @@ export function ReportsPage() {
     return Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1])
   }, [unitExpensesInPeriod])
   const unitExpensesTotal = unitExpensesInPeriod.reduce((s, e) => s + Number(e.amount), 0)
-  const unitExpensesCashTotal = unitExpensesInPeriod
-    .filter((e) => e.payment_source === 'cash')
-    .reduce((s, e) => s + Number(e.amount), 0)
-  const unitExpensesOnlineTotal = unitExpensesInPeriod
-    .filter((e) => e.payment_source === 'online')
-    .reduce((s, e) => s + Number(e.amount), 0)
-  const unitExpensesFiltered = useMemo(
-    () => unitExpensesInPeriod.filter((e) => unitExpenseSourceFilter === 'all' || e.payment_source === unitExpenseSourceFilter),
-    [unitExpensesInPeriod, unitExpenseSourceFilter]
-  )
+  const unitExpensesFiltered = unitExpensesInPeriod
 
   async function exportUnitExpenses(format: 'pdf' | 'excel') {
     const filenameBase = `protees-unit-expenses-${start}-to-${end}`
@@ -273,16 +263,9 @@ export function ReportsPage() {
       await exportReportPdf({
         title: 'Unit Expenses',
         subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}`,
-        head: ['Date', 'Title', 'Category', 'Payment Source', 'Amount', 'Notes'],
-        rows: unitExpensesFiltered.map((e) => [
-          formatDate(e.date),
-          e.title,
-          e.category,
-          EXPENSE_PAYMENT_SOURCE_LABELS[e.payment_source],
-          formatCurrency(e.amount),
-          e.notes ?? '',
-        ]),
-        footer: ['', '', '', 'Total', formatCurrency(unitExpensesFiltered.reduce((s, e) => s + Number(e.amount), 0)), ''],
+        head: ['Date', 'Title', 'Category', 'Amount', 'Notes'],
+        rows: unitExpensesFiltered.map((e) => [formatDate(e.date), e.title, e.category, formatCurrency(e.amount), e.notes ?? '']),
+        footer: ['', '', 'Total', formatCurrency(unitExpensesFiltered.reduce((s, e) => s + Number(e.amount), 0)), ''],
         filename: `${filenameBase}.pdf`,
       })
     } else {
@@ -291,7 +274,6 @@ export function ReportsPage() {
           Date: e.date,
           Title: e.title,
           Category: e.category,
-          'Payment Source': EXPENSE_PAYMENT_SOURCE_LABELS[e.payment_source],
           Amount: e.amount,
           Notes: e.notes ?? '',
         })),
@@ -535,25 +517,23 @@ export function ReportsPage() {
   }
 
   // =========================================================================
-  // Cash Ledger
+  // Cash Received
   // =========================================================================
   const cashTransactionsInPeriod = useMemo(
     () =>
       cashTransactions
-        .filter((t) => isWithinRange(t.date, start, end))
+        .filter((t) => t.type === 'cash_in' && isWithinRange(t.date, start, end))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [cashTransactions, start, end]
   )
-  const cashInTotalInPeriod = cashTransactionsInPeriod.filter((t) => t.type === 'cash_in').reduce((s, t) => s + Number(t.amount), 0)
-  const cashOutTotalInPeriod = cashTransactionsInPeriod.filter((t) => t.type === 'cash_out').reduce((s, t) => s + Number(t.amount), 0)
-  const cashOpeningBalance = cashSettings?.opening_balance ?? 0
+  const cashInTotalInPeriod = cashTransactionsInPeriod.reduce((s, t) => s + Number(t.amount), 0)
 
   async function exportCashLedger(format: 'pdf' | 'excel') {
     const filenameBase = `protees-cash-ledger-${start}-to-${end}`
     if (format === 'pdf') {
       await exportReportPdf({
-        title: 'Cash Ledger',
-        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Opening Balance: ${formatCurrency(cashOpeningBalance)}`,
+        title: 'Cash Received',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Cash received: ${formatCurrency(cashInTotalInPeriod)}`,
         head: ['Date', 'Type', 'Category', 'Amount', 'Bank', 'Notes'],
         rows: cashTransactionsInPeriod.map((t) => [
           formatDate(t.date),
@@ -563,7 +543,7 @@ export function ReportsPage() {
           t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '' : '',
           t.notes ?? '',
         ]),
-        footer: ['', '', 'Net', formatCurrency(cashInTotalInPeriod - cashOutTotalInPeriod), '', ''],
+        footer: ['', '', 'Total', formatCurrency(cashInTotalInPeriod), '', ''],
         filename: `${filenameBase}.pdf`,
       })
     } else {
@@ -576,7 +556,7 @@ export function ReportsPage() {
           Bank: t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '' : '',
           Notes: t.notes ?? '',
         })),
-        sheetName: 'Cash Ledger',
+        sheetName: 'Cash Received',
         filename: `${filenameBase}.xlsx`,
       })
     }
@@ -623,23 +603,19 @@ export function ReportsPage() {
     () => expenses.filter((e) => e.expense_scope !== 'unit' && isWithinRange(e.date, start, end)).reduce((s, e) => s + Number(e.amount), 0),
     [expenses, start, end]
   )
-  const expensesInPeriodAllScopes = useMemo(() => expenses.filter((e) => isWithinRange(e.date, start, end)), [expenses, start, end])
-  const cashExpensesTotalInPeriod = expensesInPeriodAllScopes
-    .filter((e) => e.payment_source === 'cash')
-    .reduce((s, e) => s + Number(e.amount), 0)
-  const onlineExpensesTotalInPeriod = expensesInPeriodAllScopes
-    .filter((e) => e.payment_source === 'online')
-    .reduce((s, e) => s + Number(e.amount), 0)
-  const netCashPosition = totalBankBalance + cashBalance
+  const cashCourierIdsR = new Set(couriers.filter((c) => c.payment_method !== 'bank_transfer').map((c) => c.id))
+  const cashReceivedInPeriod = courierCollections
+    .filter((c) => isWithinRange(c.invoice_date, start, end) && cashCourierIdsR.has(c.courier_id))
+    .reduce((s, c) => s + Number(c.amount), 0)
+  const onlineReceivedInPeriod = courierCollectionsTotalInPeriod - cashReceivedInPeriod + shopifyTotalInPeriod
 
   async function exportMonthlyCollections(format: 'pdf' | 'excel') {
     const filenameBase = `protees-monthly-collection-summary-${start}-to-${end}`
     const summaryLine =
       `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Courier Collections: ${formatCurrency(courierCollectionsTotalInPeriod)}` +
       `  ·  Shopify Collections: ${formatCurrency(shopifyTotalInPeriod)}  ·  Total Expenses: ${formatCurrency(businessExpensesTotalInPeriod)}` +
-      `  ·  Cash Expenses: ${formatCurrency(cashExpensesTotalInPeriod)}  ·  Online/Bank Expenses: ${formatCurrency(onlineExpensesTotalInPeriod)}` +
-      `  ·  Bank Balance (live): ${formatCurrency(totalBankBalance)}  ·  Office Cash (live): ${formatCurrency(cashBalance)}` +
-      `  ·  Net Cash Position (live): ${formatCurrency(netCashPosition)}`
+      `  ·  Cash Received: ${formatCurrency(cashReceivedInPeriod)}  ·  Online Received: ${formatCurrency(onlineReceivedInPeriod)}` +
+      `  ·  Bank Balance (live): ${formatCurrency(totalBankBalance)}`
     if (format === 'pdf') {
       await exportReportPdf({
         title: 'Month-End Summary',
@@ -656,11 +632,9 @@ export function ReportsPage() {
           { Month: 'Courier Collections (period)', Shopify: '', Courier: '', Total: courierCollectionsTotalInPeriod },
           { Month: 'Shopify Collections (period)', Shopify: '', Courier: '', Total: shopifyTotalInPeriod },
           { Month: 'Total Expenses (period)', Shopify: '', Courier: '', Total: businessExpensesTotalInPeriod },
-          { Month: 'Cash Expenses (period, all scopes)', Shopify: '', Courier: '', Total: cashExpensesTotalInPeriod },
-          { Month: 'Online/Bank Expenses (period, all scopes)', Shopify: '', Courier: '', Total: onlineExpensesTotalInPeriod },
+          { Month: 'Cash Received (period)', Shopify: '', Courier: '', Total: cashReceivedInPeriod },
+          { Month: 'Online Received (period)', Shopify: '', Courier: '', Total: onlineReceivedInPeriod },
           { Month: 'Total Bank Balance (live)', Shopify: '', Courier: '', Total: totalBankBalance },
-          { Month: 'Office Cash Balance (live)', Shopify: '', Courier: '', Total: cashBalance },
-          { Month: 'Net Cash Position (live)', Shopify: '', Courier: '', Total: netCashPosition },
           { Month: '', Shopify: '', Courier: '', Total: '' },
           ...monthlyCollectionRows.map((r) => ({ Month: r.month, Shopify: r.shopify, Courier: r.courier, Total: r.total })),
         ],
@@ -904,8 +878,6 @@ export function ReportsPage() {
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard label="Total Unit Expenses" value={formatCurrency(unitExpensesTotal)} tone="text-neon-purple" />
-            <SummaryCard label="Cash Expenses" value={formatCurrency(unitExpensesCashTotal)} tone="text-neon-cyan" />
-            <SummaryCard label="Online / Bank Expenses" value={formatCurrency(unitExpensesOnlineTotal)} />
             <SummaryCard label="Number of Entries" value={String(unitExpensesInPeriod.length)} />
           </div>
           {unitExpensesByCategory.length > 0 && (
@@ -913,24 +885,6 @@ export function ReportsPage() {
               <CategoryBarChart data={unitExpensesByCategory} color="#a78bfa" />
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Payment Source:</span>
-            {(['all', 'cash', 'online'] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setUnitExpenseSourceFilter(f)}
-                className={classNames(
-                  'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
-                  unitExpenseSourceFilter === f
-                    ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple'
-                    : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-                )}
-              >
-                {f === 'all' ? 'All' : EXPENSE_PAYMENT_SOURCE_LABELS[f]}
-              </button>
-            ))}
-          </div>
           {unitExpensesFiltered.length === 0 ? (
             <EmptyReportState />
           ) : (
@@ -941,7 +895,6 @@ export function ReportsPage() {
                     <th className="px-5 py-3.5">Date</th>
                     <th className="px-5 py-3.5">Title</th>
                     <th className="px-5 py-3.5">Category</th>
-                    <th className="px-5 py-3.5">Payment Source</th>
                     <th className="px-5 py-3.5">Amount</th>
                     <th className="px-5 py-3.5">Notes</th>
                   </tr>
@@ -952,7 +905,6 @@ export function ReportsPage() {
                       <td className="px-5 py-3.5 text-slate-500">{formatDate(e.date)}</td>
                       <td className="px-5 py-3.5 font-medium text-white">{e.title}</td>
                       <td className="px-5 py-3.5 text-slate-400">{e.category}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{EXPENSE_PAYMENT_SOURCE_LABELS[e.payment_source]}</td>
                       <td className="px-5 py-3.5 text-slate-200">{formatCurrency(e.amount)}</td>
                       <td className="px-5 py-3.5 text-slate-500">{e.notes || '—'}</td>
                     </tr>
@@ -1162,10 +1114,7 @@ export function ReportsPage() {
       {view === 'cash-ledger' && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard label="Opening Balance" value={formatCurrency(cashOpeningBalance)} />
-            <SummaryCard label="Cash In (period)" value={formatCurrency(cashInTotalInPeriod)} tone="text-neon-green" />
-            <SummaryCard label="Cash Out (period)" value={formatCurrency(cashOutTotalInPeriod)} tone="text-neon-red" />
-            <SummaryCard label="Net (period)" value={formatCurrency(cashInTotalInPeriod - cashOutTotalInPeriod)} />
+            <SummaryCard label="Cash Received (period)" value={formatCurrency(cashInTotalInPeriod)} tone="text-neon-green" />
           </div>
           {cashTransactionsInPeriod.length === 0 ? (
             <EmptyReportState />
@@ -1214,18 +1163,14 @@ export function ReportsPage() {
               <SummaryCard label="Shopify Collections (period)" value={formatCurrency(shopifyTotalInPeriod)} tone="text-neon-purple" />
               <SummaryCard label="Total Expenses (period)" value={formatCurrency(businessExpensesTotalInPeriod)} tone="text-neon-red" />
               <SummaryCard label="Total Bank Balance (live)" value={formatCurrency(totalBankBalance)} />
-              <SummaryCard label="Office Cash Balance (live)" value={formatCurrency(cashBalance)} tone="text-neon-amber" />
-              <SummaryCard label="Net Cash Position (live)" value={formatCurrency(netCashPosition)} tone="text-neon-cyan" />
+              <SummaryCard label="Cash Received (period)" value={formatCurrency(cashReceivedInPeriod)} tone="text-neon-amber" />
+              <SummaryCard label="Online Received (period)" value={formatCurrency(onlineReceivedInPeriod)} tone="text-neon-cyan" />
             </div>
             {bankAccountsWithBalance.length > 0 && (
               <p className="mt-2 text-[11px] text-slate-500">
                 Bank-wise: {bankAccountsWithBalance.map((b) => `${b.name} ${formatCurrency(b.balance)}`).join(' · ')}
               </p>
             )}
-            <p className="mt-1 text-[11px] text-slate-500">
-              Expenses by source (period, all scopes): Cash {formatCurrency(cashExpensesTotalInPeriod)} · Online/Bank{' '}
-              {formatCurrency(onlineExpensesTotalInPeriod)}
-            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

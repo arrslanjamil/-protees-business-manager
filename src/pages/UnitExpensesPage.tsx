@@ -1,20 +1,17 @@
 import { useMemo, useState } from 'react'
 import { Pencil, Plus, Receipt, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
-import { useCollections } from '@/context/CollectionsContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { EXPENSE_PAYMENT_SOURCE_LABELS, EXPENSE_SCOPE_LABELS, type Expense, type ExpensePaymentSource, type ExpenseScope } from '@/lib/types'
+import { EXPENSE_SCOPE_LABELS, type Expense, type ExpenseScope } from '@/lib/types'
 import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type ScopeFilter = 'all' | ExpenseScope
-type SourceFilter = 'all' | ExpensePaymentSource
 
 export function UnitExpensesPage() {
   const { expenses, addExpense, updateExpense, deleteExpense, expenseCategoryNames, addExpenseCategory } = useData()
-  const { cashBalance } = useCollections()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
@@ -24,13 +21,10 @@ export function UnitExpensesPage() {
   const [date, setDate] = useState(todayISO())
   const [notes, setNotes] = useState('')
   const [expenseScope, setExpenseScope] = useState<ExpenseScope>('business')
-  const [paymentSource, setPaymentSource] = useState<ExpensePaymentSource>('cash')
-  const [allowNegativeCash, setAllowNegativeCash] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
 
   const sortedExpenses = useMemo(
     () =>
@@ -45,9 +39,8 @@ export function UnitExpensesPage() {
   const filteredExpenses = useMemo(
     () =>
       sortedExpenses
-        .filter((e) => scopeFilter === 'all' || e.expense_scope === scopeFilter)
-        .filter((e) => sourceFilter === 'all' || e.payment_source === sourceFilter),
-    [sortedExpenses, scopeFilter, sourceFilter]
+        .filter((e) => scopeFilter === 'all' || e.expense_scope === scopeFilter),
+    [sortedExpenses, scopeFilter]
   )
 
   const totalThisMonth = useMemo(() => {
@@ -60,16 +53,6 @@ export function UnitExpensesPage() {
       .reduce((sum, e) => sum + Number(e.amount), 0)
   }, [expenses])
 
-  // Projected Office Cash balance if the form were saved right now — used
-  // to warn before a cash expense would take the balance negative.
-  const projectedCashBalance = useMemo(() => {
-    const amt = Number(amount) || 0
-    if (paymentSource !== 'cash') return cashBalance
-    const oldCashImpact = editingExpense?.payment_source === 'cash' ? Number(editingExpense.amount) : 0
-    return cashBalance + oldCashImpact - amt
-  }, [cashBalance, paymentSource, amount, editingExpense])
-  const wouldGoNegative = paymentSource === 'cash' && projectedCashBalance < 0
-
   function openCreate() {
     setEditingExpense(null)
     setTitle('')
@@ -78,8 +61,6 @@ export function UnitExpensesPage() {
     setDate(todayISO())
     setNotes('')
     setExpenseScope('business')
-    setPaymentSource('cash')
-    setAllowNegativeCash(false)
     setError(null)
     setModalOpen(true)
   }
@@ -91,9 +72,7 @@ export function UnitExpensesPage() {
     setAmount(String(exp.amount))
     setDate(exp.date)
     setNotes(exp.notes ?? '')
-    setExpenseScope(exp.expense_scope)
-    setPaymentSource(exp.payment_source)
-    setAllowNegativeCash(false)
+    setExpenseScope(exp.expense_scope as ExpenseScope)
     setError(null)
     setModalOpen(true)
   }
@@ -122,8 +101,6 @@ export function UnitExpensesPage() {
         date,
         notes: notes.trim() || undefined,
         expenseScope,
-        paymentSource,
-        allowNegativeCash,
       }
       if (editingExpense) {
         await updateExpense(editingExpense.id, input)
@@ -176,25 +153,6 @@ export function UnitExpensesPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Payment Source:</span>
-        {(['all', 'cash', 'online'] as SourceFilter[]).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setSourceFilter(f)}
-            className={classNames(
-              'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
-              sourceFilter === f
-                ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple'
-                : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-            )}
-          >
-            {f === 'all' ? 'All' : EXPENSE_PAYMENT_SOURCE_LABELS[f]}
-          </button>
-        ))}
-      </div>
-
       {filteredExpenses.length === 0 ? (
         <EmptyState icon={Receipt} title="No expenses recorded" description="Track thread, fabric, packing, transport, printing, and other costs here." />
       ) : (
@@ -205,7 +163,6 @@ export function UnitExpensesPage() {
                 <th className="px-5 py-3.5">Title</th>
                 <th className="px-5 py-3.5">Scope</th>
                 <th className="px-5 py-3.5">Category</th>
-                <th className="px-5 py-3.5">Payment Source</th>
                 <th className="px-5 py-3.5">Amount</th>
                 <th className="px-5 py-3.5">Notes</th>
                 <th className="px-5 py-3.5">Date</th>
@@ -222,9 +179,6 @@ export function UnitExpensesPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <Badge color="amber">{exp.category}</Badge>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <Badge color={exp.payment_source === 'cash' ? 'cyan' : 'slate'}>{EXPENSE_PAYMENT_SOURCE_LABELS[exp.payment_source]}</Badge>
                   </td>
                   <td className="px-5 py-3.5 text-slate-300">{formatCurrency(exp.amount)}</td>
                   <td className="px-5 py-3.5 text-slate-400">{exp.notes || '—'}</td>
@@ -273,68 +227,15 @@ export function UnitExpensesPage() {
             </div>
           </div>
           <div>
-            <label className="label-field">
-              Payment Source <span className="text-neon-red">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['cash', 'online'] as ExpensePaymentSource[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setPaymentSource(s)}
-                  className={classNames(
-                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
-                    paymentSource === s
-                      ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple'
-                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-                  )}
-                >
-                  {EXPENSE_PAYMENT_SOURCE_LABELS[s]}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1.5 text-[11px] text-slate-500">
-              {paymentSource === 'cash'
-                ? `Deducted from Office Cash immediately (current balance: ${formatCurrency(cashBalance)}).`
-                : 'Recorded separately — does not affect Office Cash.'}
-            </p>
-          </div>
-          <div>
-            <label className="label-field">Title</label>
-            <input className="input-field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Thread purchase" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <CategoryPicker value={category} onChange={setCategory} categories={expenseCategoryNames} onAddCategory={addExpenseCategory} />
-            <div>
-              <label className="label-field">Amount</label>
-              <input type="number" className="input-field" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-            </div>
-          </div>
-          <div>
-            <label className="label-field">Date</label>
-            <input type="date" className="input-field" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Details" />
           </div>
-          {wouldGoNegative && (
-            <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
-              <p className="text-xs text-neon-amber">
-                This would take Office Cash to {formatCurrency(projectedCashBalance)} (negative).
-              </p>
-              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-                <input type="checkbox" checked={allowNegativeCash} onChange={(e) => setAllowNegativeCash(e.target.checked)} />
-                Allow negative Office Cash balance and save anyway
-              </label>
-            </div>
-          )}
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>
               Cancel
             </button>
-            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving || (wouldGoNegative && !allowNegativeCash)}>
+            <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>

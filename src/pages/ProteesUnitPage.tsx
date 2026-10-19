@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Boxes, HandCoins, MapPin, Pencil, Plus, Receipt, Trash2, UserCog, Users, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
-import { useCollections } from '@/context/CollectionsContext'
-import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -43,7 +41,6 @@ export function ProteesUnitPage() {
     balanceFor,
   } = useData()
   const { showToast } = useToast()
-  const { cashBalance, bankAccountsWithBalance } = useCollections()
 
   const unitInfo = units[0]
   const supervisor = supervisors[0]
@@ -175,22 +172,11 @@ export function ProteesUnitPage() {
   const [savingAdvance, setSavingAdvance] = useState(false)
   const [advanceError, setAdvanceError] = useState<string | null>(null)
 
-  const [advanceMethod, setAdvanceMethod] = useState<'cash' | 'bank'>('bank')
-  const [advanceBankId, setAdvanceBankId] = useState<number | null>(null)
-  const [advanceReference, setAdvanceReference] = useState('')
-  const [advanceAllowNegative, setAdvanceAllowNegative] = useState(false)
-  const effectiveAdvanceBankId = advanceBankId ?? bankAccountsWithBalance[0]?.id ?? null
-  const advanceAmountNum = Number(advanceAmount) || 0
-  const advanceWouldGoNegative = advanceMethod === 'cash' && advanceAmountNum > 0 && advanceAmountNum > cashBalance
 
   function openAdvanceModal() {
     setAdvanceDate(todayISO())
     setAdvanceAmount('')
     setAdvanceNotes('')
-    setAdvanceMethod('bank')
-    setAdvanceBankId(null)
-    setAdvanceReference('')
-    setAdvanceAllowNegative(false)
     setAdvanceError(null)
     setAdvanceModalOpen(true)
   }
@@ -202,11 +188,6 @@ export function ProteesUnitPage() {
       setAdvanceError('Enter a valid amount.')
       return
     }
-    const isBank = advanceMethod === 'bank'
-    if (isBank && !effectiveAdvanceBankId) {
-      setAdvanceError('Select a bank account, or switch to Cash.')
-      return
-    }
     setSavingAdvance(true)
     setAdvanceError(null)
     try {
@@ -216,10 +197,6 @@ export function ProteesUnitPage() {
         amount: amt,
         paymentDate: advanceDate,
         notes: advanceNotes.trim() || undefined,
-        paymentMethod: isBank ? 'Bank Transfer' : 'Cash',
-        bankAccountId: isBank ? effectiveAdvanceBankId : undefined,
-        referenceNumber: isBank ? advanceReference.trim() || undefined : undefined,
-        allowNegativeCash: advanceAllowNegative,
       })
       setAdvanceModalOpen(false)
     } catch (err) {
@@ -528,66 +505,16 @@ export function ProteesUnitPage() {
             <label className="label-field">Amount</label>
             <input type="number" className="input-field" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} placeholder="0" />
           </div>
-          <div className="space-y-3">
-            <label className="label-field">Payment</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['cash', 'bank'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setAdvanceMethod(m)}
-                  className={classNames(
-                    'rounded-xl border px-3 py-2 text-xs font-semibold transition',
-                    advanceMethod === m
-                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
-                  )}
-                >
-                  {m === 'cash' ? 'Cash' : 'Bank Transfer'}
-                </button>
-              ))}
-            </div>
-            {advanceMethod === 'cash' ? (
-              <p className="text-[11px] text-slate-500">Deducted from Office Cash (current balance: {formatCurrency(cashBalance)}).</p>
-            ) : (
-              <>
-                <SearchableSelect
-                  value={effectiveAdvanceBankId != null ? String(effectiveAdvanceBankId) : ''}
-                  onChange={(v) => setAdvanceBankId(Number(v))}
-                  options={bankAccountsWithBalance.map((b) => ({ value: String(b.id), label: `${b.name} (${formatCurrency(b.balance)})` }))}
-                  placeholder="Select bank account…"
-                  searchPlaceholder="Search bank…"
-                  emptyMessage="No bank account found"
-                />
-                <input
-                  type="text"
-                  className="input-field"
-                  value={advanceReference}
-                  onChange={(e) => setAdvanceReference(e.target.value)}
-                  placeholder="Transaction reference (optional)"
-                />
-              </>
-            )}
-          </div>
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={advanceNotes} onChange={(e) => setAdvanceNotes(e.target.value)} placeholder="Optional" />
           </div>
-          {advanceWouldGoNegative && (
-            <div className="rounded-xl border border-neon-amber/30 bg-neon-amber/5 p-3">
-              <p className="text-xs text-neon-amber">This would take Office Cash to {formatCurrency(cashBalance - advanceAmountNum)} (negative).</p>
-              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-                <input type="checkbox" checked={advanceAllowNegative} onChange={(e) => setAdvanceAllowNegative(e.target.checked)} />
-                Allow negative Office Cash balance and save anyway
-              </label>
-            </div>
-          )}
           {advanceError && <p className="text-xs text-neon-red">{advanceError}</p>}
           <div className="flex gap-3 pt-2">
             <button className="btn-secondary flex-1" onClick={() => setAdvanceModalOpen(false)}>
               Cancel
             </button>
-            <button className="btn-primary flex-1" onClick={handleSaveAdvance} disabled={savingAdvance || (advanceWouldGoNegative && !advanceAllowNegative)}>
+            <button className="btn-primary flex-1" onClick={handleSaveAdvance} disabled={savingAdvance}>
               {savingAdvance ? 'Saving…' : 'Save Advance'}
             </button>
           </div>

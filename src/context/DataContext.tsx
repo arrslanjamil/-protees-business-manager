@@ -36,7 +36,7 @@ import type {
   ZakatSettings,
   ZakatTransaction,
 } from '@/lib/types'
-import { isCashPaymentMethod, sortExpenseCategoryNames, type ExpensePaymentSource } from '@/lib/types'
+import { sortExpenseCategoryNames } from '@/lib/types'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { useCollections } from '@/context/CollectionsContext'
 
@@ -47,13 +47,6 @@ interface ExpenseInput {
   date?: string
   notes?: string
   expenseScope?: ExpenseScope
-  paymentSource: ExpensePaymentSource
-  /** Set with paymentSource 'online' to debit that bank account. */
-  bankAccountId?: number | null
-  /** Explicit acknowledgement to let a cash expense push Office Cash
-   * negative — off by default (see requirement: "prevented unless admin
-   * override is enabled"). */
-  allowNegativeCash?: boolean
 }
 
 interface RecordSalaryInput {
@@ -68,19 +61,6 @@ interface RecordSalaryInput {
   notes?: string
   piecesCompleted?: number | null
   ratePerPiece?: number | null
-  /** 'Cash' (default) deducts from Office Cash; 'Online' deducts from
-   * bankAccountId instead — see SalaryPage's payment method toggle. */
-  paymentMethod?: string
-  /** Required when paymentMethod is 'Online' — which bank account the net
-   * amount is deducted from. */
-  bankAccountId?: number | null
-  /** Optional manual trace (bank transfer ID, Easypaisa TID, ...) —
-   * no longer required now that Online payments link to a real bank
-   * transaction, but still useful for reconciliation notes. */
-  referenceNumber?: string
-  /** Explicit acknowledgement to let a cash payment push Office Cash
-   * negative — same override pattern as expenses. */
-  allowNegativeCash?: boolean
   /** Attendance-derived figures snapshotted at payment time (see
    * src/lib/attendance.ts). overtimeAmount already carries the Rs amount
    * to add — only actually added to net if overtimeIncluded is true. */
@@ -204,10 +184,6 @@ interface DataContextValue {
     amount: number
     paymentDate?: string
     notes?: string
-    paymentMethod?: string
-    referenceNumber?: string
-    bankAccountId?: number
-    allowNegativeCash?: boolean
   }) => Promise<void>
   deleteAdvance: (id: number) => Promise<void>
 
@@ -258,7 +234,6 @@ const DataContext = createContext<DataContextValue | null>(null)
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { appUser } = useAuth()
-  const { cashBalance } = useCollections()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [units, setUnits] = useState<Unit[]>([])
@@ -650,59 +625,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Advances ----------------------------------------------------------------
-  // A 'Cash' advance is real money leaving the office, so it now posts a
-  // linked cash_transactions cash-out the same way a cash expense does —
-  // previously advances never touched the cash ledger at all. Any other
-  // payment method is assumed to bypass Office Cash and carries a
-  // reference number instead.
-  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod, referenceNumber, bankAccountId, allowNegativeCash }) => {
-    const isCash = isCashPaymentMethod(paymentMethod)
-    if (isCash && !allowNegativeCash && amount > cashBalance) {
-      throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
-    }
-    if (!isCash && !bankAccountId) {
-      throw new Error('Select a bank account for a non-cash advance.')
-    }
-    const date = paymentDate ?? todayISO()
-    const { data: advance, error: err } = await supabase
-      .from('advances')
-      .insert({
-        employee_name: name,
-        department,
-        amount,
-        payment_date: date,
-        notes: notes ?? null,
-        payment_method: paymentMethod ?? null,
-        reference_number: isCash ? null : (referenceNumber ?? null),
-        bank_account_id: isCash ? null : (bankAccountId ?? null),
-      })
-      .select()
-      .single()
+  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes }) => {
+    const { error: err } = await supabase.from('advances').insert({
+      employee_name: name,
+      department,
+      amount,
+      payment_date: paymentDate ?? todayISO(),
+      notes: notes ?? null,
+    })
     if (err) throw err
-
-    if (isCash) {
-      const { error: cashErr } = await supabase.from('cash_transactions').insert({
-        type: 'cash_out',
-        category: `Advance — ${name}`,
-        amount,
-        date,
-        reference_type: 'advance',
-        reference_id: advance.id,
-      })
-      if (cashErr) console.error('Failed to post linked cash-out for advance:', cashErr.message)
-    } else if (bankAccountId) {
-      const { error: bankErr } = await supabase.from('bank_transactions').insert({
-        bank_account_id: bankAccountId,
-        type: 'debit',
-        amount,
-        date,
-        notes: `Advance — ${name}`,
-        reference_type: 'manual',
-        reference_id: advance.id,
-      })
-      if (bankErr) throw bankErr
-    }
-
     await refreshAll()
   }
   const deleteAdvance: DataContextValue['deleteAdvance'] = async (id) => {
@@ -788,10 +719,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     notes,
     piecesCompleted,
     ratePerPiece,
-    paymentMethod,
-    bankAccountId,
-    referenceNumber,
-    allowNegativeCash,
     overtimeHours,
     overtimeIncluded,
     absentDeduction,
@@ -809,15 +736,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       baseAmount + overtimeAmount - deductionAmount - (otherDeduction ?? 0) - itemDeduction - attendanceDeduction
     )
     const date = paymentDate ?? todayISO()
-    const method = paymentMethod ?? 'Cash'
-    const isCash = isCashPaymentMethod(method)
-
-    if (isCash && !allowNegativeCash && netAmount > cashBalance) {
-      throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
-    }
-    if (!isCash && !bankAccountId) {
-      throw new Error('Select a bank account for an Online salary payment.')
-    }
 
     const { data: payment, error: payErr } = await supabase
       .from('salary_payments')
@@ -833,9 +751,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         notes: notes ?? null,
         pieces_completed: piecesCompleted ?? null,
         rate_per_piece: ratePerPiece ?? null,
-        payment_method: method,
-        bank_account_id: isCash ? null : bankAccountId,
-        reference_number: isCash ? null : referenceNumber ?? null,
         overtime_hours: overtimeHours ?? null,
         overtime_included: overtimeIncluded ?? false,
         absent_deduction: absentDeduction ?? 0,
@@ -863,36 +778,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         .update({ salary_payment_id: payment.id })
         .in('id', settledItems.map((i) => i.id))
       if (itemErr) throw itemErr
-    }
-
-    if (netAmount > 0) {
-      if (isCash) {
-        const { error: cashErr } = await supabase.from('cash_transactions').insert({
-          type: 'cash_out',
-          category: `Salary — ${employeeName}`,
-          amount: netAmount,
-          date,
-          reference_type: 'salary_payment',
-          reference_id: payment.id,
-        })
-        if (cashErr) console.error('Failed to post linked cash-out for salary payment:', cashErr.message)
-      } else if (bankAccountId) {
-        const { error: bankErr } = await supabase.from('bank_transactions').insert({
-          bank_account_id: bankAccountId,
-          type: 'debit',
-          amount: netAmount,
-          date,
-          reference_type: 'salary_payment',
-          reference_id: payment.id,
-          notes: `Salary — ${employeeName}`,
-        })
-        if (bankErr) {
-          // Never leave a salary payment recorded with no matching bank
-          // debit — undo it (advance deductions cascade) and surface why.
-          await supabase.from('salary_payments').delete().eq('id', payment.id)
-          throw bankErr
-        }
-      }
     }
 
     await refreshAll()
@@ -977,102 +862,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Expenses (Business or Unit, via expense_scope) -----------------------------
-  // Payment Source decides whether an expense touches the Office Cash
-  // ledger: 'cash' posts a linked cash_transactions cash-out entry
-  // (reference_type='expense'), keeping the Collections module's cash
-  // balance accurate without a separate manual step; 'online' expenses
-  // are recorded but never touch cash. A cash expense that would push
-  // Office Cash negative is blocked unless allowNegativeCash is set.
-  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope, paymentSource, bankAccountId, allowNegativeCash }) => {
-    const expenseDate = date ?? todayISO()
-
-    if (paymentSource === 'cash' && !allowNegativeCash && amount > cashBalance) {
-      throw new Error(`This would take Office Cash negative (available: ${formatCurrency(cashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
-    }
-
-    const { data: expense, error: err } = await supabase
-      .from('expenses')
-      .insert({ title, category, amount, date: expenseDate, notes: notes ?? null, expense_scope: expenseScope ?? 'business', payment_source: paymentSource })
-      .select()
-      .single()
+  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope }) => {
+    const { error: err } = await supabase.from('expenses').insert({
+      title,
+      category,
+      amount,
+      date: date ?? todayISO(),
+      notes: notes ?? null,
+      expense_scope: expenseScope ?? 'business',
+    })
     if (err) throw err
-
-    if (paymentSource === 'cash') {
-      const { error: cashErr } = await supabase.from('cash_transactions').insert({
-        type: 'cash_out',
-        category: title,
-        amount,
-        date: expenseDate,
-        reference_type: 'expense',
-        reference_id: expense.id,
-      })
-      if (cashErr) console.error('Failed to post linked cash-out for expense:', cashErr.message)
-    } else if (bankAccountId) {
-      const { error: bankErr } = await supabase.from('bank_transactions').insert({
-        bank_account_id: bankAccountId,
-        type: 'debit',
-        amount,
-        date: expenseDate,
-        notes: `Expense — ${title}`,
-        reference_type: 'manual',
-        reference_id: expense.id,
-      })
-      if (bankErr) throw bankErr
-    }
-
     await refreshAll()
   }
 
-  const updateExpense: DataContextValue['updateExpense'] = async (id, { title, category, amount, date, notes, expenseScope, paymentSource, allowNegativeCash }) => {
+  const updateExpense: DataContextValue['updateExpense'] = async (id, { title, category, amount, date, notes, expenseScope }) => {
     const existing = expenses.find((e) => e.id === id)
     if (!existing) throw new Error('Expense not found.')
-    const expenseDate = date ?? existing.date
-
-    // cashBalance already reflects this expense's OLD cash effect (if it
-    // was 'cash') — add that back, then subtract the new effect, to get
-    // what the balance would be after this update.
-    const oldCashImpact = existing.payment_source === 'cash' ? Number(existing.amount) : 0
-    const newCashImpact = paymentSource === 'cash' ? amount : 0
-    const projectedCashBalance = cashBalance + oldCashImpact - newCashImpact
-    if (paymentSource === 'cash' && !allowNegativeCash && projectedCashBalance < 0) {
-      throw new Error(`This would take Office Cash negative (projected: ${formatCurrency(projectedCashBalance)}). Enable "Allow negative balance" to proceed anyway.`)
-    }
-
     const { error: err } = await supabase
       .from('expenses')
       .update({
         title,
         category,
         amount,
-        date: expenseDate,
+        date: date ?? existing.date,
         notes: notes ?? null,
         expense_scope: expenseScope ?? existing.expense_scope,
-        payment_source: paymentSource,
       })
       .eq('id', id)
     if (err) throw err
-
-    if (existing.payment_source === 'cash' && paymentSource === 'cash') {
-      await supabase.from('cash_transactions').update({ category: title, amount, date: expenseDate ?? null }).eq('reference_type', 'expense').eq('reference_id', id)
-    } else if (existing.payment_source === 'cash' && paymentSource === 'online') {
-      await supabase.from('cash_transactions').delete().eq('reference_type', 'expense').eq('reference_id', id)
-    } else if (existing.payment_source === 'online' && paymentSource === 'cash') {
-      await supabase.from('cash_transactions').insert({
-        type: 'cash_out',
-        category: title,
-        amount,
-        date: expenseDate ?? null,
-        reference_type: 'expense',
-        reference_id: id,
-      })
-    }
-    // online -> online: no cash ledger action needed.
-
     await refreshAll()
   }
 
   const deleteExpense: DataContextValue['deleteExpense'] = async (id) => {
-    await supabase.from('cash_transactions').delete().eq('reference_type', 'expense').eq('reference_id', id)
     const { error: err } = await supabase.from('expenses').delete().eq('id', id)
     if (err) throw err
     await refreshAll()

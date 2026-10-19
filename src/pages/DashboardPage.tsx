@@ -96,7 +96,7 @@ interface CollectionDrillRow {
 
 export function DashboardPage() {
   const { employeesWithBalance, supervisorsWithBalance, advances, grandAdvances, expenses, salaryPayments, unitPayments, zakatTransactions, zakatSettings } = useData()
-  const { shopifyOrders, shopifyStores, courierCollections, couriers, cashBalance, bankAccountsWithBalance, creditors, creditorPayments } = useCollections()
+  const { shopifyOrders, shopifyStores, courierCollections, couriers, creditors, creditorPayments } = useCollections()
   const { order, setOrder, loaded } = useDashboardLayout()
 
   const [preset, setPreset] = useState<DashboardDatePreset>('today')
@@ -153,15 +153,6 @@ export function DashboardPage() {
   // their own card/calculations instead (per the Unit module restructure).
   const totalExpenses = periodBusinessExpenses.reduce((s, e) => s + Number(e.amount), 0)
   const unitExpensesTotal = periodUnitExpenses.reduce((s, e) => s + Number(e.amount), 0)
-
-  // Payment Source breakdown — across every expense (business + unit) in
-  // the period, since "how was it paid" cuts across the business/unit split.
-  const totalCashExpenses = periodExpensesList
-    .filter((e) => e.payment_source === 'cash')
-    .reduce((s, e) => s + Number(e.amount), 0)
-  const totalOnlineExpenses = periodExpensesList
-    .filter((e) => e.payment_source === 'online')
-    .reduce((s, e) => s + Number(e.amount), 0)
 
   // Regular Payroll is scoped to employee_group='regular' — Unit Employees'
   // salaries count toward Unit Payroll/Unit Cost instead (see Unit Payroll
@@ -225,7 +216,12 @@ export function DashboardPage() {
   const periodShopifyCollections = periodShopifyOrdersRows.reduce((s, o) => s + Number(o.total_amount), 0)
   const periodCourierCollections = periodCourierCollectionsRows.reduce((s, c) => s + Number(c.amount), 0)
   const periodTotalCollections = periodShopifyCollections + periodCourierCollections
-  const totalBankBalance = useMemo(() => bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0), [bankAccountsWithBalance])
+
+  const cashCourierIds = useMemo(() => new Set(couriers.filter((c) => c.payment_method !== 'bank_transfer').map((c) => c.id)), [couriers])
+  const periodCashReceived = periodCourierCollectionsRows
+    .filter((c) => cashCourierIds.has(c.courier_id))
+    .reduce((s, c) => s + Number(c.amount), 0)
+  const periodOnlineReceived = periodCourierCollections - periodCashReceived + periodShopifyCollections
 
   // --- Active/Inactive staff — inactive employees are excluded from payroll,
   // roster counts, and payroll projections, but keep their full advance/
@@ -977,11 +973,9 @@ export function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 auto-rows-fr">
           <StatCard label="Courier Collections" value={formatCurrencyCompact(periodCourierCollections)} fullValue={formatCurrency(periodCourierCollections)} icon={HandCoins} accent="green" hint="Selected period" />
           <StatCard label="Shopify Collections" value={formatCurrencyCompact(periodShopifyCollections)} fullValue={formatCurrency(periodShopifyCollections)} icon={Receipt} accent="purple" hint="Selected period" />
-          <StatCard label="Office Cash Balance" value={formatCurrencyCompact(cashBalance)} fullValue={formatCurrency(cashBalance)} icon={Wallet} accent="amber" hint="Live balance" />
-          <StatCard label="Total Bank Balance" value={formatCurrencyCompact(totalBankBalance)} fullValue={formatCurrency(totalBankBalance)} icon={Receipt} accent="cyan" hint="Live balance" />
+          <StatCard label="Cash Received" value={formatCurrencyCompact(periodCashReceived)} fullValue={formatCurrency(periodCashReceived)} icon={Wallet} accent="amber" hint="Selected period" />
+          <StatCard label="Online Received" value={formatCurrencyCompact(periodOnlineReceived)} fullValue={formatCurrency(periodOnlineReceived)} icon={Receipt} accent="cyan" hint="Bank + Shopify · Selected period" />
           <StatCard label="Total Unit Cost" value={formatCurrencyCompact(totalUnitCost)} fullValue={formatCurrency(totalUnitCost)} icon={Receipt} accent="green" hint="Selected period" />
-          <StatCard label="Total Cash Expenses" value={formatCurrencyCompact(totalCashExpenses)} fullValue={formatCurrency(totalCashExpenses)} icon={Wallet} accent="red" hint="Office Cash · Selected period" />
-          <StatCard label="Total Online Expenses" value={formatCurrencyCompact(totalOnlineExpenses)} fullValue={formatCurrency(totalOnlineExpenses)} icon={Receipt} accent="purple" hint="Online / Bank · Selected period" />
         </div>
       </div>
 
