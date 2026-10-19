@@ -104,10 +104,10 @@ export const INCREMENT_TYPE_LABELS: Record<IncrementType, string> = {
   percentage: 'Percentage',
 }
 
-/** How an advance/salary payment's payment_method affects the Office Cash
+/** How an advance/salary payment's payment_method affects the the cash method
  * ledger: paid as 'Cash' posts a linked cash-out and reduces the live
  * balance shown elsewhere in the app; any other method (Bank Transfer,
- * Easypaisa, ...) is assumed to bypass Office Cash and requires a
+ * Easypaisa, ...) is assumed to bypass the cash method and requires a
  * reference number instead. Matches the exact string seeded into the
  * 'payment_method' Master Data type (migration_016). */
 export function isCashPaymentMethod(method: string | null | undefined): boolean {
@@ -116,7 +116,7 @@ export function isCashPaymentMethod(method: string | null | undefined): boolean 
 
 /** Salary payments use a fixed Cash/Online toggle (not the free-form
  * 'payment_method' Master Data list Advances/Expenses use) — Cash deducts
- * from Office Cash, Online deducts from a chosen bank account. */
+ * from the cash method, Online deducts from a chosen bank account. */
 export const SALARY_PAYMENT_METHODS = ['Cash', 'Online'] as const
 export type SalaryPaymentMethod = (typeof SALARY_PAYMENT_METHODS)[number]
 export const SALARY_PAYMENT_METHOD_LABELS: Record<SalaryPaymentMethod, string> = {
@@ -132,13 +132,13 @@ export const EXPENSE_SCOPE_LABELS: Record<ExpenseScope, string> = {
 }
 
 /** Where an expense's money actually came from — distinct from the
- * courier PaymentType below. Only 'cash' expenses reduce the Office Cash
+ * courier PaymentType below. Only 'cash' expenses reduce the the cash method
  * balance; 'online' expenses are recorded and reportable but never touch
  * the cash ledger. */
 export type ExpensePaymentSource = 'cash' | 'online'
 
 export const EXPENSE_PAYMENT_SOURCE_LABELS: Record<ExpensePaymentSource, string> = {
-  cash: 'Office Cash',
+  cash: 'Cash',
   online: 'Online / Bank',
 }
 

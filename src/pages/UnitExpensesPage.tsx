@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Pencil, Plus, Receipt, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { CategoryPicker } from '@/components/expenses/CategoryPicker'
-import { EXPENSE_SCOPE_LABELS, type Expense, type ExpenseScope } from '@/lib/types'
+import { EXPENSE_PAYMENT_SOURCE_LABELS, EXPENSE_SCOPE_LABELS, type Expense, type ExpensePaymentSource, type ExpenseScope } from '@/lib/types'
 import { classNames, errorMessage, formatCurrency, formatDate, todayISO } from '@/lib/utils'
 
 type ScopeFilter = 'all' | ExpenseScope
+type SourceFilter = 'all' | ExpensePaymentSource
 
 export function UnitExpensesPage() {
   const { expenses, addExpense, updateExpense, deleteExpense, expenseCategoryNames, addExpenseCategory } = useData()
+  const { bankAccounts } = useCollections()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
@@ -21,10 +24,13 @@ export function UnitExpensesPage() {
   const [date, setDate] = useState(todayISO())
   const [notes, setNotes] = useState('')
   const [expenseScope, setExpenseScope] = useState<ExpenseScope>('business')
+  const [paymentSource, setPaymentSource] = useState<ExpensePaymentSource>('cash')
+  const [bankAccountId, setBankAccountId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
 
   const sortedExpenses = useMemo(
     () =>
@@ -39,8 +45,9 @@ export function UnitExpensesPage() {
   const filteredExpenses = useMemo(
     () =>
       sortedExpenses
-        .filter((e) => scopeFilter === 'all' || e.expense_scope === scopeFilter),
-    [sortedExpenses, scopeFilter]
+        .filter((e) => scopeFilter === 'all' || e.expense_scope === scopeFilter)
+        .filter((e) => sourceFilter === 'all' || e.payment_source === sourceFilter),
+    [sortedExpenses, scopeFilter, sourceFilter]
   )
 
   const totalThisMonth = useMemo(() => {
@@ -61,6 +68,8 @@ export function UnitExpensesPage() {
     setDate(todayISO())
     setNotes('')
     setExpenseScope('business')
+    setPaymentSource('cash')
+    setBankAccountId(null)
     setError(null)
     setModalOpen(true)
   }
@@ -73,6 +82,8 @@ export function UnitExpensesPage() {
     setDate(exp.date)
     setNotes(exp.notes ?? '')
     setExpenseScope(exp.expense_scope as ExpenseScope)
+    setPaymentSource((exp.payment_source as ExpensePaymentSource) ?? 'cash')
+    setBankAccountId(exp.bank_account_id ?? null)
     setError(null)
     setModalOpen(true)
   }
@@ -101,6 +112,8 @@ export function UnitExpensesPage() {
         date,
         notes: notes.trim() || undefined,
         expenseScope,
+        paymentSource,
+        bankAccountId: paymentSource === 'online' ? bankAccountId : null,
       }
       if (editingExpense) {
         await updateExpense(editingExpense.id, input)
@@ -153,6 +166,25 @@ export function UnitExpensesPage() {
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Payment:</span>
+        {(['all', 'cash', 'online'] as SourceFilter[]).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setSourceFilter(f)}
+            className={classNames(
+              'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
+              sourceFilter === f
+                ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple'
+                : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+            )}
+          >
+            {f === 'all' ? 'All' : EXPENSE_PAYMENT_SOURCE_LABELS[f]}
+          </button>
+        ))}
+      </div>
+
       {filteredExpenses.length === 0 ? (
         <EmptyState icon={Receipt} title="No expenses recorded" description="Track thread, fabric, packing, transport, printing, and other costs here." />
       ) : (
@@ -163,6 +195,7 @@ export function UnitExpensesPage() {
                 <th className="px-5 py-3.5">Title</th>
                 <th className="px-5 py-3.5">Scope</th>
                 <th className="px-5 py-3.5">Category</th>
+                <th className="px-5 py-3.5">Payment</th>
                 <th className="px-5 py-3.5">Amount</th>
                 <th className="px-5 py-3.5">Notes</th>
                 <th className="px-5 py-3.5">Date</th>
@@ -179,6 +212,12 @@ export function UnitExpensesPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <Badge color="amber">{exp.category}</Badge>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <Badge color={exp.payment_source === 'online' ? 'slate' : 'cyan'}>
+                      {EXPENSE_PAYMENT_SOURCE_LABELS[(exp.payment_source as ExpensePaymentSource) ?? 'cash']}
+                    </Badge>
+                    {exp.bank_account_id != null && <p className="mt-0.5 text-[11px] text-slate-500">{bankAccounts.find((b) => b.id === exp.bank_account_id)?.name ?? 'Bank'}</p>}
                   </td>
                   <td className="px-5 py-3.5 text-slate-300">{formatCurrency(exp.amount)}</td>
                   <td className="px-5 py-3.5 text-slate-400">{exp.notes || '—'}</td>
@@ -225,6 +264,56 @@ export function UnitExpensesPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="label-field">Title</label>
+            <input className="input-field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Thread purchase" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <CategoryPicker value={category} onChange={setCategory} categories={expenseCategoryNames} onAddCategory={addExpenseCategory} />
+            <div>
+              <label className="label-field">Amount</label>
+              <input type="number" className="input-field" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+            </div>
+          </div>
+          <div>
+            <label className="label-field">Date</label>
+            <input type="date" className="input-field" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="space-y-3">
+            <label className="label-field">
+              Payment Method <span className="text-neon-red">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['cash', 'online'] as ExpensePaymentSource[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPaymentSource(m)}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
+                    paymentSource === m
+                      ? 'border-neon-purple/50 bg-neon-purple/10 text-neon-purple'
+                      : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {EXPENSE_PAYMENT_SOURCE_LABELS[m]}
+                </button>
+              ))}
+            </div>
+            {paymentSource === 'online' && (
+              <div>
+                <label className="label-field">Bank Account (optional)</label>
+                <select className="input-field" value={bankAccountId ?? ''} onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">No bank account selected</option>
+                  {bankAccounts.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div>
             <label className="label-field">Notes (optional)</label>

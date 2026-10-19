@@ -36,7 +36,7 @@ import type {
   ZakatSettings,
   ZakatTransaction,
 } from '@/lib/types'
-import { sortExpenseCategoryNames } from '@/lib/types'
+import { sortExpenseCategoryNames, type ExpensePaymentSource } from '@/lib/types'
 import { formatCurrency, todayISO } from '@/lib/utils'
 import { useCollections } from '@/context/CollectionsContext'
 
@@ -47,6 +47,8 @@ interface ExpenseInput {
   date?: string
   notes?: string
   expenseScope?: ExpenseScope
+  paymentSource: ExpensePaymentSource
+  bankAccountId?: number | null
 }
 
 interface RecordSalaryInput {
@@ -55,6 +57,10 @@ interface RecordSalaryInput {
   overtimeAmount: number
   /** Advance repayment only — allocated against the employee's advances. */
   deductionAmount: number
+  /** How the salary was paid. Recorded for history only; no balance is changed. */
+  paymentMethod?: 'Cash' | 'Online'
+  bankAccountId?: number | null
+  referenceNumber?: string
   month: number
   year: number
   paymentDate?: string
@@ -184,6 +190,9 @@ interface DataContextValue {
     amount: number
     paymentDate?: string
     notes?: string
+    paymentMethod?: 'Cash' | 'Online'
+    bankAccountId?: number | null
+    referenceNumber?: string
   }) => Promise<void>
   deleteAdvance: (id: number) => Promise<void>
 
@@ -625,13 +634,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Advances ----------------------------------------------------------------
-  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes }) => {
+  const addAdvance: DataContextValue['addAdvance'] = async ({ name, department, amount, paymentDate, notes, paymentMethod, bankAccountId, referenceNumber }) => {
+    const isOnline = paymentMethod === 'Online'
     const { error: err } = await supabase.from('advances').insert({
       employee_name: name,
       department,
       amount,
       payment_date: paymentDate ?? todayISO(),
       notes: notes ?? null,
+      payment_method: paymentMethod ?? 'Cash',
+      bank_account_id: isOnline ? (bankAccountId ?? null) : null,
+      reference_number: isOnline ? (referenceNumber?.trim() || null) : null,
     })
     if (err) throw err
     await refreshAll()
@@ -702,7 +715,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // --- Salary payments (monthly) -------------------------------------------
   // Payment method drives where the net amount actually comes from: 'Cash'
-  // (the default — see SalaryPage) posts a linked Office Cash cash-out;
+  // (the default — see SalaryPage) is recorded as a cash payment;
   // 'Online' posts a linked debit against the selected bank account instead.
   // overtimeAmount is added to net exactly as before — the caller (see
   // SalaryPage) decides what to pass: the computed Rs amount when
@@ -727,6 +740,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     otherDeduction,
     otherDeductionReason,
     itemPurchaseIds,
+    paymentMethod,
+    bankAccountId,
+    referenceNumber,
   }) => {
     const attendanceDeduction = (absentDeduction ?? 0) + (lateDeduction ?? 0) + (leaveDeduction ?? 0)
     const settledItems = itemPurchases.filter((i) => i.salary_payment_id == null && itemPurchaseIds?.includes(i.id))
@@ -759,6 +775,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         other_deduction: otherDeduction ?? 0,
         other_deduction_reason: otherDeduction ? otherDeductionReason ?? null : null,
         item_deduction: itemDeduction,
+        payment_method: paymentMethod ?? 'Cash',
+        bank_account_id: paymentMethod === 'Online' ? (bankAccountId ?? null) : null,
+        reference_number: paymentMethod === 'Online' ? (referenceNumber?.trim() || null) : null,
       })
       .select()
       .single()
@@ -862,7 +881,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // --- Expenses (Business or Unit, via expense_scope) -----------------------------
-  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope }) => {
+  const addExpense: DataContextValue['addExpense'] = async ({ title, category, amount, date, notes, expenseScope, paymentSource, bankAccountId }) => {
+    const isOnline = paymentSource === 'online'
     const { error: err } = await supabase.from('expenses').insert({
       title,
       category,
@@ -870,14 +890,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       date: date ?? todayISO(),
       notes: notes ?? null,
       expense_scope: expenseScope ?? 'business',
+      payment_source: paymentSource,
+      bank_account_id: isOnline ? (bankAccountId ?? null) : null,
     })
     if (err) throw err
     await refreshAll()
   }
 
-  const updateExpense: DataContextValue['updateExpense'] = async (id, { title, category, amount, date, notes, expenseScope }) => {
+  const updateExpense: DataContextValue['updateExpense'] = async (id, { title, category, amount, date, notes, expenseScope, paymentSource, bankAccountId }) => {
     const existing = expenses.find((e) => e.id === id)
     if (!existing) throw new Error('Expense not found.')
+    const isOnline = paymentSource === 'online'
     const { error: err } = await supabase
       .from('expenses')
       .update({
@@ -887,6 +910,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         date: date ?? existing.date,
         notes: notes ?? null,
         expense_scope: expenseScope ?? existing.expense_scope,
+        payment_source: paymentSource,
+        bank_account_id: isOnline ? (bankAccountId ?? null) : null,
       })
       .eq('id', id)
     if (err) throw err

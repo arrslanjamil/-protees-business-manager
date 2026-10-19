@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Boxes, HandCoins, MapPin, Pencil, Plus, Receipt, Trash2, UserCog, Users, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { useToast } from '@/context/ToastContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
@@ -169,6 +170,10 @@ export function ProteesUnitPage() {
   const [advanceDate, setAdvanceDate] = useState(todayISO())
   const [advanceAmount, setAdvanceAmount] = useState('')
   const [advanceNotes, setAdvanceNotes] = useState('')
+  const [advanceMethod, setAdvanceMethod] = useState<'Cash' | 'Online'>('Cash')
+  const [advanceBankId, setAdvanceBankId] = useState<number | ''>('')
+  const [advanceReference, setAdvanceReference] = useState('')
+  const { bankAccounts } = useCollections()
   const [savingAdvance, setSavingAdvance] = useState(false)
   const [advanceError, setAdvanceError] = useState<string | null>(null)
 
@@ -177,6 +182,9 @@ export function ProteesUnitPage() {
     setAdvanceDate(todayISO())
     setAdvanceAmount('')
     setAdvanceNotes('')
+    setAdvanceMethod('Cash')
+    setAdvanceBankId('')
+    setAdvanceReference('')
     setAdvanceError(null)
     setAdvanceModalOpen(true)
   }
@@ -197,6 +205,9 @@ export function ProteesUnitPage() {
         amount: amt,
         paymentDate: advanceDate,
         notes: advanceNotes.trim() || undefined,
+        paymentMethod: advanceMethod,
+        bankAccountId: advanceMethod === 'Online' && advanceBankId ? Number(advanceBankId) : null,
+        referenceNumber: advanceMethod === 'Online' ? advanceReference.trim() || undefined : undefined,
       })
       setAdvanceModalOpen(false)
     } catch (err) {
@@ -505,6 +516,42 @@ export function ProteesUnitPage() {
             <label className="label-field">Amount</label>
             <input type="number" className="input-field" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} placeholder="0" />
           </div>
+          <div>
+            <label className="label-field">Payment Method</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['Cash', 'Online'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setAdvanceMethod(m)}
+                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                    advanceMethod === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {m === 'Cash' ? 'Cash' : 'Online / Bank Transfer'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {advanceMethod === 'Online' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-field">Bank Account (optional)</label>
+                <select className="input-field" value={advanceBankId} onChange={(e) => setAdvanceBankId(e.target.value ? Number(e.target.value) : '')}>
+                  <option value="">No bank account selected</option>
+                  {bankAccounts.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label-field">Reference (optional)</label>
+                <input className="input-field" value={advanceReference} onChange={(e) => setAdvanceReference(e.target.value)} placeholder="Transfer ID" />
+              </div>
+            </div>
+          )}
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={advanceNotes} onChange={(e) => setAdvanceNotes(e.target.value)} placeholder="Optional" />

@@ -28,7 +28,7 @@ export function CreditorDetailPage() {
     creditorsWithBalance,
     creditorBills,
     creditorPayments,
-    bankAccountsWithBalance,
+    bankAccounts,
     updateCreditor,
     setCreditorActive,
     deleteCreditor,
@@ -56,6 +56,8 @@ export function CreditorDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(todayISO())
   const [paymentNotes, setPaymentNotes] = useState('')
+  const [paymentType, setPaymentType] = useState<'cash' | 'online'>('cash')
+  const [paymentBankId, setPaymentBankId] = useState<number | ''>('')
   const [paymentSaving, setPaymentSaving] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
 
@@ -138,6 +140,8 @@ export function CreditorDetailPage() {
     setPaymentAmount('')
     setPaymentDate(todayISO())
     setPaymentNotes('')
+    setPaymentType('cash')
+    setPaymentBankId('')
     setPaymentError(null)
     setPaymentModalOpen(true)
   }
@@ -155,6 +159,8 @@ export function CreditorDetailPage() {
         creditorId: creditor!.id,
         amount: amt,
         paymentDate,
+        paymentType,
+        bankAccountId: paymentType === 'online' && paymentBankId ? Number(paymentBankId) : null,
         notes: paymentNotes.trim() || undefined,
       })
       setPaymentModalOpen(false)
@@ -396,7 +402,7 @@ export function CreditorDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Record Payment" subtitle="Reduces what you owe.">
+      <Modal open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Record Payment" subtitle="Reduces what you owe. Recorded as cash or online — no balance is changed.">
         <div className="space-y-4">
           <div>
             <label className="label-field">Amount</label>
@@ -406,6 +412,36 @@ export function CreditorDetailPage() {
             <label className="label-field">Date</label>
             <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
           </div>
+          <div>
+            <label className="label-field">Paid From</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['cash', 'online'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPaymentType(m)}
+                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                    paymentType === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {m === 'cash' ? 'Cash' : 'Online / Bank Transfer'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {paymentType === 'online' && (
+            <div>
+              <label className="label-field">Bank Account (optional)</label>
+              <select className="input-field" value={paymentBankId} onChange={(e) => setPaymentBankId(e.target.value ? Number(e.target.value) : '')}>
+                <option value="">No bank account selected</option>
+                {bankAccounts.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} />

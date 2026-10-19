@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Check, Loader2, Mic, MicOff, Sparkles, Square } from 'lucide-react'
 import { useVoiceCommand } from '@/hooks/useVoiceCommand'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { parseVoiceCommand, type NamedPerson, type VoiceIntent } from '@/lib/voiceParser'
 import { Modal } from '@/components/ui/Modal'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
@@ -20,6 +21,10 @@ export function VoiceWidget() {
 
   const { status, transcript, errorMessage, start, stop, reset } = useVoiceCommand()
   const { employees, supervisors, addAdvance, addExpense, addExpenseCategory, expenseCategoryNames, recordSalaryPayment, recordUnitPayment, suggestedDeduction, balanceFor } = useData()
+  const { bankAccounts } = useCollections()
+  const [method, setMethod] = useState<'cash' | 'online'>('cash')
+  const [bankId, setBankId] = useState<number | ''>('')
+  const [reference, setReference] = useState('')
 
   const people = useMemo<NamedPerson[]>(
     () => [
@@ -94,12 +99,15 @@ export function VoiceWidget() {
     setSubmitting(true)
     setSubmitError(null)
     try {
+      const isOnline = method === 'online'
+      const bank = isOnline && bankId ? Number(bankId) : null
+      const ref = isOnline ? reference.trim() || undefined : undefined
       if (intent === 'advance') {
         if (!personName || amount <= 0) throw new Error('Pick a person and enter a valid amount.')
-        await addAdvance({ name: personName, department, amount, notes: notes || undefined })
+        await addAdvance({ name: personName, department, amount, notes: notes || undefined, paymentMethod: isOnline ? 'Online' : 'Cash', bankAccountId: bank, referenceNumber: ref })
       } else if (intent === 'expense') {
         if (amount <= 0) throw new Error('Enter a valid amount.')
-        await addExpense({ title: title.trim() || 'Expense', category, amount, notes: notes || undefined })
+        await addExpense({ title: title.trim() || 'Expense', category, amount, notes: notes || undefined, paymentSource: isOnline ? 'online' : 'cash', bankAccountId: bank })
       } else if (intent === 'salary') {
         if (!personName || amount <= 0) throw new Error('Pick an employee and enter a valid amount.')
         const now = new Date()
@@ -111,6 +119,9 @@ export function VoiceWidget() {
           month: now.getMonth() + 1,
           year: now.getFullYear(),
           notes: notes || undefined,
+          paymentMethod: isOnline ? 'Online' : 'Cash',
+          bankAccountId: bank,
+          referenceNumber: ref,
         })
       } else if (intent === 'unit_payment') {
         if (!personName || amount <= 0) throw new Error('Pick a supervisor and enter a valid amount.')
@@ -330,6 +341,40 @@ export function VoiceWidget() {
                       placeholder="0"
                     />
                     <p className="mt-1 text-xs text-slate-500">Net pay: {formatCurrency(Math.max(0, amount + overtime - deduction))}</p>
+                  </div>
+                )}
+
+                {(intent === 'salary' || intent === 'advance' || intent === 'expense') && (
+                  <div className="space-y-3">
+                    <label className="label-field">Payment Method</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['cash', 'online'] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setMethod(m)}
+                          className={classNames(
+                            'rounded-xl border px-3 py-2 text-xs font-semibold transition',
+                            method === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                          )}
+                        >
+                          {m === 'cash' ? 'Cash' : 'Online / Bank Transfer'}
+                        </button>
+                      ))}
+                    </div>
+                    {method === 'online' && (
+                      <>
+                        <select className="input-field" value={bankId} onChange={(e) => setBankId(e.target.value ? Number(e.target.value) : '')}>
+                          <option value="">No bank account selected</option>
+                          {bankAccounts.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                        <input type="text" className="input-field" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (optional)" />
+                      </>
+                    )}
                   </div>
                 )}
 

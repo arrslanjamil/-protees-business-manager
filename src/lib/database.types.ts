@@ -569,6 +569,9 @@ export type Database = {
           updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
+          bank_account_id: number | null
+          payment_method: string | null
+          reference_number: string | null
         }
         Insert: {
           amount: number
@@ -583,6 +586,9 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          bank_account_id?: number | null
+          payment_method?: string | null
+          reference_number?: string | null
         }
         Update: {
           amount?: number
@@ -597,6 +603,9 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          bank_account_id?: number | null
+          payment_method?: string | null
+          reference_number?: string | null
         }
         Relationships: [
           {
@@ -1097,6 +1106,7 @@ export type Database = {
           updated_at: string | null
           updated_by_user_id: string | null
           updated_by_username: string | null
+          bank_account_id: number | null
         }
         Insert: {
           amount?: number | null
@@ -1113,6 +1123,7 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          bank_account_id?: number | null
         }
         Update: {
           amount?: number | null
@@ -1129,6 +1140,7 @@ export type Database = {
           updated_at?: string | null
           updated_by_user_id?: string | null
           updated_by_username?: string | null
+          bank_account_id?: number | null
         }
         Relationships: []
       }

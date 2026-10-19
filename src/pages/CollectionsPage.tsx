@@ -13,6 +13,7 @@ import { CourierLogo } from '@/components/collections/CourierLogo'
 import { AccountCard } from '@/components/collections/AccountCard'
 import { CollectionsDetailPanel, CollectionsDetailBody, type CollectionsDetailRow } from '@/components/collections/CollectionsDetailPanel'
 import { PAYMENT_TYPE_LABELS, type Courier, type PaymentType } from '@/lib/types'
+import { buildPaymentRecords } from '@/lib/paymentRecords'
 import { classNames, dashboardDateRange, errorMessage, formatCurrency, formatDate, isWithinRange, todayISO, type DashboardDatePreset } from '@/lib/utils'
 
 type DetailSelection =
@@ -46,9 +47,9 @@ export function CollectionsPage() {
     couriers,
     couriersWithBalance,
     courierCollections,
-    bankAccountsWithBalance,
-    bankTransactions,
+    bankAccounts,
     shopifyOrders,
+    creditors,
     creditorPayments,
     shopifyStores,
     shopifySyncing,
@@ -81,12 +82,8 @@ export function CollectionsPage() {
   const shopifyCollectionsTotal = periodShopifyOrders.reduce((s, o) => s + Number(o.total_amount), 0)
   const totalCollections = courierCollectionsTotal + shopifyCollectionsTotal
 
-  const cashCourierIds = useMemo(() => new Set(couriers.filter((c) => c.payment_method !== 'bank_transfer').map((c) => c.id)), [couriers])
-  const periodCashCollections = useMemo(() => periodCourierCollections.filter((c) => cashCourierIds.has(c.courier_id)), [periodCourierCollections, cashCourierIds])
-  const periodOnlineCourierCollections = useMemo(
-    () => periodCourierCollections.filter((c) => !cashCourierIds.has(c.courier_id)),
-    [periodCourierCollections, cashCourierIds]
-  )
+  const periodCashCollections = useMemo(() => periodCourierCollections.filter((c) => c.payment_method !== 'online'), [periodCourierCollections])
+  const periodOnlineCourierCollections = useMemo(() => periodCourierCollections.filter((c) => c.payment_method === 'online'), [periodCourierCollections])
   const cashReceivedTotal = periodCashCollections.reduce((s, c) => s + Number(c.amount), 0)
   const onlineReceivedTotal = periodOnlineCourierCollections.reduce((s, c) => s + Number(c.amount), 0) + shopifyCollectionsTotal
 
@@ -102,17 +99,31 @@ export function CollectionsPage() {
     return expensesTotal + salariesNet + unitPaymentsNet + advancesTotal + grandAdvancesTotal + zakatTotal + creditorTotal
   }, [start, end, expenses, salaryPayments, unitPayments, advances, grandAdvances, zakatTransactions, creditorPayments])
 
-  const bankReceivedById = useMemo(() => {
-    const map = new Map<number, number>()
-    for (const t of bankTransactions) {
-      if (t.type === 'credit') map.set(t.bank_account_id, (map.get(t.bank_account_id) ?? 0) + Number(t.amount))
+  const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
+  const creditorNameById = useMemo(() => new Map(creditors.map((c) => [c.id, c.name])), [creditors])
+  const bankNameById = useMemo(() => new Map(bankAccounts.map((b) => [b.id, b.name])), [bankAccounts])
+
+  const paymentRecords = useMemo(
+    () => buildPaymentRecords({ courierCollections, expenses, salaryPayments, advances, creditorPayments, courierNameById, creditorNameById }),
+    [courierCollections, expenses, salaryPayments, advances, creditorPayments, courierNameById, creditorNameById]
+  )
+  const onlineRecordsInPeriod = useMemo(
+    () => paymentRecords.filter((r) => r.method === 'online' && r.bankId != null && isWithinRange(r.date, start, end)),
+    [paymentRecords, start, end]
+  )
+  const bankTotalsById = useMemo(() => {
+    const map = new Map<number, { in: number; out: number }>()
+    for (const r of onlineRecordsInPeriod) {
+      const id = r.bankId as number
+      const t = map.get(id) ?? { in: 0, out: 0 }
+      if (r.direction === 'in') t.in += r.amount
+      else t.out += r.amount
+      map.set(id, t)
     }
     return map
-  }, [bankTransactions])
-  const totalBankReceived = bankAccountsWithBalance.reduce((s, b) => s + (bankReceivedById.get(b.id) ?? 0), 0)
+  }, [onlineRecordsInPeriod])
+  const totalBankOnline = onlineRecordsInPeriod.reduce((s, r) => (r.direction === 'in' ? s + r.amount : s), 0)
 
-  const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
-  const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
   const storeNameByKey = useMemo(() => new Map(shopifyStores.map((s) => [s.store_key, s.display_name])), [shopifyStores])
 
   // --- Detail panel selection --------------------------------------------------
@@ -139,8 +150,8 @@ export function CollectionsPage() {
     const courierRow = (c: (typeof courierCollections)[number]): CollectionsDetailRow => ({
       id: `cc-${c.id}`,
       date: c.invoice_date,
-      type: 'Courier',
-      typeColor: 'green',
+      type: c.payment_method === 'online' ? 'Online' : 'Cash',
+      typeColor: c.payment_method === 'online' ? 'purple' : 'green',
       source: courierNameById.get(c.courier_id) ?? 'Unknown Courier',
       amount: Number(c.amount),
       amountKind: 'neutral',
@@ -159,18 +170,6 @@ export function CollectionsPage() {
       addedBy: 'Shopify Sync',
       notes: [o.order_number, o.customer_name].filter(Boolean).join(' · '),
     })
-    const bankRow = (t: (typeof bankTransactions)[number]): CollectionsDetailRow => ({
-      id: `bt-${t.id}`,
-      date: t.date,
-      type: t.type === 'credit' ? 'Credit' : 'Debit',
-      typeColor: t.type === 'credit' ? 'green' : 'red',
-      source: `${bankNameById.get(t.bank_account_id) ?? 'Bank'}${t.reference_type ? ` · ${t.reference_type.replace(/_/g, ' ')}` : ''}`,
-      amount: Number(t.amount),
-      amountKind: t.type === 'credit' ? 'in' : 'out',
-      addedBy: t.created_by_username ?? '—',
-      notes: t.notes || '',
-    })
-
     switch (selection.kind) {
       case 'total-collections': {
         const rows = [...periodCourierCollections.map(courierRow), ...periodShopifyOrders.map(shopifyRow)].sort(
@@ -227,23 +226,27 @@ export function CollectionsPage() {
         }
       }
       case 'bank': {
-        const bank = bankAccountsWithBalance.find((b) => b.id === selection.id)
-        const ascending = bankTransactions
-          .filter((t) => t.bank_account_id === selection.id)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        let running = 0
-        const rows = ascending
-          .map((t) => {
-            running += t.type === 'credit' ? Number(t.amount) : -Number(t.amount)
-            return { ...bankRow(t), runningBalance: running }
-          })
-          .reverse()
+        const bank = bankAccounts.find((b) => b.id === selection.id)
+        const totals = bankTotalsById.get(selection.id) ?? { in: 0, out: 0 }
+        const rows: CollectionsDetailRow[] = paymentRecords
+          .filter((r) => r.method === 'online' && r.bankId === selection.id && isWithinRange(r.date, start, end))
+          .map((r) => ({
+            id: r.id,
+            date: r.date,
+            type: `${r.kind} · ${r.direction === 'in' ? 'Received' : 'Paid'}`,
+            typeColor: r.direction === 'in' ? 'green' : 'red',
+            source: r.source,
+            amount: r.amount,
+            amountKind: r.direction === 'in' ? 'in' : 'out',
+            addedBy: r.addedBy ?? '—',
+            notes: r.notes,
+          }))
         return {
           title: bank?.name ?? 'Bank Account',
-          subtitle: `Transaction history · Received: ${formatCurrency(bankReceivedById.get(selection.id) ?? 0)}`,
+          subtitle: `${periodLabel} · Online received ${formatCurrency(totals.in)} · Online paid ${formatCurrency(totals.out)}`,
           rows,
           filenameBase: `protees-bank-${(bank?.name ?? 'account').toLowerCase().replace(/\s+/g, '-')}`,
-          emptyMessage: 'No transactions on this account yet.',
+          emptyMessage: 'No online transactions on this account in this period.',
         }
       }
       case 'courier': {
@@ -293,16 +296,16 @@ export function CollectionsPage() {
     selection,
     periodCourierCollections,
     periodShopifyOrders,
-    bankTransactions,
+    paymentRecords,
+    bankTotalsById,
     courierCollections,
     cashReceivedTotal,
     onlineReceivedTotal,
     periodCashCollections,
     periodOnlineCourierCollections,
-    bankReceivedById,
     couriers,
     shopifyOrders,
-    bankAccountsWithBalance,
+    bankAccounts,
     couriersWithBalance,
     shopifyStores,
   ])
@@ -326,7 +329,7 @@ export function CollectionsPage() {
     setEditingCourier(null)
     setCourierName('')
     setCourierPaymentMethod('cash')
-    setCourierBankId(bankAccountsWithBalance[0]?.id ?? '')
+    setCourierBankId(bankAccounts[0]?.id ?? '')
     setNewBankName('')
   }
 
@@ -349,7 +352,7 @@ export function CollectionsPage() {
     setEditingCourier(courier)
     setCourierName(courier.name)
     setCourierPaymentMethod(courier.payment_method as PaymentType)
-    setCourierBankId(courier.bank_account_id ?? bankAccountsWithBalance[0]?.id ?? '')
+    setCourierBankId(courier.bank_account_id ?? bankAccounts[0]?.id ?? '')
   }
 
   async function handleSaveCourier() {
@@ -384,7 +387,10 @@ export function CollectionsPage() {
   const [collCourierId, setCollCourierId] = useState<number | ''>('')
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(todayISO())
-  const [collAmount, setCollAmount] = useState('')
+  const [cashAmount, setCashAmount] = useState('')
+  const [onlineAmount, setOnlineAmount] = useState('')
+  const [collBankId, setCollBankId] = useState<number | ''>('')
+  const [collReference, setCollReference] = useState('')
   const [collNotes, setCollNotes] = useState('')
   const [savingCollection, setSavingCollection] = useState(false)
 
@@ -392,34 +398,39 @@ export function CollectionsPage() {
     setCollCourierId(couriers[0]?.id ?? '')
     setInvoiceNumber('')
     setInvoiceDate(todayISO())
-    setCollAmount('')
+    setCashAmount('')
+    setOnlineAmount('')
+    setCollBankId('')
+    setCollReference('')
     setCollNotes('')
     setCollectionModalOpen(true)
   }
 
-  const selectedCollectionCourier = couriers.find((c) => c.id === collCourierId)
-  const selectedCourierDestination = selectedCollectionCourier
-    ? selectedCollectionCourier.payment_method === 'bank_transfer'
-      ? bankAccountsWithBalance.find((b) => b.id === selectedCollectionCourier.bank_account_id)?.name ?? 'its configured bank'
-      : 'Cash'
-    : null
-
   async function handleAddCollection() {
-    const amt = Number(collAmount)
-    if (!collCourierId || Number.isNaN(amt) || amt <= 0) {
-      showToast('error', 'Select a courier and enter a valid amount.')
+    const cashAmt = Number(cashAmount) || 0
+    const onlineAmt = Number(onlineAmount) || 0
+    if (!collCourierId || cashAmt < 0 || onlineAmt < 0 || cashAmt + onlineAmt <= 0) {
+      showToast('error', 'Select a courier and enter the cash and/or online amount received.')
       return
     }
     setSavingCollection(true)
     try {
-      await addCourierCollection({
+      const common = {
         courierId: Number(collCourierId),
         invoiceNumber: invoiceNumber.trim() || undefined,
         invoiceDate,
-        amount: amt,
         notes: collNotes.trim() || undefined,
-      })
-      showToast('success', `Collection recorded — posted to ${selectedCourierDestination}.`)
+      }
+      if (cashAmt > 0) await addCourierCollection({ ...common, amount: cashAmt, paymentMethod: 'cash' })
+      if (onlineAmt > 0)
+        await addCourierCollection({
+          ...common,
+          amount: onlineAmt,
+          paymentMethod: 'online',
+          bankAccountId: collBankId ? Number(collBankId) : null,
+          referenceNumber: collReference.trim() || undefined,
+        })
+      showToast('success', `Collection recorded — cash ${formatCurrency(cashAmt)}, online ${formatCurrency(onlineAmt)}.`)
       setCollectionModalOpen(false)
     } catch (err) {
       showToast('error', errorMessage(err, 'Failed to record collection.'))
@@ -611,20 +622,22 @@ export function CollectionsPage() {
       </CollapsibleSection>
 
       {/* --- Bank Accounts --- */}
-      <CollapsibleSection title="Bank Accounts" summary={`${bankAccountsWithBalance.length} banks · ${formatCurrency(totalBankReceived)} received`} defaultOpen>
-        {bankAccountsWithBalance.length === 0 ? (
+      <CollapsibleSection title="Bank Accounts" summary={`${bankAccounts.length} banks · ${formatCurrency(totalBankOnline)} online received`} defaultOpen>
+        {bankAccounts.length === 0 ? (
           <EmptyState icon={Landmark} title="No bank accounts yet" description="Add one from Manage Couriers, or when giving a courier a bank payment method." />
         ) : (
           <div className="space-y-3">
-            {bankAccountsWithBalance.map((b) => {
+            {bankAccounts.map((b) => {
               const expanded = selectionKey(selection) === `bank-${b.id}`
+              const totals = bankTotalsById.get(b.id) ?? { in: 0, out: 0 }
               return (
                 <AccountCard
                   key={b.id}
                   icon={<BankLogo name={b.name} />}
                   name={b.name}
-                  subtitle="Received"
-                  balance={formatCurrency(bankReceivedById.get(b.id) ?? 0)}
+                  subtitle="Online received (period)"
+                  balance={formatCurrency(totals.in)}
+                  balanceHint={`Online paid ${formatCurrency(totals.out)}`}
                   expanded={expanded}
                   onToggle={() => toggleSelection({ kind: 'bank', id: b.id })}
                 >
@@ -740,8 +753,8 @@ export function CollectionsPage() {
               <div>
                 <label className="label-field">Bank Account</label>
                 <select className="input-field" value={courierBankId} onChange={(e) => setCourierBankId(Number(e.target.value))}>
-                  {bankAccountsWithBalance.length === 0 && <option value="">No bank accounts yet — add one below</option>}
-                  {bankAccountsWithBalance.map((b) => (
+                  {bankAccounts.length === 0 && <option value="">No bank accounts yet — add one below</option>}
+                  {bankAccounts.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name}
                     </option>
@@ -763,9 +776,9 @@ export function CollectionsPage() {
 
           <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Bank Accounts</p>
-            {bankAccountsWithBalance.length > 0 && (
+            {bankAccounts.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {bankAccountsWithBalance.map((b) => (
+                {bankAccounts.map((b) => (
                   <span key={b.id} className="rounded-lg border border-white/10 bg-base-900/60 px-2.5 py-1 text-xs text-slate-300">
                     {b.name}
                   </span>
@@ -791,7 +804,7 @@ export function CollectionsPage() {
                     <div>
                       <p className="text-sm font-medium text-white">{c.name}</p>
                       <p className="text-xs text-slate-500">
-                        {c.payment_method === 'bank_transfer' ? bankAccountsWithBalance.find((b) => b.id === c.bank_account_id)?.name ?? 'Bank Transfer' : 'Cash'}
+                        {c.payment_method === 'bank_transfer' ? bankAccounts.find((b) => b.id === c.bank_account_id)?.name ?? 'Bank Transfer' : 'Cash'}
                       </p>
                     </div>
                     <button className="rounded-lg p-1.5 text-slate-500 hover:bg-white/5 hover:text-white" onClick={() => startEditCourier(c)}>
@@ -806,7 +819,7 @@ export function CollectionsPage() {
       </Modal>
 
       {/* --- Add Collection --- */}
-      <Modal open={collectionModalOpen} onClose={() => setCollectionModalOpen(false)} title="Add Collection">
+      <Modal open={collectionModalOpen} onClose={() => setCollectionModalOpen(false)} title="Add Collection" subtitle="Record what the courier handed over, split by cash and online. Nothing is deducted from any balance.">
         <div className="space-y-4">
           <div>
             <label className="label-field">Courier</label>
@@ -817,7 +830,6 @@ export function CollectionsPage() {
                 </option>
               ))}
             </select>
-            {selectedCourierDestination && <p className="mt-1.5 text-[11px] text-slate-500">This collection will post to: {selectedCourierDestination}</p>}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -825,14 +837,42 @@ export function CollectionsPage() {
               <input className="input-field" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="INV-1234" />
             </div>
             <div>
-              <label className="label-field">Invoice Date</label>
+              <label className="label-field">Date</label>
               <input type="date" className="input-field" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
             </div>
           </div>
-          <div>
-            <label className="label-field">Amount</label>
-            <input type="number" className="input-field" value={collAmount} onChange={(e) => setCollAmount(e.target.value)} placeholder="0" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-field">Cash received</label>
+              <input type="number" className="input-field" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="label-field">Online received</label>
+              <input type="number" className="input-field" value={onlineAmount} onChange={(e) => setOnlineAmount(e.target.value)} placeholder="0" />
+            </div>
           </div>
+          <p className="text-xs text-slate-400">
+            Total collection: <span className="font-semibold text-neon-green">{formatCurrency((Number(cashAmount) || 0) + (Number(onlineAmount) || 0))}</span>
+          </p>
+          {(Number(onlineAmount) || 0) > 0 && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-field">Bank Account (optional)</label>
+                <select className="input-field" value={collBankId} onChange={(e) => setCollBankId(e.target.value ? Number(e.target.value) : '')}>
+                  <option value="">No bank account selected</option>
+                  {bankAccounts.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label-field">Reference (optional)</label>
+                <input className="input-field" value={collReference} onChange={(e) => setCollReference(e.target.value)} placeholder="Transfer ID" />
+              </div>
+            </div>
+          )}
           <div>
             <label className="label-field">Notes (optional)</label>
             <input className="input-field" value={collNotes} onChange={(e) => setCollNotes(e.target.value)} placeholder="Details" />
@@ -842,7 +882,7 @@ export function CollectionsPage() {
               Cancel
             </button>
             <button className="btn-primary flex-1" onClick={handleAddCollection} disabled={savingCollection}>
-              {savingCollection ? 'Saving…' : 'Save'}
+              {savingCollection ? 'Saving…' : 'Save Collection'}
             </button>
           </div>
         </div>

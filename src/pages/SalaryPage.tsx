@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Plus, Trash2, Wallet } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { useAttendance } from '@/context/AttendanceContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -27,6 +28,10 @@ export function SalaryPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [paymentDate, setPaymentDate] = useState(todayISO())
   const [notes, setNotes] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Online'>('Cash')
+  const [bankAccountId, setBankAccountId] = useState<number | ''>('')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const { bankAccounts } = useCollections()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [otherDeductionReason, setOtherDeductionReason] = useState('')
@@ -96,6 +101,9 @@ export function SalaryPage() {
     setYear(now.getFullYear())
     setPaymentDate(todayISO())
     setNotes('')
+    setPaymentMethod('Cash')
+    setBankAccountId('')
+    setReferenceNumber('')
     setError(null)
     setModalOpen(true)
   }
@@ -193,6 +201,9 @@ export function SalaryPage() {
         year,
         paymentDate,
         notes: notes.trim() || undefined,
+        paymentMethod,
+        bankAccountId: paymentMethod === 'Online' && bankAccountId ? Number(bankAccountId) : null,
+        referenceNumber: paymentMethod === 'Online' ? referenceNumber.trim() || undefined : undefined,
         piecesCompleted: isContract ? pieces : null,
         ratePerPiece: isContract ? ratePerPiece : null,
         overtimeHours: isContract ? null : attendanceSummary.totalOvertimeHours || null,
@@ -308,6 +319,8 @@ export function SalaryPage() {
                     <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(p.net_amount)}</td>
                     <td className="px-5 py-3.5">
                       {p.payment_method ? <Badge color="slate">{p.payment_method}</Badge> : <span className="text-slate-600">—</span>}
+                      {p.bank_account_id != null && <p className="mt-0.5 text-[11px] text-slate-500">{bankAccounts.find((b) => b.id === p.bank_account_id)?.name ?? 'Bank'}</p>}
+                      {p.reference_number && <p className="mt-0.5 text-[11px] text-slate-500">Ref: {p.reference_number}</p>}
                     </td>
                     <td className="px-5 py-3.5 text-slate-500">{formatDate(p.payment_date)}</td>
                     <td className="px-5 py-3.5 text-slate-500">{p.created_by_username ?? '—'}</td>
@@ -561,6 +574,43 @@ export function SalaryPage() {
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
             </div>
           </div>
+          <div>
+            <label className="label-field">Payment Method</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['Cash', 'Online'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPaymentMethod(m)}
+                  className={classNames(
+                    'rounded-xl border px-3 py-2 text-sm font-semibold transition',
+                    paymentMethod === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                  )}
+                >
+                  {m === 'Cash' ? 'Cash' : 'Online / Bank Transfer'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {paymentMethod === 'Online' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-field">Bank Account (optional)</label>
+                <select className="input-field" value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : '')}>
+                  <option value="">No bank account selected</option>
+                  {bankAccounts.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label-field">Reference (optional)</label>
+                <input className="input-field" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} placeholder="Transfer ID" />
+              </div>
+            </div>
+          )}
           {error && <p className="text-xs text-neon-red">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button className="btn-secondary flex-1" onClick={() => setModalOpen(false)}>

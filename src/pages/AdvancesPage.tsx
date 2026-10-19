@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { HandCoins, Plus, Search, Trash2 } from 'lucide-react'
 import { useData } from '@/context/DataContext'
+import { useCollections } from '@/context/CollectionsContext'
 import { useMasterData } from '@/context/MasterDataContext'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -24,6 +25,10 @@ export function AdvancesPage() {
   const [paymentDate, setPaymentDate] = useState(todayISO())
   const [grandMonthlyRecovery, setGrandMonthlyRecovery] = useState('')
   const [notes, setNotes] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Online'>('Cash')
+  const [bankAccountId, setBankAccountId] = useState<number | ''>('')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const { bankAccounts } = useCollections()
   const [itemType, setItemType] = useState<'' | 'Fresh' | 'B'>('')
   const [itemName, setItemName] = useState('')
   const [itemPrice, setItemPrice] = useState('')
@@ -97,6 +102,9 @@ export function AdvancesPage() {
     setPaymentDate(todayISO())
     setGrandMonthlyRecovery('')
     setNotes('')
+    setPaymentMethod('Cash')
+    setBankAccountId('')
+    setReferenceNumber('')
     setItemType('')
     setItemName('')
     setItemPrice('')
@@ -144,6 +152,9 @@ export function AdvancesPage() {
     try {
       if (hasAdvance) {
         await addAdvance({
+          paymentMethod,
+          bankAccountId: paymentMethod === 'Online' && bankAccountId ? Number(bankAccountId) : null,
+          referenceNumber: paymentMethod === 'Online' ? referenceNumber.trim() || undefined : undefined,
           name,
           department,
           amount: amt,
@@ -485,6 +496,44 @@ export function AdvancesPage() {
                 <input type="date" className="input-field" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
               </div>
             </div>
+            <div>
+              <label className="label-field">Payment Method</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['Cash', 'Online'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPaymentMethod(m)}
+                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                      paymentMethod === m
+                        ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {m === 'Cash' ? 'Cash' : 'Online / Bank Transfer'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {paymentMethod === 'Online' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-field">Bank Account (optional)</label>
+                  <select className="input-field" value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : '')}>
+                    <option value="">No bank account selected</option>
+                    {bankAccounts.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label-field">Reference (optional)</label>
+                  <input className="input-field" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} placeholder="Transfer ID" />
+                </div>
+              </div>
+            )}
             <div>
               <label className="label-field">Notes (optional)</label>
               <input className="input-field" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Medical emergency" />

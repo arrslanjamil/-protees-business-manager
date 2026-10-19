@@ -5,7 +5,6 @@ import { todayISO } from '@/lib/utils'
 import { removeInvoice, uploadCreditorInvoice } from '@/lib/invoiceStorage'
 import type {
   BankAccount,
-  BankAccountWithBalance,
   BankTransaction,
   CashSettings,
   CashTransaction,
@@ -37,6 +36,9 @@ interface AddCourierCollectionInput {
   invoiceNumber?: string
   invoiceDate?: string
   amount: number
+  paymentMethod: 'cash' | 'online'
+  bankAccountId?: number | null
+  referenceNumber?: string
   notes?: string
 }
 
@@ -66,6 +68,8 @@ interface AddCreditorPaymentInput {
   creditorId: number
   amount: number
   paymentDate?: string
+  paymentType: 'cash' | 'online'
+  bankAccountId?: number | null
   notes?: string
 }
 
@@ -116,7 +120,6 @@ interface CollectionsContextValue {
   courierCollections: CourierCollection[]
 
   bankAccounts: BankAccount[]
-  bankAccountsWithBalance: BankAccountWithBalance[]
   bankTransactions: BankTransaction[]
 
   cashTransactions: CashTransaction[]
@@ -253,18 +256,6 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     [couriers, courierCollections, bankNameByIdMap]
   )
 
-  // --- Computed: Bank balances --------------------------------------------------
-  const bankAccountsWithBalance = useMemo<BankAccountWithBalance[]>(
-    () =>
-      bankAccounts.map((bank) => {
-        const txns = bankTransactions.filter((t) => t.bank_account_id === bank.id)
-        const credits = txns.filter((t) => t.type === 'credit').reduce((s, t) => s + Number(t.amount), 0)
-        const debits = txns.filter((t) => t.type === 'debit').reduce((s, t) => s + Number(t.amount), 0)
-        return { ...bank, balance: credits - debits }
-      }),
-    [bankAccounts, bankTransactions]
-  )
-
   // --- Computed: Creditor outstanding balances ------------------------------
   // Never stored — same ledger-derivation pattern as advances/couriers:
   // opening balance + sum(bills) - sum(payments), recomputed live.
@@ -313,43 +304,31 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
-  /** Recording a collection automatically posts to the courier's
-   * configured money location — a bank credit or a cash-in — no
-   * per-entry bank/payment-type selection needed. */
-  const addCourierCollection: CollectionsContextValue['addCourierCollection'] = async ({ courierId, invoiceNumber, invoiceDate, amount, notes }) => {
-    const courier = couriers.find((c) => c.id === courierId)
-    if (!courier) throw new Error('Select a courier.')
-    const date = invoiceDate ?? todayISO()
-
-    const { data: collection, error: collErr } = await supabase
-      .from('courier_collections')
-      .insert({ courier_id: courierId, invoice_number: invoiceNumber ?? null, invoice_date: date, amount, notes: notes ?? null })
-      .select()
-      .single()
-    if (collErr) throw collErr
-
-    if (courier.payment_method === 'bank_transfer' && courier.bank_account_id) {
-      const { error: bankErr } = await supabase.from('bank_transactions').insert({
-        bank_account_id: courier.bank_account_id,
-        type: 'credit',
-        amount,
-        date,
-        reference_type: 'courier_collection',
-        reference_id: collection.id,
-      })
-      if (bankErr) throw bankErr
-    } else {
-      const { error: cashErr } = await supabase.from('cash_transactions').insert({
-        type: 'cash_in',
-        category: 'Courier Cash Collection',
-        amount,
-        date,
-        reference_type: 'courier_collection',
-        reference_id: collection.id,
-      })
-      if (cashErr) throw cashErr
-    }
-
+  /** A collection is a historical record of money received — it is never
+   * posted to a cash or bank balance. */
+  const addCourierCollection: CollectionsContextValue['addCourierCollection'] = async ({
+    courierId,
+    invoiceNumber,
+    invoiceDate,
+    amount,
+    paymentMethod,
+    bankAccountId,
+    referenceNumber,
+    notes,
+  }) => {
+    if (!couriers.some((c) => c.id === courierId)) throw new Error('Select a courier.')
+    const isOnline = paymentMethod === 'online'
+    const { error: err } = await supabase.from('courier_collections').insert({
+      courier_id: courierId,
+      invoice_number: invoiceNumber ?? null,
+      invoice_date: invoiceDate ?? todayISO(),
+      amount,
+      payment_method: paymentMethod,
+      bank_account_id: isOnline ? (bankAccountId ?? null) : null,
+      reference_number: isOnline ? (referenceNumber?.trim() || null) : null,
+      notes: notes ?? null,
+    })
+    if (err) throw err
     await refreshAll()
   }
 
@@ -459,11 +438,15 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     await refreshAll()
   }
 
-  const addCreditorPayment: CollectionsContextValue['addCreditorPayment'] = async ({ creditorId, amount, paymentDate, notes }) => {
+  /** Records what was paid to a creditor and how (cash or online). Nothing is posted to a balance. */
+  const addCreditorPayment: CollectionsContextValue['addCreditorPayment'] = async ({ creditorId, amount, paymentDate, paymentType, bankAccountId, notes }) => {
+    const isOnline = paymentType === 'online'
     const { error: err } = await supabase.from('creditor_payments').insert({
       creditor_id: creditorId,
       amount,
       payment_date: paymentDate ?? todayISO(),
+      payment_type: paymentType,
+      bank_account_id: isOnline ? (bankAccountId ?? null) : null,
       notes: notes ?? null,
     })
     if (err) throw err
@@ -591,7 +574,6 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
     couriersWithBalance,
     courierCollections,
     bankAccounts,
-    bankAccountsWithBalance,
     bankTransactions,
     cashTransactions,
     shopifyOrders,

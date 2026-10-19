@@ -145,7 +145,7 @@ interface CollectionsDetailPanelProps {
 }
 
 /** The shared panel for the top summary cards (Total/Courier/Shopify
- * Collections, Office Cash, Total Bank Balance) — a mixed, page-level
+ * Collections, Cash Received, Online Received) — a mixed, page-level
  * view, so it keeps its own title header and close button. Individual
  * account cards use CollectionsDetailBody directly inside their own
  * accordion instead (see AccountCard). */

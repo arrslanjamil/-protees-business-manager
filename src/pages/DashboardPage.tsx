@@ -217,9 +217,8 @@ export function DashboardPage() {
   const periodCourierCollections = periodCourierCollectionsRows.reduce((s, c) => s + Number(c.amount), 0)
   const periodTotalCollections = periodShopifyCollections + periodCourierCollections
 
-  const cashCourierIds = useMemo(() => new Set(couriers.filter((c) => c.payment_method !== 'bank_transfer').map((c) => c.id)), [couriers])
   const periodCashReceived = periodCourierCollectionsRows
-    .filter((c) => cashCourierIds.has(c.courier_id))
+    .filter((c) => c.payment_method !== 'online')
     .reduce((s, c) => s + Number(c.amount), 0)
   const periodOnlineReceived = periodCourierCollections - periodCashReceived + periodShopifyCollections
 
@@ -430,7 +429,7 @@ export function DashboardPage() {
       periodCreditorPaymentsRows.map((p) => ({
         id: `crp-${p.id}`,
         date: p.payment_date,
-        type: p.payment_type === 'bank_transfer' ? 'Creditor (Bank)' : 'Creditor (Cash)',
+        type: p.payment_type === 'online' || p.payment_type === 'bank_transfer' ? 'Creditor (Online)' : 'Creditor (Cash)',
         name: creditorNameById.get(p.creditor_id) ?? '—',
         amount: Number(p.amount),
         notes: p.notes ?? '',

@@ -4,6 +4,7 @@ import { useData } from '@/context/DataContext'
 import { useCollections } from '@/context/CollectionsContext'
 import { CategoryBarChart } from '@/components/dashboard/CategoryBarChart'
 import { DEPARTMENT_LABELS, EMPLOYEE_TYPE_LABELS, EXPENSE_SCOPE_LABELS, KHADIM_TYPE_LABELS } from '@/lib/types'
+import { buildPaymentRecords, type PaymentRecord } from '@/lib/paymentRecords'
 import { exportReportExcel, exportReportPdf } from '@/lib/reportExport'
 import { computeZakatOutstanding, monthsAccruedInRange } from '@/lib/zakat'
 import { classNames, formatCurrency, formatDate, isWithinRange, presetDateRange, todayISO, type DateRangePreset } from '@/lib/utils'
@@ -30,8 +31,8 @@ const REPORT_VIEWS: { key: ReportView; label: string; periodScoped: boolean }[] 
   { key: 'advances', label: 'Outstanding Advances', periodScoped: false },
   { key: 'shopify-collections', label: 'Shopify Collection Report', periodScoped: true },
   { key: 'courier-collections', label: 'Courier Collection Report', periodScoped: true },
-  { key: 'bank-summary', label: 'Bank Ledger', periodScoped: true },
-  { key: 'cash-ledger', label: 'Cash Received', periodScoped: true },
+  { key: 'bank-summary', label: 'Online by Bank', periodScoped: true },
+  { key: 'cash-ledger', label: 'Cash & Online Ledger', periodScoped: true },
   { key: 'monthly-collections', label: 'Monthly Collection Summary', periodScoped: true },
 ]
 
@@ -74,8 +75,7 @@ export function ReportsPage() {
     employeesWithBalance,
     supervisorsWithBalance,
   } = useData()
-  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccountsWithBalance, bankTransactions, cashTransactions } =
-    useCollections()
+  const { shopifyOrders, shopifyStores, couriers, courierCollections, bankAccounts, creditors, creditorPayments } = useCollections()
 
   const [view, setView] = useState<ReportView>('overview')
   const [preset, setPreset] = useState<DateRangePreset>('month')
@@ -420,17 +420,11 @@ export function ReportsPage() {
   // Courier Collection Report
   // =========================================================================
   const courierNameById = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
-  const bankNameById = useMemo(() => new Map(bankAccountsWithBalance.map((b) => [b.id, b.name])), [bankAccountsWithBalance])
-  const courierDestinationById = useMemo(
-    () =>
-      new Map(
-        couriers.map((c) => [
-          c.id,
-          c.payment_method === 'bank_transfer' ? (c.bank_account_id ? bankNameById.get(c.bank_account_id) ?? 'Bank Transfer' : 'Bank Transfer') : 'Cash',
-        ])
-      ),
-    [couriers, bankNameById]
-  )
+  const bankNameById = useMemo(() => new Map(bankAccounts.map((b) => [b.id, b.name])), [bankAccounts])
+  function collectionDestination(c: { payment_method: string | null; bank_account_id: number | null }) {
+    if (c.payment_method !== 'online') return 'Cash'
+    return c.bank_account_id != null ? bankNameById.get(c.bank_account_id) ?? 'Online' : 'Online'
+  }
   const courierCollectionRowsInPeriod = useMemo(
     () =>
       courierCollections
@@ -452,7 +446,7 @@ export function ReportsPage() {
           courierNameById.get(c.courier_id) ?? '',
           c.invoice_number ?? '',
           formatCurrency(c.amount),
-          courierDestinationById.get(c.courier_id) ?? '',
+          collectionDestination(c),
         ]),
         footer: ['', '', 'Total Received', formatCurrency(courierCollectionsTotalInPeriod), ''],
         filename: `${filenameBase}.pdf`,
@@ -464,7 +458,7 @@ export function ReportsPage() {
           Courier: courierNameById.get(c.courier_id) ?? '',
           'Invoice #': c.invoice_number ?? '',
           Amount: c.amount,
-          'Posted To': courierDestinationById.get(c.courier_id) ?? '',
+          'Posted To': collectionDestination(c),
         })),
         sheetName: 'Courier Collections',
         filename: `${filenameBase}.xlsx`,
@@ -473,90 +467,102 @@ export function ReportsPage() {
   }
 
   // =========================================================================
-  // Bank Account Summary — live balances plus period transaction history
+  // Cash & Online ledger — every transaction, classified by payment method
   // =========================================================================
-  const bankTransactionsInPeriod = useMemo(
+  const reportCourierNames = useMemo(() => new Map(couriers.map((c) => [c.id, c.name])), [couriers])
+  const reportCreditorNames = useMemo(() => new Map(creditors.map((c) => [c.id, c.name])), [creditors])
+  const allPaymentRecords = useMemo(
     () =>
-      bankTransactions
-        .filter((t) => isWithinRange(t.date, start, end))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [bankTransactions, start, end]
+      buildPaymentRecords({
+        courierCollections,
+        expenses,
+        salaryPayments,
+        advances,
+        creditorPayments,
+        courierNameById: reportCourierNames,
+        creditorNameById: reportCreditorNames,
+      }),
+    [courierCollections, expenses, salaryPayments, advances, creditorPayments, reportCourierNames, reportCreditorNames]
   )
-  const totalBankBalance = bankAccountsWithBalance.reduce((s, b) => s + b.balance, 0)
+  const recordsInPeriod = useMemo(() => allPaymentRecords.filter((r) => isWithinRange(r.date, start, end)), [allPaymentRecords, start, end])
+  const onlineRecordsInPeriod = useMemo(() => recordsInPeriod.filter((r) => r.method === 'online'), [recordsInPeriod])
+  const [ledgerMethod, setLedgerMethod] = useState<'all' | 'cash' | 'online'>('all')
+  const ledgerRows = useMemo(
+    () => recordsInPeriod.filter((r) => ledgerMethod === 'all' || r.method === ledgerMethod),
+    [recordsInPeriod, ledgerMethod]
+  )
+  const sumRecords = (kind: PaymentRecord['kind'], method: PaymentRecord['method']) =>
+    recordsInPeriod.filter((r) => r.kind === kind && r.method === method).reduce((sum, r) => sum + r.amount, 0)
+  const bankTotals = useMemo(() => {
+    const map = new Map<number, { in: number; out: number }>()
+    for (const r of onlineRecordsInPeriod) {
+      if (r.bankId == null) continue
+      const t = map.get(r.bankId) ?? { in: 0, out: 0 }
+      if (r.direction === 'in') t.in += r.amount
+      else t.out += r.amount
+      map.set(r.bankId, t)
+    }
+    return map
+  }, [onlineRecordsInPeriod])
+  const unassignedOnlineTotal = onlineRecordsInPeriod.filter((r) => r.bankId == null).reduce((sum, r) => sum + r.amount, 0)
+
+  function recordBankName(r: PaymentRecord) {
+    return r.bankId != null ? bankNameById.get(r.bankId) ?? '—' : '—'
+  }
 
   async function exportBankSummary(format: 'pdf' | 'excel') {
-    const filenameBase = `protees-bank-account-summary-${start}-to-${end}`
+    const filenameBase = `protees-online-by-bank-${start}-to-${end}`
+    const rows = onlineRecordsInPeriod
     if (format === 'pdf') {
       await exportReportPdf({
-        title: 'Bank Account Summary',
-        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Total Balance (live): ${formatCurrency(totalBankBalance)}`,
-        head: ['Bank', 'Type', 'Amount', 'Date', 'Reference'],
-        rows: bankTransactionsInPeriod.map((t) => [
-          bankNameById.get(t.bank_account_id) ?? '',
-          t.type === 'credit' ? 'Credit' : 'Debit',
-          formatCurrency(t.amount),
-          formatDate(t.date),
-          t.reference_type ?? '',
-        ]),
-        footer: ['', '', '', '', ''],
+        title: 'Online by Bank',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Online transactions only (no balances)`,
+        head: ['Date', 'Kind', 'Direction', 'Source', 'Bank', 'Reference / Notes', 'Amount'],
+        rows: rows.map((r) => [formatDate(r.date), r.kind, r.direction === 'in' ? 'Received' : 'Paid', r.source, recordBankName(r), r.notes, formatCurrency(r.amount)]),
+        footer: ['', '', '', '', '', 'Total', formatCurrency(rows.reduce((sum, r) => sum + r.amount, 0))],
         filename: `${filenameBase}.pdf`,
       })
     } else {
       await exportReportExcel({
-        rows: bankTransactionsInPeriod.map((t) => ({
-          Bank: bankNameById.get(t.bank_account_id) ?? '',
-          Type: t.type,
-          Amount: t.amount,
-          Date: t.date,
-          Reference: t.reference_type ?? '',
+        rows: rows.map((r) => ({
+          Date: r.date,
+          Kind: r.kind,
+          Direction: r.direction === 'in' ? 'Received' : 'Paid',
+          Source: r.source,
+          Bank: recordBankName(r),
+          Notes: r.notes,
+          Amount: r.amount,
         })),
-        sheetName: 'Bank Account Summary',
+        sheetName: 'Online by Bank',
         filename: `${filenameBase}.xlsx`,
       })
     }
   }
 
-  // =========================================================================
-  // Cash Received
-  // =========================================================================
-  const cashTransactionsInPeriod = useMemo(
-    () =>
-      cashTransactions
-        .filter((t) => t.type === 'cash_in' && isWithinRange(t.date, start, end))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [cashTransactions, start, end]
-  )
-  const cashInTotalInPeriod = cashTransactionsInPeriod.reduce((s, t) => s + Number(t.amount), 0)
-
   async function exportCashLedger(format: 'pdf' | 'excel') {
-    const filenameBase = `protees-cash-ledger-${start}-to-${end}`
+    const filenameBase = `protees-cash-online-ledger-${start}-to-${end}`
     if (format === 'pdf') {
       await exportReportPdf({
-        title: 'Cash Received',
-        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Cash received: ${formatCurrency(cashInTotalInPeriod)}`,
-        head: ['Date', 'Type', 'Category', 'Amount', 'Bank', 'Notes'],
-        rows: cashTransactionsInPeriod.map((t) => [
-          formatDate(t.date),
-          t.type === 'cash_in' ? 'Cash In' : 'Cash Out',
-          t.category,
-          formatCurrency(t.amount),
-          t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '' : '',
-          t.notes ?? '',
-        ]),
-        footer: ['', '', 'Total', formatCurrency(cashInTotalInPeriod), '', ''],
+        title: 'Cash & Online Ledger',
+        subtitle: `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Cash ${formatCurrency(ledgerRows.filter((r) => r.method === 'cash').reduce((sum, r) => sum + r.amount, 0))}  ·  Online ${formatCurrency(ledgerRows.filter((r) => r.method === 'online').reduce((sum, r) => sum + r.amount, 0))}`,
+        head: ['Date', 'Kind', 'Direction', 'Source', 'Method', 'Bank', 'Amount', 'Notes'],
+        rows: ledgerRows.map((r) => [formatDate(r.date), r.kind, r.direction === 'in' ? 'In' : 'Out', r.source, r.method === 'cash' ? 'Cash' : 'Online', recordBankName(r), formatCurrency(r.amount), r.notes]),
+        footer: ['', '', '', '', '', 'Total', formatCurrency(ledgerRows.reduce((sum, r) => sum + r.amount, 0)), ''],
         filename: `${filenameBase}.pdf`,
       })
     } else {
       await exportReportExcel({
-        rows: cashTransactionsInPeriod.map((t) => ({
-          Date: t.date,
-          Type: t.type,
-          Category: t.category,
-          Amount: t.amount,
-          Bank: t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '' : '',
-          Notes: t.notes ?? '',
+        rows: ledgerRows.map((r) => ({
+          Date: r.date,
+          Kind: r.kind,
+          Direction: r.direction === 'in' ? 'In' : 'Out',
+          Source: r.source,
+          Method: r.method === 'cash' ? 'Cash' : 'Online',
+          Bank: recordBankName(r),
+          Amount: r.amount,
+          Notes: r.notes,
         })),
-        sheetName: 'Cash Received',
+        sheetName: 'Cash & Online Ledger',
         filename: `${filenameBase}.xlsx`,
       })
     }
@@ -603,19 +609,19 @@ export function ReportsPage() {
     () => expenses.filter((e) => e.expense_scope !== 'unit' && isWithinRange(e.date, start, end)).reduce((s, e) => s + Number(e.amount), 0),
     [expenses, start, end]
   )
-  const cashCourierIdsR = new Set(couriers.filter((c) => c.payment_method !== 'bank_transfer').map((c) => c.id))
   const cashReceivedInPeriod = courierCollections
-    .filter((c) => isWithinRange(c.invoice_date, start, end) && cashCourierIdsR.has(c.courier_id))
-    .reduce((s, c) => s + Number(c.amount), 0)
-  const onlineReceivedInPeriod = courierCollectionsTotalInPeriod - cashReceivedInPeriod + shopifyTotalInPeriod
+    .filter((c) => isWithinRange(c.invoice_date, start, end) && c.payment_method !== 'online')
+    .reduce((sum, c) => sum + Number(c.amount), 0)
+  const onlineReceivedInPeriod = courierCollections
+    .filter((c) => isWithinRange(c.invoice_date, start, end) && c.payment_method === 'online')
+    .reduce((sum, c) => sum + Number(c.amount), 0) + shopifyTotalInPeriod
 
   async function exportMonthlyCollections(format: 'pdf' | 'excel') {
     const filenameBase = `protees-monthly-collection-summary-${start}-to-${end}`
     const summaryLine =
       `Period: ${formatDate(start)} – ${formatDate(end)}  ·  Courier Collections: ${formatCurrency(courierCollectionsTotalInPeriod)}` +
       `  ·  Shopify Collections: ${formatCurrency(shopifyTotalInPeriod)}  ·  Total Expenses: ${formatCurrency(businessExpensesTotalInPeriod)}` +
-      `  ·  Cash Received: ${formatCurrency(cashReceivedInPeriod)}  ·  Online Received: ${formatCurrency(onlineReceivedInPeriod)}` +
-      `  ·  Bank Balance (live): ${formatCurrency(totalBankBalance)}`
+      `  ·  Cash Received: ${formatCurrency(cashReceivedInPeriod)}  ·  Online Received: ${formatCurrency(onlineReceivedInPeriod)}`
     if (format === 'pdf') {
       await exportReportPdf({
         title: 'Month-End Summary',
@@ -634,7 +640,6 @@ export function ReportsPage() {
           { Month: 'Total Expenses (period)', Shopify: '', Courier: '', Total: businessExpensesTotalInPeriod },
           { Month: 'Cash Received (period)', Shopify: '', Courier: '', Total: cashReceivedInPeriod },
           { Month: 'Online Received (period)', Shopify: '', Courier: '', Total: onlineReceivedInPeriod },
-          { Month: 'Total Bank Balance (live)', Shopify: '', Courier: '', Total: totalBankBalance },
           { Month: '', Shopify: '', Courier: '', Total: '' },
           ...monthlyCollectionRows.map((r) => ({ Month: r.month, Shopify: r.shopify, Courier: r.courier, Total: r.total })),
         ],
@@ -680,8 +685,8 @@ export function ReportsPage() {
     advances: outstandingAdvanceRows.length,
     'shopify-collections': shopifyRowsInPeriod.length,
     'courier-collections': courierCollectionRowsInPeriod.length,
-    'bank-summary': bankTransactionsInPeriod.length,
-    'cash-ledger': cashTransactionsInPeriod.length,
+    'bank-summary': onlineRecordsInPeriod.length,
+    'cash-ledger': recordsInPeriod.length,
     'monthly-collections': monthlyCollectionRows.length,
   }
   const currentRowCount = REPORT_ROW_COUNTS[view]
@@ -1057,7 +1062,7 @@ export function ReportsPage() {
                       <td className="px-5 py-3.5 font-medium text-white">{courierNameById.get(c.courier_id) ?? '—'}</td>
                       <td className="px-5 py-3.5 text-slate-400">{c.invoice_number || '—'}</td>
                       <td className="px-5 py-3.5 font-semibold text-neon-green">{formatCurrency(c.amount)}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{courierDestinationById.get(c.courier_id) ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{collectionDestination(c)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1070,38 +1075,40 @@ export function ReportsPage() {
       {view === 'bank-summary' && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard label="Total Bank Balance (live)" value={formatCurrency(totalBankBalance)} />
-            {bankAccountsWithBalance.map((b) => (
-              <SummaryCard key={b.id} label={b.name} value={formatCurrency(b.balance)} tone="text-neon-purple" />
-            ))}
+            {bankAccounts.map((b) => {
+              const t = bankTotals.get(b.id) ?? { in: 0, out: 0 }
+              return <SummaryCard key={b.id} label={`${b.name} — received / paid`} value={`${formatCurrency(t.in)} / ${formatCurrency(t.out)}`} tone="text-neon-purple" />
+            })}
+            {unassignedOnlineTotal > 0 && <SummaryCard label="Online without a bank selected" value={formatCurrency(unassignedOnlineTotal)} />}
           </div>
-          {bankTransactionsInPeriod.length === 0 ? (
+          {onlineRecordsInPeriod.length === 0 ? (
             <EmptyReportState />
           ) : (
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
-                    <th className="px-5 py-3.5">Bank</th>
-                    <th className="px-5 py-3.5">Type</th>
-                    <th className="px-5 py-3.5">Amount</th>
                     <th className="px-5 py-3.5">Date</th>
-                    <th className="px-5 py-3.5">Reference</th>
+                    <th className="px-5 py-3.5">Kind</th>
+                    <th className="px-5 py-3.5">Direction</th>
+                    <th className="px-5 py-3.5">Source</th>
+                    <th className="px-5 py-3.5">Bank</th>
+                    <th className="px-5 py-3.5">Amount</th>
+                    <th className="px-5 py-3.5">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {bankTransactionsInPeriod.map((t) => (
-                    <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                      <td className="px-5 py-3.5 font-medium text-white">{bankNameById.get(t.bank_account_id) ?? '—'}</td>
+                  {onlineRecordsInPeriod.map((r) => (
+                    <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(r.date)}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{r.kind}</td>
                       <td className="px-5 py-3.5">
-                        <span className={t.type === 'credit' ? 'text-neon-green' : 'text-neon-red'}>{t.type === 'credit' ? 'Credit' : 'Debit'}</span>
+                        <span className={r.direction === 'in' ? 'text-neon-green' : 'text-neon-red'}>{r.direction === 'in' ? 'Received' : 'Paid'}</span>
                       </td>
-                      <td className={`px-5 py-3.5 font-semibold ${t.type === 'credit' ? 'text-neon-green' : 'text-neon-red'}`}>
-                        {t.type === 'credit' ? '+' : '−'}
-                        {formatCurrency(t.amount)}
-                      </td>
-                      <td className="px-5 py-3.5 text-slate-500">{formatDate(t.date)}</td>
-                      <td className="px-5 py-3.5 text-slate-400">{t.reference_type ? t.reference_type.replace('_', ' ') : '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{r.source}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{recordBankName(r)}</td>
+                      <td className={`px-5 py-3.5 font-semibold ${r.direction === 'in' ? 'text-neon-green' : 'text-neon-red'}`}>{formatCurrency(r.amount)}</td>
+                      <td className="px-5 py-3.5 text-slate-500">{r.notes || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1110,13 +1117,34 @@ export function ReportsPage() {
           )}
         </>
       )}
-
       {view === 'cash-ledger' && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard label="Cash Received (period)" value={formatCurrency(cashInTotalInPeriod)} tone="text-neon-green" />
+            <SummaryCard label="Cash Collections" value={formatCurrency(sumRecords('Collection', 'cash'))} tone="text-neon-green" />
+            <SummaryCard label="Online Collections" value={formatCurrency(sumRecords('Collection', 'online'))} tone="text-neon-green" />
+            <SummaryCard label="Cash Expenses" value={formatCurrency(sumRecords('Expense', 'cash'))} tone="text-neon-red" />
+            <SummaryCard label="Online Expenses" value={formatCurrency(sumRecords('Expense', 'online'))} tone="text-neon-red" />
+            <SummaryCard label="Cash Salaries" value={formatCurrency(sumRecords('Salary', 'cash'))} />
+            <SummaryCard label="Online Salaries" value={formatCurrency(sumRecords('Salary', 'online'))} />
+            <SummaryCard label="Cash Advances" value={formatCurrency(sumRecords('Advance', 'cash'))} />
+            <SummaryCard label="Online Advances" value={formatCurrency(sumRecords('Advance', 'online'))} />
           </div>
-          {cashTransactionsInPeriod.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {(['all', 'cash', 'online'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setLedgerMethod(m)}
+                className={classNames(
+                  'rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
+                  ledgerMethod === m ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                )}
+              >
+                {m === 'all' ? 'All' : m === 'cash' ? 'Cash' : 'Online'}
+              </button>
+            ))}
+          </div>
+          {ledgerRows.length === 0 ? (
             <EmptyReportState />
           ) : (
             <div className="card overflow-x-auto p-0">
@@ -1124,27 +1152,28 @@ export function ReportsPage() {
                 <thead>
                   <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-slate-500">
                     <th className="px-5 py-3.5">Date</th>
-                    <th className="px-5 py-3.5">Type</th>
-                    <th className="px-5 py-3.5">Category</th>
-                    <th className="px-5 py-3.5">Amount</th>
+                    <th className="px-5 py-3.5">Kind</th>
+                    <th className="px-5 py-3.5">Direction</th>
+                    <th className="px-5 py-3.5">Source</th>
+                    <th className="px-5 py-3.5">Method</th>
                     <th className="px-5 py-3.5">Bank</th>
+                    <th className="px-5 py-3.5">Amount</th>
                     <th className="px-5 py-3.5">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {cashTransactionsInPeriod.map((t) => (
-                    <tr key={t.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                      <td className="px-5 py-3.5 text-slate-500">{formatDate(t.date)}</td>
+                  {ledgerRows.map((r) => (
+                    <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3.5 text-slate-500">{formatDate(r.date)}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{r.kind}</td>
                       <td className="px-5 py-3.5">
-                        <span className={t.type === 'cash_in' ? 'text-neon-green' : 'text-neon-red'}>{t.type === 'cash_in' ? 'Cash In' : 'Cash Out'}</span>
+                        <span className={r.direction === 'in' ? 'text-neon-green' : 'text-neon-red'}>{r.direction === 'in' ? 'In' : 'Out'}</span>
                       </td>
-                      <td className="px-5 py-3.5 text-slate-300">{t.category}</td>
-                      <td className={`px-5 py-3.5 font-semibold ${t.type === 'cash_in' ? 'text-neon-green' : 'text-neon-red'}`}>
-                        {t.type === 'cash_in' ? '+' : '−'}
-                        {formatCurrency(t.amount)}
-                      </td>
-                      <td className="px-5 py-3.5 text-slate-400">{t.bank_account_id ? bankNameById.get(t.bank_account_id) ?? '—' : '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-500">{t.notes || '—'}</td>
+                      <td className="px-5 py-3.5 text-slate-300">{r.source}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{r.method === 'cash' ? 'Cash' : 'Online'}</td>
+                      <td className="px-5 py-3.5 text-slate-400">{recordBankName(r)}</td>
+                      <td className={`px-5 py-3.5 font-semibold ${r.direction === 'in' ? 'text-neon-green' : 'text-neon-red'}`}>{formatCurrency(r.amount)}</td>
+                      <td className="px-5 py-3.5 text-slate-500">{r.notes || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1162,15 +1191,9 @@ export function ReportsPage() {
               <SummaryCard label="Courier Collections (period)" value={formatCurrency(courierCollectionsTotalInPeriod)} tone="text-neon-green" />
               <SummaryCard label="Shopify Collections (period)" value={formatCurrency(shopifyTotalInPeriod)} tone="text-neon-purple" />
               <SummaryCard label="Total Expenses (period)" value={formatCurrency(businessExpensesTotalInPeriod)} tone="text-neon-red" />
-              <SummaryCard label="Total Bank Balance (live)" value={formatCurrency(totalBankBalance)} />
               <SummaryCard label="Cash Received (period)" value={formatCurrency(cashReceivedInPeriod)} tone="text-neon-amber" />
               <SummaryCard label="Online Received (period)" value={formatCurrency(onlineReceivedInPeriod)} tone="text-neon-cyan" />
             </div>
-            {bankAccountsWithBalance.length > 0 && (
-              <p className="mt-2 text-[11px] text-slate-500">
-                Bank-wise: {bankAccountsWithBalance.map((b) => `${b.name} ${formatCurrency(b.balance)}`).join(' · ')}
-              </p>
-            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
