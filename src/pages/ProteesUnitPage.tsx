@@ -265,8 +265,7 @@ export function ProteesUnitPage() {
 
   const piecesNum = Number(piecesInput) || 0
   const pieceRateNum = Number(pieceRateInput) || 0
-  const pieceGross = piecesNum > 0 ? piecesNum * pieceRateNum : 0
-  const gross = piecesNum > 0 ? pieceGross : Number(grossAmount) || 0
+  const gross = Number(grossAmount) || 0
   const overtime = Number(overtimeAmount) || 0
   const totalDue = gross + overtime
   const manualNetNum = Number(manualNetInput) || 0
@@ -620,23 +619,34 @@ export function ProteesUnitPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label-field">Pieces made</label>
-              <input type="number" className="input-field" value={piecesInput} onChange={(e) => setPiecesInput(e.target.value)} placeholder="0" />
+              <input
+                type="number"
+                className="input-field"
+                value={piecesInput}
+                onChange={(e) => {
+                  setPiecesInput(e.target.value)
+                  setGrossAmount(e.target.value ? String((Number(e.target.value) || 0) * pieceRateNum) : '')
+                }}
+                placeholder="0"
+              />
             </div>
             <div>
               <label className="label-field">Rate per piece (Rs)</label>
-              <input type="number" className="input-field" value={pieceRateInput} onChange={(e) => setPieceRateInput(e.target.value)} placeholder="2" />
+              <input
+                type="number"
+                className="input-field"
+                value={pieceRateInput}
+                onChange={(e) => {
+                  setPieceRateInput(e.target.value)
+                  if (piecesNum > 0) setGrossAmount(String(piecesNum * (Number(e.target.value) || 0)))
+                }}
+                placeholder="2"
+              />
             </div>
           </div>
           <div>
-            <label className="label-field">Gross payment amount {piecesNum > 0 && '(from pieces)'}</label>
-            <input
-              type="number"
-              className="input-field"
-              value={piecesNum > 0 ? String(pieceGross) : grossAmount}
-              onChange={(e) => setGrossAmount(e.target.value)}
-              disabled={piecesNum > 0}
-              placeholder="0"
-            />
+            <label className="label-field">Gross payment amount {piecesNum > 0 && '(auto from pieces × rate — edit to set the real total)'}</label>
+            <input type="number" className="input-field" value={grossAmount} onChange={(e) => setGrossAmount(e.target.value)} placeholder="0" />
           </div>
           <div>
             <label className="label-field">Overtime amount (optional)</label>
