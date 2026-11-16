@@ -109,8 +109,7 @@ interface RecordUnitPaymentInput {
   notes?: string
   piecesCompleted?: number | null
   ratePerPiece?: number | null
-  manualNetAmount?: number | null
-  advanceId?: number | null
+  advanceAllocations?: { advanceId: number; amount: number }[]
 }
 
 export interface KhadimTotals {
@@ -419,14 +418,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     date: string
     salaryPaymentId?: number
     unitPaymentId?: number
-    advanceId?: number | null
   }) {
-    const { name, department, amount, date, salaryPaymentId, unitPaymentId, advanceId } = params
+    const { name, department, amount, date, salaryPaymentId, unitPaymentId } = params
     if (amount <= 0) return
 
     const personAdvances = advances
       .filter((a) => a.employee_name === name && a.department === department)
-      .filter((a) => advanceId == null || a.id === advanceId)
       .sort((a, b) => {
         const dateA = a.payment_date ? new Date(a.payment_date).getTime() : 0
         const dateB = b.payment_date ? new Date(b.payment_date).getTime() : 0
@@ -837,10 +834,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     notes,
     piecesCompleted,
     ratePerPiece,
-    manualNetAmount,
-    advanceId,
+    advanceAllocations,
   }) => {
-    const netAmount = manualNetAmount ?? Math.max(0, totalAmount + overtimeAmount - advanceGiven)
+    const netAmount = Math.max(0, totalAmount + overtimeAmount - advanceGiven)
     const date = paymentDate ?? todayISO()
     const asOf = new Date(date)
 
@@ -869,14 +865,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .single()
     if (payErr) throw payErr
 
-    await allocateAdvanceDeduction({
-      name: supervisorName,
-      department: 'protees_unit',
-      amount: advanceGiven,
-      date,
-      unitPaymentId: payment.id,
-      advanceId,
-    })
+    if (advanceAllocations && advanceAllocations.length > 0) {
+      const rows = advanceAllocations
+        .filter((a) => a.amount > 0)
+        .map((a) => ({
+          advance_id: a.advanceId,
+          employee_name: supervisorName,
+          department: 'protees_unit' as const,
+          unit_payment_id: payment.id,
+          amount: a.amount,
+          date,
+        }))
+      if (rows.length > 0) {
+        const { error: dedErr } = await supabase.from('advance_deductions').insert(rows)
+        if (dedErr) throw dedErr
+      }
+    } else {
+      await allocateAdvanceDeduction({
+        name: supervisorName,
+        department: 'protees_unit',
+        amount: advanceGiven,
+        date,
+        unitPaymentId: payment.id,
+      })
+    }
 
     await refreshAll()
   }
