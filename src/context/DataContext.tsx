@@ -109,6 +109,8 @@ interface RecordUnitPaymentInput {
   notes?: string
   piecesCompleted?: number | null
   ratePerPiece?: number | null
+  manualNetAmount?: number | null
+  advanceId?: number | null
 }
 
 export interface KhadimTotals {
@@ -417,12 +419,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     date: string
     salaryPaymentId?: number
     unitPaymentId?: number
+    advanceId?: number | null
   }) {
-    const { name, department, amount, date, salaryPaymentId, unitPaymentId } = params
+    const { name, department, amount, date, salaryPaymentId, unitPaymentId, advanceId } = params
     if (amount <= 0) return
 
     const personAdvances = advances
       .filter((a) => a.employee_name === name && a.department === department)
+      .filter((a) => advanceId == null || a.id === advanceId)
       .sort((a, b) => {
         const dateA = a.payment_date ? new Date(a.payment_date).getTime() : 0
         const dateB = b.payment_date ? new Date(b.payment_date).getTime() : 0
@@ -833,8 +837,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     notes,
     piecesCompleted,
     ratePerPiece,
+    manualNetAmount,
+    advanceId,
   }) => {
-    const netAmount = Math.max(0, totalAmount + overtimeAmount - advanceGiven)
+    const netAmount = manualNetAmount ?? Math.max(0, totalAmount + overtimeAmount - advanceGiven)
     const date = paymentDate ?? todayISO()
     const asOf = new Date(date)
 
@@ -869,6 +875,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       amount: advanceGiven,
       date,
       unitPaymentId: payment.id,
+      advanceId,
     })
 
     await refreshAll()

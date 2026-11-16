@@ -40,6 +40,7 @@ export function ProteesUnitPage() {
     recordUnitPayment,
     deleteUnitPayment,
     balanceFor,
+    advanceDeductions,
   } = useData()
   const { showToast } = useToast()
 
@@ -48,6 +49,25 @@ export function ProteesUnitPage() {
 
   const unitAdvances = useMemo(() => advances.filter((a) => a.department === 'protees_unit'), [advances])
   const outstandingBalance = supervisor ? balanceFor(supervisor.name, 'protees_unit') : 0
+
+  const latestUnitAdvance = useMemo(
+    () =>
+      unitAdvances
+        .filter((a) => !supervisor || a.employee_name === supervisor.name)
+        .reduce<(typeof unitAdvances)[number] | null>(
+          (latest, a) =>
+            !latest || a.payment_date > latest.payment_date || (a.payment_date === latest.payment_date && a.id > latest.id) ? a : latest,
+          null
+        ),
+    [unitAdvances, supervisor]
+  )
+  const latestAdvanceRemaining = useMemo(() => {
+    if (!latestUnitAdvance) return 0
+    const deducted = advanceDeductions
+      .filter((d) => d.advance_id === latestUnitAdvance.id)
+      .reduce((sum, d) => sum + Number(d.amount), 0)
+    return Math.max(0, Number(latestUnitAdvance.amount) - deducted)
+  }, [latestUnitAdvance, advanceDeductions])
 
   const totalAdvancesGiven = unitAdvances.reduce((sum, a) => sum + Number(a.amount), 0)
   const lastPaymentDate = useMemo(
@@ -225,6 +245,8 @@ export function ProteesUnitPage() {
   const [pieceRateInput, setPieceRateInput] = useState('2')
   const [overtimeAmount, setOvertimeAmount] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
+  const [paymentMode, setPaymentMode] = useState<'calculated' | 'manual'>('calculated')
+  const [manualNetInput, setManualNetInput] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
 
@@ -235,6 +257,8 @@ export function ProteesUnitPage() {
     setPieceRateInput('2')
     setOvertimeAmount('')
     setPaymentNotes('')
+    setPaymentMode('calculated')
+    setManualNetInput('')
     setPaymentError(null)
     setPaymentModalOpen(true)
   }
@@ -244,8 +268,11 @@ export function ProteesUnitPage() {
   const pieceGross = piecesNum > 0 ? piecesNum * pieceRateNum : 0
   const gross = piecesNum > 0 ? pieceGross : Number(grossAmount) || 0
   const overtime = Number(overtimeAmount) || 0
-  const advanceDeduction = Math.min(outstandingBalance, gross + overtime)
-  const netPayment = Math.max(0, gross + overtime - advanceDeduction)
+  const totalDue = gross + overtime
+  const manualNetNum = Number(manualNetInput) || 0
+  const manualDeduction = totalDue - manualNetNum
+  const advanceDeduction = paymentMode === 'manual' ? manualDeduction : Math.min(latestAdvanceRemaining, totalDue)
+  const netPayment = paymentMode === 'manual' ? manualNetNum : Math.max(0, totalDue - advanceDeduction)
 
   async function handleSavePayment() {
     if (!supervisor) return
@@ -261,6 +288,20 @@ export function ProteesUnitPage() {
       setPaymentError('Overtime cannot be negative.')
       return
     }
+    if (paymentMode === 'manual') {
+      if (manualNetInput.trim() === '' || Number.isNaN(manualNetNum) || manualNetNum < 0) {
+        setPaymentError('Enter the net amount you actually paid.')
+        return
+      }
+      if (manualNetNum > totalDue) {
+        setPaymentError(`Net paid cannot be more than the total payment (${formatCurrency(totalDue)}).`)
+        return
+      }
+      if (manualDeduction > latestAdvanceRemaining) {
+        setPaymentError(`Net paid is too low — the latest advance only allows a deduction of ${formatCurrency(latestAdvanceRemaining)}, so net must be at least ${formatCurrency(totalDue - latestAdvanceRemaining)}.`)
+        return
+      }
+    }
     setSavingPayment(true)
     setPaymentError(null)
     try {
@@ -273,6 +314,8 @@ export function ProteesUnitPage() {
         notes: paymentNotes.trim() || undefined,
         piecesCompleted: piecesNum > 0 ? piecesNum : null,
         ratePerPiece: piecesNum > 0 ? pieceRateNum : null,
+        manualNetAmount: paymentMode === 'manual' ? manualNetNum : null,
+        advanceId: latestUnitAdvance?.id ?? null,
       })
       setPaymentModalOpen(false)
     } catch (err) {
@@ -600,10 +643,35 @@ export function ProteesUnitPage() {
             <input type="number" className="input-field" value={overtimeAmount} onChange={(e) => setOvertimeAmount(e.target.value)} placeholder="0" />
           </div>
 
+          <div className="flex gap-2">
+            {(['calculated', 'manual'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setPaymentMode(mode)}
+                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                  paymentMode === mode ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan' : 'border-white/10 bg-base-900/60 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {mode === 'calculated' ? 'Calculated' : 'Manual entry'}
+              </button>
+            ))}
+          </div>
+          {paymentMode === 'manual' && (
+            <div>
+              <label className="label-field">Net amount actually paid</label>
+              <input type="number" className="input-field" value={manualNetInput} onChange={(e) => setManualNetInput(e.target.value)} placeholder="0" />
+            </div>
+          )}
+
           <div className="space-y-1.5 rounded-xl bg-white/[0.02] px-3.5 py-2.5 text-xs text-slate-400">
             <div className="flex items-center justify-between">
               <span>Total Outstanding Advances</span>
               <span className="text-slate-300">{formatCurrency(outstandingBalance)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Latest Advance{latestUnitAdvance ? ` (${latestUnitAdvance.payment_date})` : ''}</span>
+              <span className="text-slate-300">{formatCurrency(latestAdvanceRemaining)}</span>
             </div>
             {piecesNum > 0 && (
               <div className="flex items-center justify-between">
@@ -623,7 +691,7 @@ export function ProteesUnitPage() {
             </div>
             <div className="flex items-center justify-between">
               <span>Advance Deduction</span>
-              <span className="text-neon-red">-{formatCurrency(advanceDeduction)}</span>
+              <span className="text-neon-red">-{formatCurrency(Math.max(0, advanceDeduction))}</span>
             </div>
             <div className="flex items-center justify-between border-t border-white/5 pt-1.5 font-semibold">
               <span className="text-slate-300">Net Payment</span>
